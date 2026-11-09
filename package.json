@@ -1,0 +1,23 @@
+{
+  "name": "stralforsmcp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && sh scripts/setup-hooks.sh || true",
+    "lint": "oxlint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "npm run lint && npm run typecheck && vitest run --coverage"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "@vitest/coverage-v8": "5.1.0",
+    "oxlint": "1.93.0",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}
