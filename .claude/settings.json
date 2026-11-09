@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(~/.config/stralforsmcp/**)",
+      "Edit(~/.config/stralforsmcp/**)",
+      "Write(~/.config/stralforsmcp/**)",
+      "Read(**/*.key)",
+      "Read(**/*.pem)",
+      "Read(**/*.p12)",
+      "Read(**/*.pfx)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Bash(cat ~/.config/stralforsmcp/*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)"
+    ]
+  }
+}

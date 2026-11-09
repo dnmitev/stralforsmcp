@@ -1,0 +1,30 @@
+# Dependencies / build
+node_modules/
+dist/
+coverage/
+reports/
+.stryker-tmp/
+*.tsbuildinfo
+
+# Secrets — never commit
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+.env
+.env.*
+!.env.example
+secrets/
+
+# Local / private working files (never public)
+.paul
+.planning/
+CLAUDE.local.md
+.claude/settings.local.json
+tokenomics/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
