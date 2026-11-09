@@ -60,6 +60,16 @@ CI publishes coverage, test pass rate and mutation score on every pull request.
 | 5 | Additional countries and channels; test-environment sending |
 | 6 | Production: full Helm chart, dashboards and alerts, Claude Desktop extension |
 
+## Contributing
+
+Run once after cloning:
+
+```sh
+scripts/setup-hooks.sh
+```
+
+This activates the commit hooks in `.githooks/`: every commit is scanned with [gitleaks](https://github.com/gitleaks/gitleaks) (must be installed) and, optionally, against a personal denylist of terms that must never be committed. Set `STRALFORSMCP_DENYLIST` to the denylist path (one case-insensitive regex per line); matches are reported as a count only. Run `sh scripts/test-leak-guard.sh` to verify the guard.
+
 ## Disclaimer
 
 Independent, unofficial project. Not affiliated with or endorsed by PostNord Strålfors. Refer to the official developer portal for authoritative API documentation.

@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+gitleaks git --staged --redact --no-banner --config .gitleaks.toml || exit 1
+{ git diff --cached -U0 --no-color | grep '^+' | grep -v '^+++' || true; } | sh scripts/denylist-check.sh
