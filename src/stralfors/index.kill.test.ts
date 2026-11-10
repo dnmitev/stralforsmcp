@@ -1,4 +1,5 @@
 // Mutation-hardening for index.ts request(): path guard, write guard, headers, status window, error context, close, logging.
+import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { AuthError, ConfigError, ResponseTooLargeError, SchemaError, UpstreamError, WriteBlockedError, type StralforsError } from './errors.ts';
@@ -74,7 +75,7 @@ describe('path guard', () => {
 });
 
 describe('path guard without the first regex', () => {
-  it.each(['//evil', '//evil.example.invalid/rest/x', '/other', 'https://evil/rest/x', 'https://evil.example.invalid/v1/oidc/token'])('%s throws ConfigError, no onBlocked, no request', async (path) => {
+  it.each(['//evil', '//evil.example.invalid/rest/x', '/other', 'https://evil/rest/x', 'https://evil.example.invalid/v1/oidc/token', '/\\evil.example.invalid/rest/x', '/rest/../other'])('%s throws ConfigError, no onBlocked, no request', async (path) => {
     fake = await startFakeApi({ pki, api: ok });
     const blocked: unknown[] = [];
     const { client } = testClient(pki, fake, { onBlocked: (e) => void blocked.push(e) });
@@ -248,5 +249,19 @@ describe('error context and logging', () => {
   it('UpstreamError type for a 5xx', async () => {
     fake = await startFakeApi({ pki, api: (_q, res) => json(res, 502, {}) });
     expect(await caught(testClient(pki, fake).client.get('/rest/x'))).toBeInstanceOf(UpstreamError);
+  });
+});
+
+describe('ids in path segments', () => {
+  it('are masked in write.blocked logs, onBlocked and the error operation', async () => {
+    const id = randomUUID();
+    fake = await startFakeApi({ pki, api: ok });
+    const blocked: { pathTemplate: string }[] = [];
+    const mem = memoryLogger();
+    const { client } = testClient(pki, fake, { logger: mem.logger, onBlocked: (e) => void blocked.push(e) });
+    const e = await caught(client.post(`/rest/agreements/${id}/1234567890`, {}));
+    expect(e.kind).toBe('write_blocked');
+    expect(blocked[0]!.pathTemplate).toBe('/rest/agreements/*/*');
+    expect(JSON.stringify([e.operation, e.message, mem.lines()])).not.toMatch(new RegExp(`${id}|1234567890`));
   });
 });

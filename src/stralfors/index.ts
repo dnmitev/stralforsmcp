@@ -25,6 +25,7 @@ export interface CreateClientOptions {
   /** clock in ms */
   now?: () => number;
 }
+const ID_SEGMENT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$|\d{6,}/i;
 interface RequestOpts<T> { schema?: z.ZodType<T>; query?: Record<string, string>; operation?: string }
 
 export function createClient(o: CreateClientOptions) {
@@ -43,7 +44,9 @@ export function createClient(o: CreateClientOptions) {
     const query = Object.entries(opts.query ?? {}).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
     const target = query ? `${path}${path.includes('?') ? '&' : '?'}${query}` : path;
     const [p, q] = target.split('?');
-    const pathTemplate = q ? `${p}?${q.replace(/=[^&]*/g, '=*')}` : p!;
+    // ids in a path segment (UUIDs, long digit runs) must not reach logs, errors or onBlocked
+    const clean = p!.split('/').map((s) => (ID_SEGMENT.test(s) ? '*' : s)).join('/');
+    const pathTemplate = q ? `${clean}?${q.replace(/=[^&]*/g, '=*')}` : clean;
     method = method.toUpperCase();
     const operation = opts.operation ?? `${method} ${pathTemplate}`;
     const ctx = { profile: profile!.id, operation };
