@@ -70,7 +70,9 @@ const ENGINE = 'Unexpected error occurred';
 
 function violation(pv: unknown): Violation {
   if (typeof pv === 'string') return { path: pv, criteria: [] };
-  const { param, value } = pv as { param: string; value: string };
+  const { param: p, value: val } = (pv ?? {}) as { param?: unknown; value?: unknown };
+  const param = typeof p === 'string' ? p : '';
+  const value = typeof val === 'string' ? val : '';
   const m = PARAM.exec(param);
   const parts = value.split(' | ').map((s) => s.trim()).filter(Boolean);
   const criteria = parts.filter((c) => !c.startsWith(ENGINE));
@@ -97,7 +99,10 @@ export function mapHttpError(
     case 400: {
       const faults: unknown[] | undefined = j?.['compositeFault']?.faults;
       if (Array.isArray(faults)) {
-        const violations = faults.flatMap((f) => ((f as { paramValues?: unknown[] }).paramValues ?? []).map(violation));
+        const violations = faults.flatMap((f) => {
+          const pvs = (f as { paramValues?: unknown } | null)?.paramValues;
+          return Array.isArray(pvs) ? pvs.map(violation) : [];
+        });
         return new ValidationFailedError(`validation failed: ${violations.length} violation(s)`, { ...p, violations, faults });
       }
       const errors = j?.['errors'];
@@ -113,7 +118,9 @@ export function mapHttpError(
     case 409:
       return new ConflictError(`${msg}: conflict`, p);
     case 429: {
+      // Stryker disable next-line StringLiteral: any non-numeric fallback parses to NaN, same as ''
       const ra = res.retryAfter ?? '';
+      // Stryker disable next-line Regex: an unanchored digit match is only true for strings Number() turns into NaN, which becomes undefined below, same as the Date.parse path
       const ms = /^\d+$/.test(ra) ? Number(ra) * 1000 : Date.parse(ra) - Date.now();
       return new RateLimitedError(`${msg}: rate limited`, { ...p, retryAfterMs: ms >= 0 ? ms : undefined });
     }

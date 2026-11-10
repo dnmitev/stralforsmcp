@@ -120,6 +120,27 @@ describe('R1 configuration loading', () => {
     expect(e.message).not.toContain('not-a-uuid');
   });
 
+  it('ACTION_IDS tolerates whitespace around entries, labels and ids', () => {
+    const [g1, g2, g3] = [randomUUID(), randomUUID(), randomUUID()];
+    const load = (v: string) => {
+      const { env } = two();
+      env['STRALFORS_PROFILE_A_ACTION_IDS'] = v;
+      return loadConfig(env).profiles['a']!.actionIds;
+    };
+    expect(load(`billing:${g1}, ${g2}`)).toEqual([{ label: 'billing', id: g1 }, { id: g2 }]);
+    expect(load(` billing : ${g1} `)).toEqual([{ label: 'billing', id: g1 }]);
+    expect(load(`  :${g3}`)).toEqual([{ id: g3 }]);
+  });
+
+  it('ACTION_IDS invalid id still names the variable and label only, even with whitespace', () => {
+    const { env } = two();
+    env['STRALFORS_PROFILE_A_ACTION_IDS'] = ' billing : not-a-uuid ';
+    const e = throwsConfig(() => loadConfig(env));
+    expect(e.message).toContain('ACTION_IDS');
+    expect(e.message).toContain('billing');
+    expect(e.message).not.toContain('not-a-uuid');
+  });
+
   it('prod refuses write', () => {
     const { env } = two();
     const e = throwsConfig(() => loadConfig({ ...env, STRALFORS_ENV: 'prod', STRALFORS_ALLOW_WRITE: 'true' }));

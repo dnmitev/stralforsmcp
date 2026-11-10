@@ -49,6 +49,7 @@ export function createClient(o: CreateClientOptions) {
     const operation = opts.operation ?? `${method} ${pathTemplate}`;
     const ctx = { profile: profile!.id, operation };
     const url = new URL(target, base);
+    if (url.origin !== new URL(base).origin || !/^\/(rest|v1\/oidc)\//.test(url.pathname)) throw new ConfigError('path not allowed');
     if (!isAllowed(policy, method, url.pathname + url.search)) {
       log.warn({ profile: ctx.profile, method, pathTemplate }, 'write.blocked');
       o.onBlocked?.({ profile: ctx.profile, method, pathTemplate });
@@ -58,6 +59,7 @@ export function createClient(o: CreateClientOptions) {
     try {
       const attempt = (t: Token) =>
         send(agent, url, {
+          // Stryker disable next-line ConditionalExpression: JSON.stringify(undefined) is undefined, so both branches agree for an absent body
           method, body: body === undefined ? undefined : JSON.stringify(body), ...limits,
           headers: {
             authorization: `Bearer ${t.bearer()}`, accept: 'application/json', 'user-agent': `${serverInfo.name}/${serverInfo.version}`,

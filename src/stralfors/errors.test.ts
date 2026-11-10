@@ -23,7 +23,7 @@ import {
   AgreementNotFoundError, BadRequestError, ConflictError, ForbiddenError, RateLimitedError, RouteNotFoundError,
   StralforsError, UpstreamError, ValidationFailedError, mapHttpError,
 } from './errors.ts';
-import { canary, fixture, startFakeApi, testClient, type FakeApi } from '../../test/helpers/api.ts';
+import { canary, fixture, memoryLogger, startFakeApi, testClient, type FakeApi } from '../../test/helpers/api.ts';
 import { generatePki, type Pki } from '../../test/helpers/mtls.ts';
 
 let pki: Pki;
@@ -101,6 +101,41 @@ describe('R7 error mapping', () => {
     expect(e.faults).toEqual(faults);
     for (const s of [JSON.stringify({ ...e }), JSON.stringify(Object.assign({}, e)), Object.keys(e).join()]) expect(s).not.toContain(id);
     expect(Object.keys(e)).not.toContain('faults');
+  });
+
+  describe('malformed compositeFault entries never throw', () => {
+    const good = { param: '#2:Document.DocumentHeader.TimeStamp', value: 'Required' };
+    const bodies: [string, unknown[]][] = [
+      ['null fault entry', [null, { paramValues: [good] }]],
+      ['paramValues not an array', [{ paramValues: 'oops' }, { paramValues: [good] }]],
+      ['paramValues item is null', [{ paramValues: [null, good] }]],
+      ['value is null', [{ paramValues: [{ param: '#1:X.Y', value: null }, good] }]],
+      ['param is not a string', [{ paramValues: [{ param: 42, value: 'v' }, good] }]],
+    ];
+    it.each(bodies)('mapHttpError: %s', (_n, faults) => {
+      const body = JSON.stringify({ message: 'm', compositeFault: { faults } });
+      let e: StralforsError | undefined;
+      expect(() => void (e = mapHttpError({ status: 400, contentType: 'application/json', body }, ctx))).not.toThrow();
+      expect(e).toBeInstanceOf(ValidationFailedError);
+      expect(e!.kind).toBe('validation_failed');
+      for (const v of (e as ValidationFailedError).violations) expect([typeof v.path, v.criteria.every((c) => typeof c === 'string')]).toEqual(['string', true]);
+      expect((e as ValidationFailedError).violations).toContainEqual({ ruleId: '2', tag: undefined, path: 'Document.DocumentHeader.TimeStamp', criteria: ['Required'] });
+    });
+
+    it.each(bodies)('end to end: %s is request.failed with validation_failed', async (_n, faults) => {
+      fake = await startFakeApi({
+        pki,
+        api: (_q, res) => {
+          res.writeHead(400, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ message: 'm', compositeFault: { faults } }));
+        },
+      });
+      const mem = memoryLogger();
+      const { client } = testClient(pki, fake, { logger: mem.logger });
+      const err = await client.get('/rest/x', { schema: z.unknown() }).then(() => undefined, (e: unknown) => e);
+      expect(err).toBeInstanceOf(ValidationFailedError);
+      expect(mem.lines().find((l) => l['msg'] === 'request.failed')).toMatchObject({ kind: 'validation_failed', status: 400 });
+    });
   });
 
   it('traceId is surfaced', () => {

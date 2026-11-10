@@ -75,10 +75,11 @@ export function loadConfig(
   for (const id of need('STRALFORS_PROFILES').split(',').map((s) => s.trim()).filter(Boolean)) {
     const P = `STRALFORS_PROFILE_${id.toUpperCase().replaceAll('-', '_')}`;
     const actionName = `${P}_ACTION_IDS`;
-    const actionIds = (env[actionName] ?? '').split(',').filter(Boolean).map((entry, i) => {
+    const actionIds = (env[actionName] ?? '').split(',').map((e) => e.trim()).filter(Boolean).map((entry, i) => {
       const c = entry.indexOf(':');
-      const label = c < 0 ? undefined : entry.slice(0, c);
-      const id = entry.slice(c + 1);
+      // Stryker disable next-line EqualityOperator: c === 0 gives label '' (original) or undefined (mutant); both mean no label
+      const label = c < 0 ? undefined : entry.slice(0, c).trim();
+      const id = entry.slice(c + 1).trim();
       if (!UUID.test(id)) throw new ConfigError(`${actionName}: invalid agreement id (${label ? `label ${label}` : `entry ${i + 1}`})`);
       return label ? { label, id } : { id };
     });

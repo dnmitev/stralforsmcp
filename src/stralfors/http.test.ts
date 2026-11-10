@@ -119,6 +119,25 @@ describe('R5 HTTP core', () => {
     expect(fake.requests).toHaveLength(0);
   });
 
+  it.each(['test', 'prod'])('path guard checks the normalised path, not the raw one (%s)', async (mode) => {
+    fake = await startFakeApi({ pki, api: ping });
+    const { client } = testClient(pki, fake, { extra: { STRALFORS_ENV: mode } });
+    for (const p of ['/rest/../anything', '/rest/%2e%2e/anything', '/rest/%2E%2E/anything', '/rest\\..\\anything', '/v1/oidc/../other']) {
+      const err = await rejection(client.get(p, any));
+      expect(err, p).toBeInstanceOf(ConfigError);
+      expect((err as ConfigError).message, p).toContain('path not allowed');
+    }
+    expect(fake.requests).toHaveLength(0);
+    expect(fake.tokenRequests).toHaveLength(0);
+  });
+
+  it('a legitimate /rest path still passes the normalised guard', async () => {
+    fake = await startFakeApi({ pki, api: ping });
+    const { client } = testClient(pki, fake);
+    await expect(client.get('/rest/x', any)).resolves.toEqual({ pong: true });
+    expect(fake.apiRequests).toHaveLength(1);
+  });
+
   it('headers timeout', async () => {
     fake = await startFakeApi({ pki, api: (req, res) => (req.url === '/rest/hang' ? undefined : ping(req, res)) });
     const { client } = testClient(pki, fake, { extra: { STRALFORS_TIMEOUT_MS: '200' } });
