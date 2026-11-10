@@ -1,0 +1,11 @@
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+  "title": "One or more validation errors occurred.",
+  "status": 400,
+  "errors": {
+    "actionId": [
+      "The value 'not-a-guid' is not valid."
+    ]
+  },
+  "traceId": "00-32e2925721171fbec9c3660dabbd69f6-f5672e9d2f6cc41b-00"
+}

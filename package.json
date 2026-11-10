@@ -12,6 +12,7 @@
     "lint": "oxlint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "live:channels": "node scripts/live-channels.ts",
     "check": "npm run lint && npm run typecheck && vitest run --coverage"
   },
   "devDependencies": {
@@ -20,5 +21,10 @@
     "oxlint": "1.93.0",
     "typescript": "7.0.2",
     "vitest": "5.1.0"
+  },
+  "dependencies": {
+    "pino": "10.4.0",
+    "undici": "8.12.4",
+    "zod": "4.6.7"
   }
 }
