@@ -83,9 +83,10 @@ describe('audit events', () => {
     expect(lines()[0]).not.toHaveProperty('profile');
   });
 
-  it('fromBlocked replaces identifiers in path segments and keeps known route words and the query', () => {
+  it('fromBlocked replaces identifiers in path segments, keeps known route words and drops the query', () => {
     const id = randomUUID();
-    expect(fromBlocked({ profile: 'a', method: 'POST', pathTemplate: `/rest/agreements/${id}/x?actionId=*&test=*` }).tool).toBe('POST /rest/*/*/*?actionId=*&test=*');
+    expect(fromBlocked({ profile: 'a', method: 'POST', pathTemplate: `/rest/agreements/${id}/x?actionId=*&test=*` }).tool).toBe('POST /rest/*/*/*');
+    expect(fromBlocked({ profile: 'a', method: 'POST', pathTemplate: '/rest/outputmanagement?agreement-123=*' }).tool).toBe('POST /rest/outputmanagement');
     expect(fromBlocked({ profile: 'a', method: 'DELETE', pathTemplate: `/rest/outputmanagement/apiomni/v2/invoices/${id}` }).tool).toBe('DELETE /rest/outputmanagement/apiomni/v2/invoices/*');
     expect(fromBlocked({ profile: 'a', method: 'POST', pathTemplate: `/rest/${id}` }).tool).not.toContain(id);
   });

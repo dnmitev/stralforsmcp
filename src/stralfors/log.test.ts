@@ -5,7 +5,7 @@
  *     - pino underneath, name "stralfors-client"; default level 'info' (the client uses a 'silent' logger when none is given)
  *     - allowlist of object keys: profile, operation, method, pathTemplate, status, durationMs, bytes, kind, traceId,
  *       expiresInS, scopesCount, customerCountry. Any other key is dropped and `droppedKeys` incremented.
- *     - no pino redact option: the allowlist is the whole mechanism
+ *     - no pino redact option: the allowlist (keys, primitive values only) is the whole mechanism
  *   Client events (msg): token.fetched, request {profile, operation, method, pathTemplate, status, durationMs, bytes},
  *     request.failed {..., kind, traceId?}, write.blocked {profile, method, pathTemplate}.
  *     pathTemplate keeps the path and replaces every query VALUE with '*': ".../channels?actionId=*".
@@ -166,5 +166,14 @@ describe('R8 logging hygiene', () => {
     const tok = lines.find((l) => l['msg'] === 'token.fetched')!;
     expect(tok).toMatchObject({ profile: 'a', expiresInS: 3600, scopesCount: 2, customerCountry: 'SE' });
     expect(Object.keys(tok).filter((k) => ['sub', 'customer', 'access_token', 'authorization'].includes(k))).toEqual([]);
+  });
+
+  it('drops nested objects under allowed keys, so a credential cannot ride in one', () => {
+    const chunks: string[] = [];
+    const log = createLogger({ level: 'info', destination: { write: (c) => void chunks.push(c) } });
+    log.info({ operation: { access_token: 'TOK-CANARY' }, profile: 'a', status: 200, kind: ['TOK-CANARY'] }, 'x');
+    expect(chunks.join('')).not.toMatch(/CANARY/);
+    expect(log.droppedKeys).toBe(2);
+    expect(JSON.parse(chunks.join(''))).toMatchObject({ profile: 'a', status: 200 });
   });
 });
