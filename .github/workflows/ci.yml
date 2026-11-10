@@ -67,7 +67,6 @@ jobs:
       - name: Denylist
         env:
           DL: ${{ secrets.STRALFORSMCP_DENYLIST }}
-          BASE_REF: ${{ github.base_ref }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
@@ -79,9 +78,9 @@ jobs:
           printf '%s\n' "$DL" > "$RUNNER_TEMP/denylist"
           export STRALFORSMCP_DENYLIST="$RUNNER_TEMP/denylist"
           git ls-files -z | xargs -0 cat | sh scripts/denylist-check.sh
+          # Commit metadata of the whole history: names, emails, messages (catches web squash-merge authors on push to main).
+          git log --format='%an%n%ae%n%cn%n%ce%n%B' HEAD | sh scripts/denylist-check.sh
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            git fetch --no-tags origin "$BASE_REF"
-            git log --format=%B "origin/$BASE_REF..HEAD" | sh scripts/denylist-check.sh
             printf '%s\n%s\n' "$PR_TITLE" "$PR_BODY" | sh scripts/denylist-check.sh
           fi
 
