@@ -6,6 +6,7 @@ import { send } from './http.ts';
 import type { Logger } from './log.ts';
 
 type Payload = Record<string, unknown>;
+// Stryker disable next-line Regex: /\s/ vs /\s+/ differ only by empty pieces, which filter(Boolean) drops
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((s) => typeof s === 'string') : typeof v === 'string' ? v.split(/\s+/).filter(Boolean) : []);
 const num = (v: unknown) => (typeof v === 'number' ? v : undefined);
 

@@ -60,6 +60,7 @@ export async function send(
     for await (const chunk of res.body) {
       bytes += (chunk as Buffer).length;
       if (bytes > init.maxBytes) {
+        // Stryker disable next-line CallExpression: leaving the for-await by a throw destroys the stream anyway; the call only makes that explicit
         res.body.destroy();
         throw new ResponseTooLargeError(`response exceeds ${init.maxBytes} bytes`);
       }
