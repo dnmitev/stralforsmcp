@@ -4,7 +4,27 @@ import { resolve } from 'node:path';
 const METRICS = ['lines', 'branches', 'functions', 'statements'] as const;
 const pct = (n: number) => `${n.toFixed(1)}%`;
 
-export function buildReport(coverage: unknown, junitXml: string): string {
+const DETECTED = new Set(['Killed', 'Timeout']);
+const UNDETECTED = new Set(['Survived', 'NoCoverage']);
+
+/** Mutation score in percent from a mutation-testing-elements report; undefined when nothing countable. */
+export function mutationScore(report: unknown): number | undefined {
+  const files = (report as { files?: Record<string, { mutants?: { status?: unknown }[] }> } | null)?.files;
+  if (typeof files !== 'object' || files === null) return undefined;
+  let detected = 0;
+  let undetected = 0;
+  for (const f of Object.values(files)) {
+    for (const m of f?.mutants ?? []) {
+      if (DETECTED.has(m.status as string)) detected++;
+      else if (UNDETECTED.has(m.status as string)) undetected++;
+    }
+  }
+  const total = detected + undetected;
+  return total > 0 ? (detected / total) * 100 : undefined;
+}
+
+export function buildReport(coverage: unknown, junitXml: string, mutation?: unknown): string {
+  const score = mutationScore(mutation);
   const total = (coverage as { total?: Record<string, { pct?: unknown }> } | null)?.total;
   const rows = METRICS.map((m) => {
     const p = total?.[m]?.pct;
@@ -30,7 +50,7 @@ export function buildReport(coverage: unknown, junitXml: string): string {
     `| Failed | ${f + e} |`,
     `| Skipped | ${s} |`,
     `| Pass rate | ${runnable > 0 ? pct((passed / runnable) * 100) : 'n/a'} |`,
-    '| Mutation score | n/a (from Phase 1) |',
+    `| Mutation score | ${score === undefined ? 'n/a' : pct(score)} |`,
     '',
   ].join('\n');
 }
@@ -41,16 +61,20 @@ export async function main(
   argv: string[],
   io: IO = { out: (s) => void process.stdout.write(s), err: (s) => void process.stderr.write(s) },
 ): Promise<number> {
-  const [covPath = '', junitPath = ''] = argv;
+  const [covPath = '', junitPath = '', mutationPath] = argv;
   let path = covPath;
   try {
     const coverage: unknown = JSON.parse(await readFile(covPath, 'utf8'));
     path = junitPath;
     const xml = await readFile(junitPath, 'utf8');
     path = covPath;
+    // A missing or malformed mutation report must not fail the report: the row shows n/a.
+    const mutation: unknown = mutationPath
+      ? await readFile(mutationPath, 'utf8').then((t) => JSON.parse(t) as unknown).catch(() => undefined)
+      : undefined;
     const report = (() => {
       try {
-        return buildReport(coverage, xml);
+        return buildReport(coverage, xml, mutation);
       } catch (e) {
         // blame the right file: junit errors mention junit
         path = /junit/.test((e as Error).message) ? junitPath : covPath;

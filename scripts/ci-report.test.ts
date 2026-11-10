@@ -5,16 +5,16 @@
 //     - JUnit totals: tests/failures/errors from root <testsuites> (no skipped attr in Vitest);
 //       skipped = sum of skipped over <testsuite> elements;
 //       failed = F+E; passed = N-F-E-S; pass % = passed/(N-S) 1 decimal; zero runnable -> n/a
-//     - mutation row contains "n/a (from Phase 1)"
+//     - mutation row: "n/a" without a Stryker report, "NN.N%" with one (mutationScore)
 //     - throws Error whose message contains 'coverage' on malformed coverage shape
 //   main(argv: string[], io?: { out(s): void; err(s): void }): Promise<number>
-//     - argv = [coveragePath, junitPath]; 0 + markdown to io.out on success;
+//     - argv = [coveragePath, junitPath, mutationJsonPath?]; 0 + markdown to io.out on success;
 //       non-zero + one-line error containing the offending path to io.err on missing/unparsable file
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { buildReport, main } from './ci-report.ts';
+import { buildReport, main, mutationScore } from './ci-report.ts';
 
 const cov = (l: number, b: number, f: number, s: number) => ({
   total: {
@@ -26,6 +26,29 @@ const cov = (l: number, b: number, f: number, s: number) => ({
 });
 const junit = (t: number, f: number, e: number, s: number) =>
   `<?xml version="1.0"?><testsuites name="vitest tests" tests="${t}" failures="${f}" errors="${e}" time="0.1"><testsuite name="a" tests="${t}" failures="0" errors="0" skipped="${s}"></testsuite></testsuites>`;
+
+const mut = (a: string[], b: string[] = []) => ({
+  files: { 'a.ts': { mutants: a.map((status) => ({ status })) }, 'b.ts': { mutants: b.map((status) => ({ status })) } },
+});
+
+describe('mutationScore', () => {
+  it('counts Killed and Timeout as detected, Survived and NoCoverage as undetected', () => {
+    expect(mutationScore(mut(['Killed', 'Timeout'], ['Survived', 'NoCoverage']))).toBe(50);
+  });
+
+  it('excludes CompileError, RuntimeError and Ignored', () => {
+    expect(mutationScore(mut(['Killed', 'CompileError', 'RuntimeError', 'Ignored'], ['Survived']))).toBe(50);
+  });
+
+  it.each([
+    ['null', null],
+    ['no files', {}],
+    ['files not an object', { files: 3 }],
+    ['no countable mutants', mut(['Ignored', 'CompileError'])],
+  ])('is undefined for %s', (_n, bad) => {
+    expect(mutationScore(bad)).toBeUndefined();
+  });
+});
 
 describe('buildReport', () => {
   it('renders coverage percentages with 1 decimal', () => {
@@ -63,10 +86,14 @@ describe('buildReport', () => {
     expect(buildReport(cov(100, 100, 100, 100), junit(3, 0, 0, 3))).toContain('n/a');
   });
 
-  it('has a mutation row marked n/a (from Phase 1)', () => {
+  it('has a mutation row marked n/a without a mutation report', () => {
     const r = buildReport(cov(100, 100, 100, 100), junit(1, 0, 0, 0));
-    expect(r).toContain('n/a (from Phase 1)');
-    expect(r.toLowerCase()).toContain('mutation');
+    expect(r).toContain('| Mutation score | n/a |');
+  });
+
+  it('shows the mutation score when a report is given', () => {
+    const r = buildReport(cov(100, 100, 100, 100), junit(1, 0, 0, 0), mut(['Killed', 'Survived', 'Killed']));
+    expect(r).toContain('| Mutation score | 66.7% |');
   });
 
   it('reads totals from the root testsuites, not nested suites', () => {
@@ -163,5 +190,31 @@ describe('main', () => {
     await writeFile(j, junit(1, 0, 0, 0));
     expect(await main([c, j], io)).not.toBe(0);
     expect(err.join('')).toContain(c);
+  });
+
+  it('prints the mutation score from the third argument', async () => {
+    const c = join(dir, 'cov.json');
+    const j = join(dir, 'junit.xml');
+    const m = join(dir, 'mutation.json');
+    await writeFile(c, JSON.stringify(cov(1, 1, 1, 1)));
+    await writeFile(j, junit(1, 0, 0, 0));
+    await writeFile(m, JSON.stringify(mut(['Killed', 'Killed', 'Killed', 'Survived'])));
+    expect(await main([c, j, m], io)).toBe(0);
+    expect(out.join('')).toContain('| Mutation score | 75.0% |');
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['malformed', '{not json'],
+  ])('still builds the report with n/a when the mutation file is %s', async (_n, content) => {
+    const c = join(dir, 'cov.json');
+    const j = join(dir, 'junit.xml');
+    const m = join(dir, 'mutation.json');
+    await writeFile(c, JSON.stringify(cov(1, 1, 1, 1)));
+    await writeFile(j, junit(1, 0, 0, 0));
+    if (content !== undefined) await writeFile(m, content);
+    expect(await main([c, j, m], io)).toBe(0);
+    expect(out.join('')).toContain('| Mutation score | n/a |');
+    expect(err).toEqual([]);
   });
 });

@@ -88,6 +88,12 @@ Per profile, with `<ID>` the upper-cased profile id (`-` becomes `_`, so `test-a
 
 Smoke check against the live test API (manual, never run in CI): export the variables above, then `npm run live:channels`. It prints the token scopes, the client channel catalogue and the channels of each configured agreement by label (or `#1`, `#2`), never by id.
 
+## Mutation testing
+
+`npm run mutation` runs [StrykerJS](https://stryker-mutator.io) with the Vitest runner over the core client modules (`src/stralfors/token.ts`, `errors.ts`, `http.ts`). Target score is 80 %; the run fails below 70 % (`break`). Reports land in `reports/mutation/` (`mutation.html`, `mutation.json`). The incremental file `reports/stryker-incremental.json` is kept between runs, so a re-run only tests what changed. CI runs this as the `mutation` job on Node 24, publishes the score in the job summary and uploads the report as an artifact.
+
+Optional dashboard: enable the repository on the [Stryker dashboard](https://dashboard.stryker-mutator.io), then run `gh secret set STRYKER_DASHBOARD_API_KEY`. Until the secret exists, CI sends nothing.
+
 ## Contributing
 
 Run once after cloning:

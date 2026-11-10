@@ -13,9 +13,12 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "live:channels": "node scripts/live-channels.ts",
-    "check": "npm run lint && npm run typecheck && vitest run --coverage"
+    "check": "npm run lint && npm run typecheck && vitest run --coverage",
+    "mutation": "stryker run"
   },
   "devDependencies": {
+    "@stryker-mutator/core": "10.1.1",
+    "@stryker-mutator/vitest-runner": "10.1.1",
     "@types/node": "26.6.6",
     "@vitest/coverage-v8": "5.1.0",
     "oxlint": "1.93.0",
