@@ -54,7 +54,14 @@ export function createAudit(o: { destination: { write(chunk: string): void }; no
   };
 }
 
+// Path segments of the known Stralfors routes; anything else (an id in a path) becomes `*`, so the audit tool field cannot carry identifiers.
+const ROUTE_WORDS = new Set(['rest', 'outputmanagement', 'apiomni', 'v1', 'v2', 'invoices', 'channels', 'templates', 'rules', 'document', 'validate', 'apiinfo', 'manage', 'health', 'oidc', 'token', 'true', 'false']);
+const safePath = (t: string) => {
+  const [path, ...query] = t.split('?');
+  return `${path!.split('/').map((s) => (s === '' || ROUTE_WORDS.has(s) ? s : '*')).join('/')}${query.length ? `?${query.join('?')}` : ''}`;
+};
+
 /** Adapter for `onBlocked`: the caller merges principal and env. */
 export const fromBlocked = (e: { profile: string; method: string; pathTemplate: string }): Pick<AuditInput, 'tool' | 'outcome' | 'reason' | 'durationMs'> => ({
-  tool: `${e.method} ${e.pathTemplate}`, outcome: 'blocked', reason: 'write_guard', durationMs: 0,
+  tool: `${e.method} ${safePath(e.pathTemplate)}`, outcome: 'blocked', reason: 'write_guard', durationMs: 0,
 });

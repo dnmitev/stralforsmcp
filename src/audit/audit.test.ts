@@ -27,8 +27,8 @@ describe('mask', () => {
   ])('mask(%j) = %j', (i, o) => expect(mask(i)).toBe(o));
 
   it('never contains the middle', () => {
-    for (let i = 0; i < 200; i++) {
-      const s = randomBytes(40).toString('base64url').slice(0, 16 + Math.floor(Math.random() * 49));
+    for (let len = 16; len <= 54; len++) {
+      const s = randomBytes(40).toString('base64url').slice(0, len);
       const m = mask(s);
       expect(m).toHaveLength(9);
       expect(m.startsWith(s.slice(0, 4)) && m.endsWith(s.slice(-4))).toBe(true);
@@ -81,6 +81,13 @@ describe('audit events', () => {
     audit.record({ ...fromBlocked({ profile: 'a', method: 'POST', pathTemplate: path }), principal: p, env: 'test' });
     expect(lines()[0]).toMatchObject({ outcome: 'blocked', reason: 'write_guard', tool: `POST ${path}`, durationMs: 0 });
     expect(lines()[0]).not.toHaveProperty('profile');
+  });
+
+  it('fromBlocked replaces identifiers in path segments and keeps known route words and the query', () => {
+    const id = randomUUID();
+    expect(fromBlocked({ profile: 'a', method: 'POST', pathTemplate: `/rest/agreements/${id}/x?actionId=*&test=*` }).tool).toBe('POST /rest/*/*/*?actionId=*&test=*');
+    expect(fromBlocked({ profile: 'a', method: 'DELETE', pathTemplate: `/rest/outputmanagement/apiomni/v2/invoices/${id}` }).tool).toBe('DELETE /rest/outputmanagement/apiomni/v2/invoices/*');
+    expect(fromBlocked({ profile: 'a', method: 'POST', pathTemplate: `/rest/${id}` }).tool).not.toContain(id);
   });
 
   it('extra properties are never copied', () => {

@@ -135,7 +135,8 @@ export function createTokenStore(o: TokenStoreOptions): TokenStore {
       // Map hit is already exact; the constant-time compare is defence in depth (ponytail: not the security boundary)
       if (!t || !timingSafeEqual(Buffer.from(digest, 'hex'), Buffer.from(t.hash, 'hex'))) return { ok: false, code: 'unknown' };
       if (t.revoked) return { ok: false, code: 'revoked' };
-      if (at >= Date.parse(t.expires)) return { ok: false, code: 'expired' };
+      // not valid before `created` either: the 90-day cap then bounds validity from the time of issue, not from an arbitrary future date
+      if (at < Date.parse(t.created) || at >= Date.parse(t.expires)) return { ok: false, code: 'expired' };
       const u = view.users.get(t.userId)!;
       return { ok: true, principal: { userId: u.id, name: u.name, role: u.role, envs: [...u.envs] } };
     },

@@ -48,12 +48,15 @@ describe('hash and order', () => {
     expect(hashToken(f.raw.tA)).toBe(f.list.tokens[0]!.hash);
   });
 
-  it('created in the future is still accepted (no nbf)', () => {
+  it('a token is not valid before its created time (reported as expired), valid from created on', () => {
     const f = fixture();
     const raw = generateToken();
     f.list.tokens.push(entry(raw, 'u1', { created: iso(T + DAY), expires: iso(T + 2 * DAY) }));
     f.file.content = JSON.stringify(f.list);
-    expect(store(f).verify(raw).ok).toBe(true);
+    const s = store(f);
+    expect(s.verify(raw)).toEqual({ ok: false, code: 'expired' });
+    expect(s.verify(raw, T + DAY - 1)).toEqual({ ok: false, code: 'expired' });
+    expect(s.verify(raw, T + DAY).ok).toBe(true);
   });
 
   it('expires one ms before / at / after now', () => {
