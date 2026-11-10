@@ -60,6 +60,34 @@ CI publishes coverage, test pass rate and mutation score on every pull request.
 | 5 | Additional countries and channels; test-environment sending |
 | 6 | Production: full Helm chart, dashboards and alerts, Claude Desktop extension |
 
+## Stralfors client (library)
+
+`src/stralfors/` holds the API client (OAuth client credentials over mTLS, token caching). Configuration is read from the environment by `loadConfig`; secrets are given as file paths, never values.
+
+| Variable | Required | Default |
+|----------|----------|---------|
+| `STRALFORS_ENV` | yes | `test` or `prod` |
+| `STRALFORS_PROFILES` | yes | comma-separated profile ids, e.g. `test-a` |
+| `STRALFORS_ALLOW_WRITE` | no | `false` (never `true` in prod) |
+| `STRALFORS_PROD_VALIDATE_ENABLED` | no | `false` |
+| `STRALFORS_TIMEOUT_MS` | no | `30000` |
+| `STRALFORS_TOKEN_REFRESH_MARGIN_S` | no | `300` |
+| `STRALFORS_MAX_BODY_BYTES` | no | `8388608` |
+
+Per profile, with `<ID>` the upper-cased profile id (`-` becomes `_`, so `test-a` gives `TEST_A`):
+
+| Variable | Required | Meaning |
+|----------|----------|---------|
+| `STRALFORS_PROFILE_<ID>_COUNTRY` | yes | country code |
+| `STRALFORS_PROFILE_<ID>_CLIENT_ID_FILE` | yes | file holding the OAuth client id |
+| `STRALFORS_PROFILE_<ID>_CLIENT_SECRET_FILE` | yes | file holding the OAuth client secret |
+| `STRALFORS_PROFILE_<ID>_CERT_FILE` | yes | client certificate (PEM) |
+| `STRALFORS_PROFILE_<ID>_KEY_FILE` | yes | private key (PEM) |
+| `STRALFORS_PROFILE_<ID>_KEY_PASSPHRASE_FILE` | no | file holding the key passphrase |
+| `STRALFORS_PROFILE_<ID>_ACTION_IDS` | no | comma-separated agreement ids, optionally labelled: `label:uuid,uuid` |
+
+Smoke check against the live test API (manual, never run in CI): export the variables above, then `npm run live:channels`. It prints the token scopes, the client channel catalogue and the channels of each configured agreement by label (or `#1`, `#2`), never by id.
+
 ## Contributing
 
 Run once after cloning:
