@@ -1,0 +1,43 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "testRunner": "vitest",
+  "vitest": {
+    "configFile": "vitest.stryker.config.ts"
+  },
+  "coverageAnalysis": "perTest",
+  "mutate": [
+    "src/stralfors/token.ts",
+    "src/stralfors/errors.ts",
+    "src/stralfors/http.ts",
+    "src/stralfors/index.ts",
+    "src/stralfors/config.ts"
+  ],
+  "incremental": true,
+  "incrementalFile": "reports/stryker-incremental.json",
+  "reporters": [
+    "clear-text",
+    "json",
+    "html"
+  ],
+  "jsonReporter": {
+    "fileName": "reports/mutation/mutation.json"
+  },
+  "htmlReporter": {
+    "fileName": "reports/mutation/mutation.html"
+  },
+  "thresholds": {
+    "high": 80,
+    "low": 70,
+    "break": 70
+  },
+  "tsconfigFile": "none",
+  "ignorePatterns": [
+    ".paul",
+    ".claude",
+    ".github",
+    "docs",
+    "reports"
+  ],
+  "timeoutMS": 10000,
+  "timeoutFactor": 2
+}

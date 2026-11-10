@@ -48,6 +48,68 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  mutation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Incremental file: PRs fall back to the newest cache saved by main.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: reports/stryker-incremental.json
+          key: stryker-${{ github.sha }}
+          restore-keys: stryker-
+      # PRs reuse main's incremental file (fast). Stryker's incremental mode does not re-run old survivors against newly
+      # added tests, so main recomputes everything and saves a fresh baseline.
+      - name: Mutation tests (incremental)
+        if: github.ref != 'refs/heads/main'
+        run: npm run mutation
+      - name: Mutation tests (full)
+        if: github.ref == 'refs/heads/main'
+        run: npm run mutation -- --force
+      - name: Save incremental file
+        if: always() && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: reports/stryker-incremental.json
+          key: stryker-${{ github.sha }}
+      - name: Summary
+        if: always()
+        run: |
+          node -e "
+            const fs = require('node:fs');
+            import('./scripts/ci-report.ts').then(({ mutationScore }) => {
+              let s;
+              try { s = mutationScore(JSON.parse(fs.readFileSync('reports/mutation/mutation.json', 'utf8'))); } catch {}
+              console.log('### Mutation score\n\n' + (s === undefined ? 'n/a' : s.toFixed(1) + '%'));
+            });
+          " >> "$GITHUB_STEP_SUMMARY"
+      # Inert without the secret: nothing is sent. The re-run is cheap (incremental file).
+      - name: Stryker dashboard (optional)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          STRYKER_DASHBOARD_API_KEY: ${{ secrets.STRYKER_DASHBOARD_API_KEY }}
+        run: |
+          if [ -z "$STRYKER_DASHBOARD_API_KEY" ]; then
+            echo "dashboard key not set, skipped"
+            exit 0
+          fi
+          npx stryker run --reporters clear-text,dashboard
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: mutation-report
+          path: reports/mutation/
+          if-no-files-found: warn
+          retention-days: 14
+
   leak-scan:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -67,7 +129,6 @@ jobs:
       - name: Denylist
         env:
           DL: ${{ secrets.STRALFORSMCP_DENYLIST }}
-          BASE_REF: ${{ github.base_ref }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
@@ -79,9 +140,9 @@ jobs:
           printf '%s\n' "$DL" > "$RUNNER_TEMP/denylist"
           export STRALFORSMCP_DENYLIST="$RUNNER_TEMP/denylist"
           git ls-files -z | xargs -0 cat | sh scripts/denylist-check.sh
+          # Commit metadata of the whole history: names, emails, messages (catches web squash-merge authors on push to main).
+          git log --format='%an%n%ae%n%cn%n%ce%n%B' HEAD | sh scripts/denylist-check.sh
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            git fetch --no-tags origin "$BASE_REF"
-            git log --format=%B "origin/$BASE_REF..HEAD" | sh scripts/denylist-check.sh
             printf '%s\n%s\n' "$PR_TITLE" "$PR_BODY" | sh scripts/denylist-check.sh
           fi
 

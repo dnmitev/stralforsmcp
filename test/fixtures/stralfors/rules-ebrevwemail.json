@@ -1,0 +1,88 @@
+{
+  "channel": "eBrevWeMail",
+  "templateStandardId": 0,
+  "emailTemplateStandardId": 0,
+  "rules": [
+    {
+      "id": "900",
+      "tag": null,
+      "parameter": "Document.DocumentHeader.TimeStamp",
+      "isRequired": true,
+      "isOptional": false,
+      "ruleCriterias": null,
+      "expectedPattern": "^[0-9]{4}$",
+      "exampleValue": "2000-01-01T00:00:00Z",
+      "hasDependencies": false,
+      "dependencyOperator": null,
+      "dependencies": []
+    },
+    {
+      "id": "901",
+      "tag": "Template0",
+      "parameter": "Document.Invoice.Id",
+      "isRequired": true,
+      "isOptional": false,
+      "ruleCriterias": [
+        "Required"
+      ],
+      "expectedPattern": "^[A-Z]{2}$",
+      "exampleValue": "AB",
+      "hasDependencies": false,
+      "dependencyOperator": null,
+      "dependencies": []
+    },
+    {
+      "id": "902",
+      "tag": "Template0",
+      "parameter": "Document.Invoice.Note",
+      "isRequired": false,
+      "isOptional": true,
+      "ruleCriterias": null,
+      "expectedPattern": null,
+      "exampleValue": null,
+      "hasDependencies": false,
+      "dependencyOperator": null,
+      "dependencies": []
+    },
+    {
+      "id": "903",
+      "tag": null,
+      "parameter": "Document.Invoice.BuyerReference",
+      "isRequired": false,
+      "isOptional": true,
+      "ruleCriterias": null,
+      "expectedPattern": null,
+      "exampleValue": null,
+      "hasDependencies": false,
+      "dependencyOperator": null,
+      "dependencies": []
+    },
+    {
+      "id": "904",
+      "tag": null,
+      "parameter": "Document.Invoice.AccountingCost",
+      "isRequired": false,
+      "isOptional": true,
+      "ruleCriterias": null,
+      "expectedPattern": null,
+      "exampleValue": null,
+      "hasDependencies": true,
+      "dependencyOperator": "AnyRequired",
+      "dependencies": [
+        {
+          "id": "902",
+          "tag": "Template0",
+          "parameter": "Document.Invoice.Note",
+          "isRequired": false,
+          "isOptional": true,
+          "ruleCriterias": null,
+          "expectedPattern": null,
+          "exampleValue": null,
+          "hasDependencies": false,
+          "dependencyOperator": null,
+          "dependencies": []
+        }
+      ]
+    }
+  ]
+}

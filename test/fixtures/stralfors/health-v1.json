@@ -1,0 +1,13 @@
+{
+  "status": "UP",
+  "name": "Test Environment",
+  "detailChecks": [
+    {
+      "status": "UP",
+      "detailCheck": {
+        "param": "system",
+        "value": "db"
+      }
+    }
+  ]
+}

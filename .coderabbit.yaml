@@ -1,0 +1,58 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit reviews every pull request automatically. It is an additional reviewer, not the merge gate:
+# the merge gate is the `review/confidence` status set by the Principal Reviewer agent (see .claude/agents/).
+language: en-US
+tone_instructions: "Concise and technical. One finding per issue, with the failing input or scenario."
+
+reviews:
+  profile: chill
+  request_changes_workflow: false # never blocks; the confidence status and CI are the gate
+  high_level_summary: true
+  poem: false
+  in_progress_fortune: false
+  sequence_diagrams: false
+  collapse_walkthrough: true
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 0 # phase PRs collect many commits; never pause
+  path_filters:
+    - "!package-lock.json"
+    - "!reports/**"
+    - "!test/fixtures/**"
+  path_instructions:
+    - path: "src/**"
+      instructions: |
+        Client for an mTLS + OIDC client-credentials API. Review for: secrets or identifiers reaching logs,
+        error messages or serialised errors (messages are fixed text; raw upstream fields stay non-enumerable);
+        bypasses of the deny-by-default method + path write guard (the guard must run on the parsed URL that is
+        actually sent); production must stay read + validate only; unbounded memory (responses are streamed with a
+        byte cap); malformed upstream input must become a typed error, never a TypeError.
+    - path: "**/*.test.ts"
+      instructions: |
+        Tests must be deterministic and use runtime-generated certificates and synthetic fixtures only. Flag
+        real-looking credentials or identifiers, timing-dependent assertions, and assertions that cannot fail.
+    - path: ".github/workflows/**"
+      instructions: |
+        Actions pinned to a full commit SHA with a version comment; no pull_request_target; untrusted event data
+        only through env:, never interpolated into run:; least-privilege permissions.
+    - path: ".claude/agents/**"
+      instructions: |
+        Agent definitions are generic and public: no employer, customer or private-planning details. Check that
+        the team flow described in each file is the same, and that each agent's tools match what its
+        instructions require.
+    - path: "scripts/**"
+      instructions: "Small Node scripts. Flag unhandled failure paths and output that could contain secrets."
+  pre_merge_checks:
+    docstrings:
+      mode: "off" # TypeScript with typed signatures; docstring coverage is not a goal here
+  finishing_touches:
+    docstrings:
+      enabled: false
+    unit_tests:
+      enabled: false
+
+chat:
+  auto_reply: true

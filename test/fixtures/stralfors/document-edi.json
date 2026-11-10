@@ -1,0 +1,19 @@
+{
+  "actionId": "00000000-0000-0000-0000-000000000000",
+  "consignmentId": "CONSIGNMENT-0001",
+  "document": {
+    "documentHeader": {
+      "timeStamp": "2000-01-01T00:00:00Z",
+      "channelPriority": [
+        "EDI"
+      ],
+      "unknownExtra": "placeholder"
+    },
+    "invoice": {
+      "id": "INV-0001",
+      "issueDate": "2000-01-01",
+      "documentCurrencyCode": "XXX",
+      "note": "placeholder"
+    }
+  }
+}

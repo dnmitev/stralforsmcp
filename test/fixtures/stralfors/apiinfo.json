@@ -1,0 +1,12 @@
+{
+  "name": "ApiOmni",
+  "version": "2.1.68.0",
+  "description": "Example output management API",
+  "contact": {
+    "name": "Example Support",
+    "email": "support@example.invalid",
+    "url": "https://example.invalid/support"
+  },
+  "documentation": "https://example.invalid/docs",
+  "status": "active"
+}
