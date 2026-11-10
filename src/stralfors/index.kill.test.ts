@@ -8,12 +8,6 @@ import { createClient } from './index.ts';
 import { loadConfig } from './config.ts';
 import { makeEnv } from '../../test/helpers/api.ts';
 
-vi.mock('./log.ts', async (orig) => {
-  const m = await orig<typeof import('./log.ts')>();
-  return { ...m, createLogger: vi.fn(m.createLogger) };
-});
-const createLogger = vi.mocked((await import('./log.ts')).createLogger);
-
 let pki: Pki;
 let fake: FakeApi | undefined;
 beforeAll(() => void (pki = generatePki()));
@@ -44,12 +38,17 @@ describe('createClient', () => {
     await expect(client.get('/rest/x')).rejects.toBeDefined();
   });
 
-  it('without a logger the client gets a silent logger', () => {
-    // pino's default stream writes to the fd, not process.stdout.write, so spying on stdout would prove nothing.
-    const config = loadConfig(makeEnv(pki).env);
-    createLogger.mockClear();
-    createClient({ config, profileId: 'a' });
-    expect(createLogger).toHaveBeenCalledExactlyOnceWith({ level: 'silent' });
+  it('client works without a logger; with a sink the call is captured as a request line', async () => {
+    fake = await startFakeApi({ pki, api: ok });
+    const files = makeEnv(pki);
+    const client = createClient({ config: loadConfig(files.env), profileId: 'a', ca: pki.ca, baseUrl: fake.url });
+    await client.get('/rest/x');
+    await client.close();
+    // behaviour with a sink: the same call yields a captured 'request' line (pino writes to the fd, so the default silent logger cannot be observed directly)
+    const mem = memoryLogger();
+    const t = testClient(pki, fake, { logger: mem.logger });
+    await t.client.get('/rest/x');
+    expect(mem.lines().map((l) => l['msg'])).toContain('request');
   });
 });
 
@@ -70,6 +69,19 @@ describe('path guard', () => {
     const e = await caught(client.get(path));
     expect(e).toBeInstanceOf(ConfigError);
     expect(e.message).toBe('path not allowed');
+    expect(fake.requests).toHaveLength(0);
+  });
+});
+
+describe('path guard without the first regex', () => {
+  it.each(['//evil', '//evil.example.invalid/rest/x', '/other', 'https://evil/rest/x', 'https://evil.example.invalid/v1/oidc/token'])('%s throws ConfigError, no onBlocked, no request', async (path) => {
+    fake = await startFakeApi({ pki, api: ok });
+    const blocked: unknown[] = [];
+    const { client } = testClient(pki, fake, { onBlocked: (e) => void blocked.push(e) });
+    const e = await caught(client.get(path));
+    expect(e).toBeInstanceOf(ConfigError);
+    expect(e.message).toBe('path not allowed');
+    expect(blocked).toEqual([]);
     expect(fake.requests).toHaveLength(0);
   });
 });

@@ -1,6 +1,6 @@
 # Stralfors MCP
 
-Vocabulary of this server and of the Stralfors Output Management API as seen through it. Terms carry the code identifier in parentheses where one exists. A term marked *(rename?)* is used under another name in the code or docs today; the recommendation is noted.
+Vocabulary of this server and of the Stralfors Output Management API as seen through it. Terms carry the code identifier in parentheses where one exists.
 
 ## Environment and credentials
 
@@ -20,12 +20,11 @@ A file whose content is a secret value. Secrets reach the client only as file pa
 
 ## Agreements, channels and documents
 
-**Agreement id** (`actionId` on the wire, `Profile.actionIds[].id`):
-The UUID that selects one customer contract on the API side. Required for validation and sending; optional when listing channels.
+**Agreement id** (`actionId` on the wire, `Profile.agreements[].id`):
+The UUID that selects one customer contract on the API side. Required for validation and sending; optional when listing channels. The name `actionId` is used only where it crosses the wire.
 _Avoid_: action id, contract id, GUID (unqualified)
-*(rename?)* `Profile.actionIds` could be `agreements`; keep `actionId` only where it crosses the wire.
 
-**Agreement label** (`Profile.actionIds[].label`):
+**Agreement label** (`Profile.agreements[].label`):
 A human name given to an agreement id in configuration so reports and logs can refer to the agreement without exposing the id.
 _Avoid_: profile label
 
@@ -100,9 +99,8 @@ The check that a request path stays under the API's own prefixes and never leave
 **Log key allowlist** (`createLogger`, `droppedKeys`):
 The fixed set of field names a log line may carry. Any other field is dropped and counted, so a new field cannot leak by accident.
 
-**Safe message** (`StralforsError.message`, `safeMessage`):
+**Safe message** (`StralforsError.message`):
 An error message made of fixed text only: it never contains header values, body text, secrets or identity ids.
-*(rename?)* `message` and `safeMessage` are the same value; one name should go.
 
 ## Tokens
 
@@ -116,10 +114,62 @@ The rule that concurrent callers waiting for a token share one upstream request 
 The decoded, unverified payload of an access token, exposing scopes, expiry and audience. The raw payload stays private.
 
 **Scope** (`Claims.scopes`):
-A permission the API grants to a credential profile, fixed per client and read from the token, never requested.
+A permission the API grants to a credential profile, fixed per client and read from the token, never requested. A write tool implicitly requires `apiomni.write`.
 
 **Proven agent** (`proven`):
 A connection agent that has received at least one HTTP response. Before that point a reset connection is treated as a TLS rejection; after it, as a network fault.
+
+## Access and audit
+
+**Access token** (`smcp_` prefix, `TOKEN_RE`):
+The per-user bearer secret a client presents to this server: 32 random bytes, base64url, with a detectable prefix. Stored only as its digest.
+_Avoid_: API key, session, password
+
+**Token digest** (`hashToken`, `tokens[].hash`):
+The SHA-256 hex of an access token; the only form the server stores or compares.
+_Avoid_: hash (unqualified), token id
+
+**Token list** (`TokenList`):
+The mounted file of users and token digests, re-read on an interval; an invalid file never replaces the last good one.
+_Avoid_: user database, token store (the store is the in-memory view of the list)
+
+**Token store** (`TokenStore`, `createTokenStore`):
+The in-memory view of the token list that verifies tokens and reloads the list.
+
+**Principal** (`Principal`):
+The verified identity behind a call: user id, display name, role and permitted environments. Never the token.
+_Avoid_: user (when the token has not been verified), session
+
+**Role** (`Role`):
+`dev`, `qa` or `pm`; the coarse permission class of a principal. Only `dev` may use `prod`.
+_Avoid_: group, permission
+
+**Verify code** (`VerifyCode`):
+The internal reason a token was refused: `malformed`, `unknown`, `expired` or `revoked`. Reaches the audit event, never the caller.
+
+**Access level** (`ToolSpec.access`, `Access`):
+What a tool may do upstream: `read`, `validate` (the dry run) or `write`. The policy decides on this, never on the tool name.
+_Avoid_: permission, verb, method
+
+**Tool spec** (`ToolSpec`):
+The static description of a tool the policy needs: name, access level and an optional required scope.
+
+**Decision** (`decide`, `Decision`):
+The pure result of role, environment and scope checks for one principal and one tool; a denial carries exactly one reason code (`env`, `role`, `write`, `scope`).
+_Avoid_: authorization (ambiguous with the header), check
+
+**Tool visibility** (`visibleTools`):
+The rule that a tool a principal may not call is not listed to that principal.
+
+**Audit event** (`AuditEvent`, `log.type = audit`):
+One line per tool call outcome carrying identity, outcome codes, duration and the API trace id; it has no field for arguments, payloads, agreement ids or consignment ids.
+_Avoid_: access log, trace
+
+**Outcome** (`Outcome`):
+`allowed`, `denied`, `blocked` (stopped by the write guard) or `error` (upstream or client failure).
+
+**Masked identifier** (`mask`):
+An identifier shown as its first and last four characters; anything shorter than sixteen characters is shown as "…" only.
 
 ## Quality
 

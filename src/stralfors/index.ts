@@ -40,7 +40,6 @@ export function createClient(o: CreateClientOptions) {
   const policy = { env: config.env, allowWrite: config.allowWrite, prodValidateEnabled: config.prodValidateEnabled };
 
   async function request<T>(method: string, path: string, body: unknown, opts: RequestOpts<T> = {}): Promise<T> {
-    if (!/^\/(rest|v1\/oidc)\//.test(path)) throw new ConfigError('path not allowed');
     const query = Object.entries(opts.query ?? {}).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
     const target = query ? `${path}${path.includes('?') ? '&' : '?'}${query}` : path;
     const [p, q] = target.split('?');
@@ -49,7 +48,7 @@ export function createClient(o: CreateClientOptions) {
     const operation = opts.operation ?? `${method} ${pathTemplate}`;
     const ctx = { profile: profile!.id, operation };
     const url = new URL(target, base);
-    if (url.origin !== new URL(base).origin || !/^\/(rest|v1\/oidc)\//.test(url.pathname)) throw new ConfigError('path not allowed');
+    if (!path.startsWith('/') || url.origin !== new URL(base).origin || !/^\/(rest|v1\/oidc)\//.test(url.pathname)) throw new ConfigError('path not allowed');
     if (!isAllowed(policy, method, url.pathname + url.search)) {
       log.warn({ profile: ctx.profile, method, pathTemplate }, 'write.blocked');
       o.onBlocked?.({ profile: ctx.profile, method, pathTemplate });
@@ -59,8 +58,7 @@ export function createClient(o: CreateClientOptions) {
     try {
       const attempt = (t: Token) =>
         send(agent, url, {
-          // Stryker disable next-line ConditionalExpression: JSON.stringify(undefined) is undefined, so both branches agree for an absent body
-          method, body: body === undefined ? undefined : JSON.stringify(body), ...limits,
+          method, body: JSON.stringify(body), ...limits,
           headers: {
             authorization: `Bearer ${t.bearer()}`, accept: 'application/json', 'user-agent': `${serverInfo.name}/${serverInfo.version}`,
             ...(body === undefined ? {} : { 'content-type': 'application/json' }),

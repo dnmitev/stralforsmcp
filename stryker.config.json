@@ -10,7 +10,10 @@
     "src/stralfors/errors.ts",
     "src/stralfors/http.ts",
     "src/stralfors/index.ts",
-    "src/stralfors/config.ts"
+    "src/stralfors/config.ts",
+    "src/auth/token-store.ts",
+    "src/policy/policy.ts",
+    "src/audit/audit.ts"
   ],
   "incremental": true,
   "incrementalFile": "reports/stryker-incremental.json",

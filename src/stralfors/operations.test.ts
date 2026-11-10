@@ -148,7 +148,7 @@ describe('R6 channels and validate behaviour', () => {
     expect(err).toBeInstanceOf(AgreementNotFoundError);
     expect([(err as AgreementNotFoundError).status, (err as AgreementNotFoundError).actionId]).toEqual([404, g]);
     expect((err as Error).message).not.toContain(identity);
-    expect((err as AgreementNotFoundError).safeMessage).not.toContain(identity);
+    expect((err as AgreementNotFoundError).message).not.toContain(identity);
   });
 
   it('validate 400 with faults (live shape)', async () => {
@@ -174,7 +174,7 @@ describe('R6 channels and validate behaviour', () => {
       { ruleId: '2', tag: undefined, path: 'Document.DocumentHeader.TimeStamp', criteria: ['Required', 'ExpectedPattern: ^x$', 'ExampleValue: 2021-02-03T04:05:06Z'] },
       { ruleId: '105', tag: 'Template0', path: 'Document.Invoice.AdditionalDocumentReference[].Id.Value', criteria: ['Required', 'ArrayWithValidItemsExpected'] },
     ]);
-    expect(e.safeMessage).not.toContain(dto);
+    expect(e.message).not.toContain(dto);
     expect(e.message).not.toContain(dto);
   });
 

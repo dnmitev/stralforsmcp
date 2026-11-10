@@ -4,7 +4,7 @@
  *   Config { env: 'test'|'prod'; baseUrl: string; allowWrite: boolean; prodValidateEnabled: boolean;
  *            timeoutMs: number; tokenRefreshMarginS: number; maxBodyBytes: number;
  *            profiles: Record<string, Profile> }
- *   Profile { id: string; country: string; actionIds: { label?: string; id: string }[];
+ *   Profile { id: string; country: string; agreements: { label?: string; id: string }[];
  *             clientId; clientSecret; cert; key: string; passphrase?: string }
  *   - Secret props (clientId, clientSecret, cert, key, passphrase) are readable by name but NON-enumerable;
  *     Config/Profile have toString/toJSON/inspect.custom that never reveal them.
@@ -57,8 +57,8 @@ describe('R1 configuration loading', () => {
     const pa = config.profiles['a']!;
     const pb = config.profiles['test-x']!;
     expect(pa.country).toBe('SE');
-    expect(pa.actionIds).toEqual([]);
-    expect(pb.actionIds).toEqual([{ label: 'billing', id: g1 }, { id: g2 }]);
+    expect(pa.agreements).toEqual([]);
+    expect(pb.agreements).toEqual([{ label: 'billing', id: g1 }, { id: g2 }]);
     expect(pa.clientId).toBe(a.clientId);
     expect(pa.clientSecret).toBe(a.clientSecret);
     expect(pa.passphrase).toBe(a.passphrase);
@@ -125,7 +125,7 @@ describe('R1 configuration loading', () => {
     const load = (v: string) => {
       const { env } = two();
       env['STRALFORS_PROFILE_A_ACTION_IDS'] = v;
-      return loadConfig(env).profiles['a']!.actionIds;
+      return loadConfig(env).profiles['a']!.agreements;
     };
     expect(load(`billing:${g1}, ${g2}`)).toEqual([{ label: 'billing', id: g1 }, { id: g2 }]);
     expect(load(` billing : ${g1} `)).toEqual([{ label: 'billing', id: g1 }]);

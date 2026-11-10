@@ -48,6 +48,46 @@ describe('R3 expiry arithmetic', () => {
   it('claims exp must be numeric to count; a string exp falls back to expires_in', async () => {
     expect(await expiresAt({ expiresIn: 3600, claims: { exp: '99' } })).toBe(T0 + 3_300_000);
   });
+
+  describe('AC-1 clock skew and margin clamp', () => {
+    it('exp in the past falls back to expires_in', async () => {
+      expect(await expiresAt({ expiresIn: 86_400, claims: { exp: T0 / 1000 - 60 } })).toBe(T0 + 86_400_000 - 300_000);
+    });
+
+    it('exp in the past: the next get() reuses the cached token', async () => {
+      fake = await startFakeApi({ pki, nowMs: T0, expiresIn: 86_400, claims: { exp: T0 / 1000 - 60 } });
+      let clock = T0;
+      const { client } = testClient(pki, fake, { now: () => clock });
+      const a = await client.token.get();
+      clock = T0 + 1000;
+      expect(await client.token.get()).toBe(a);
+      expect(fake.tokenRequests).toHaveLength(1);
+    });
+
+    it('exp exactly now is not after now: expires_in path', async () => {
+      expect(await expiresAt({ expiresIn: 600, claims: { exp: T0 / 1000 } })).toBe(T0 + 300_000);
+    });
+
+    it('exp one second ahead is honoured with a halved margin', async () => {
+      expect(await expiresAt({ expiresIn: 86_400, claims: { exp: T0 / 1000 + 1 } })).toBe(T0 + 500);
+    });
+
+    it('margin is clamped at zero, never negative', async () => {
+      expect(await expiresAt({ expiresIn: 0, opaque: 'opaque-x' })).toBe(T0);
+    });
+
+    it('expires_in 0: the next get() refetches', async () => {
+      fake = await startFakeApi({ pki, nowMs: T0, expiresIn: 0, opaqueToken: 'opaque-x' });
+      const { client } = testClient(pki, fake, { now: () => T0 });
+      await client.token.get();
+      await client.token.get();
+      expect(fake.tokenRequests).toHaveLength(2);
+    });
+
+    it('a normal token keeps the full margin', async () => {
+      expect(await expiresAt({ expiresIn: 3600, claims: { exp: T0 / 1000 + 3600 } })).toBe(T0 + 3_300_000);
+    });
+  });
 });
 
 describe('R3 token endpoint errors', () => {

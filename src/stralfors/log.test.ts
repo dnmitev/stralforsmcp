@@ -5,7 +5,7 @@
  *     - pino underneath, name "stralfors-client"; default level 'info' (the client uses a 'silent' logger when none is given)
  *     - allowlist of object keys: profile, operation, method, pathTemplate, status, durationMs, bytes, kind, traceId,
  *       expiresInS, scopesCount, customerCountry. Any other key is dropped and `droppedKeys` incremented.
- *     - pino redact safety net for authorization/access_token/client_secret/passphrase/key/cert/*.body
+ *     - no pino redact option: the allowlist is the whole mechanism
  *   Client events (msg): token.fetched, request {profile, operation, method, pathTemplate, status, durationMs, bytes},
  *     request.failed {..., kind, traceId?}, write.blocked {profile, method, pathTemplate}.
  *     pathTemplate keeps the path and replaces every query VALUE with '*': ".../channels?actionId=*".
@@ -121,6 +121,17 @@ describe('R8 logging hygiene', () => {
     expect(line).not.toHaveProperty('body');
     expect(line).not.toHaveProperty('foo');
     expect(log.droppedKeys).toBe(2);
+  });
+
+  it('canary: the allowlist alone keeps secrets out (no redact option)', () => {
+    const out: string[] = [];
+    const log = createLogger({ level: 'info', destination: { write: (s: string) => void out.push(s) } });
+    const [a, b, c, d] = ['A', 'B', 'C', 'D'].map((x) => canary(x));
+    log.info({ authorization: `Bearer ${a}`, access_token: b, body: c, headers: { authorization: d }, operation: 'channels' }, 'request');
+    const text = out.join('');
+    expect(text).toContain('channels');
+    for (const x of [a, b, c, d]) expect(text).not.toContain(x);
+    expect(log.droppedKeys).toBe(4);
   });
 
   it('path template, not query values', async () => {
