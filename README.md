@@ -2,7 +2,7 @@
 
 > A hosted [Model Context Protocol](https://modelcontextprotocol.io) server for the Strålfors Output Management API — explore channels, inspect rules, validate invoices before sending and query delivery status from Claude Desktop, Cursor or Claude Code.
 
-**Status:** planning complete — Phase 0 (foundation) next. Nothing to install yet.
+**Status:** Phase 0 (foundation) in progress. Nothing to install yet.
 
 ## Why
 
@@ -69,6 +69,12 @@ scripts/setup-hooks.sh
 ```
 
 This activates the commit hooks in `.githooks/`: every commit is scanned with [gitleaks](https://github.com/gitleaks/gitleaks) (must be installed) and, optionally, against a personal denylist of terms that must never be committed. Set `STRALFORSMCP_DENYLIST` to the denylist path (one case-insensitive regex per line); matches are reported as a count only. Run `sh scripts/test-leak-guard.sh` to verify the guard.
+
+Pull requests to `main` need green CI (Node 24 and 26, leak scan) and a `review/confidence` status of at least 90 % from the principal-reviewer agent (`.claude/agents/`) on the head commit; a new push requires a new review.
+
+## Licence
+
+[Apache-2.0](LICENSE)
 
 ## Disclaimer
 
