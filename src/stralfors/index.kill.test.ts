@@ -8,6 +8,12 @@ import { createClient } from './index.ts';
 import { loadConfig } from './config.ts';
 import { makeEnv } from '../../test/helpers/api.ts';
 
+vi.mock('./log.ts', async (orig) => {
+  const m = await orig<typeof import('./log.ts')>();
+  return { ...m, createLogger: vi.fn(m.createLogger) };
+});
+const createLogger = vi.mocked((await import('./log.ts')).createLogger);
+
 let pki: Pki;
 let fake: FakeApi | undefined;
 beforeAll(() => void (pki = generatePki()));
@@ -38,13 +44,12 @@ describe('createClient', () => {
     await expect(client.get('/rest/x')).rejects.toBeDefined();
   });
 
-  it('without a logger the client is silent', async () => {
-    fake = await startFakeApi({ pki, api: ok });
-    const spy = vi.spyOn(process.stdout, 'write');
-    const { client } = testClient(pki, fake);
-    await client.get('/rest/x');
-    await new Promise((r) => setTimeout(r, 20)); // let an async stream flush, if there were one
-    expect(spy.mock.calls.filter((c) => String(c[0]).includes('stralfors-client'))).toEqual([]);
+  it('without a logger the client gets a silent logger', () => {
+    // pino's default stream writes to the fd, not process.stdout.write, so spying on stdout would prove nothing.
+    const config = loadConfig(makeEnv(pki).env);
+    createLogger.mockClear();
+    createClient({ config, profileId: 'a' });
+    expect(createLogger).toHaveBeenCalledExactlyOnceWith({ level: 'silent' });
   });
 });
 
