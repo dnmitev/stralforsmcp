@@ -273,4 +273,13 @@ describe('ids in path segments', () => {
     await caught(client.post(`/rest/a/${id.replace(/-/g, '%2D')}/${[...'1234567'].map((c) => `%3${c}`).join('')}/%E0%A4%A`, {}));
     expect(blocked[0]!.pathTemplate).toBe('/rest/a/*/*/*');
   });
+
+  it('are masked when hidden inside a segment (encoded separator, prefix)', async () => {
+    const id = randomUUID();
+    fake = await startFakeApi({ pki, api: ok });
+    const blocked: { pathTemplate: string }[] = [];
+    const { client } = testClient(pki, fake, { onBlocked: (e) => void blocked.push(e) });
+    await caught(client.post(`/rest/a/x%2F${id}/ref-1234567`, {}));
+    expect(blocked[0]!.pathTemplate).toBe('/rest/a/*/*');
+  });
 });

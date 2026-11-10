@@ -25,7 +25,8 @@ export interface CreateClientOptions {
   /** clock in ms */
   now?: () => number;
 }
-const ID_SEGMENT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$|\d{6,}/i;
+// unanchored on purpose: an id hidden inside a segment (encoded separator, prefix) is still masked
+const ID_SEGMENT = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\d{6,}/i;
 interface RequestOpts<T> { schema?: z.ZodType<T>; query?: Record<string, string>; operation?: string }
 
 export function createClient(o: CreateClientOptions) {
