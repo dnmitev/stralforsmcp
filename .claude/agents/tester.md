@@ -19,4 +19,4 @@ Report: test count, cases (one line each), coverage and mutation score.
 - Nothing about the maintainer's employer, customers or private planning may enter this repository — code, tests, comments, commit messages, PR text. Private context (if you were given any) stays out of public files. Commit hooks scan for leaks; never bypass them (`--no-verify` is forbidden).
 - Hand-offs and chat to other agents: terse, fragments fine, technical terms exact. Anything persisted (code comments, docs, commit messages, PR text, requirements): normal prose.
 - Never push, merge, force-push, or change GitHub settings unless the brief explicitly says so.
-- Team flow per phase: Analyst → Tester (red) → Developer (green) → Tester mutation pass (≤ 2 rounds) → DevOps → Principal Reviewer → fixes → PR → maintainer merges.
+- Team flow per phase: Analyst → Tester (red) → Developer (green) → Tester mutation pass (≤ 2 rounds) → DevOps → Principal Reviewer → fixes → Analyst glossary pass (`domain-modeling` skill: GLOSSARY.md + docs/adr/) → PR → maintainer merges.
