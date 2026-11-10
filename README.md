@@ -2,7 +2,7 @@
 
 > A hosted [Model Context Protocol](https://modelcontextprotocol.io) server for the Strålfors Output Management API — explore channels, inspect rules, validate invoices before sending and query delivery status from Claude Desktop, Cursor or Claude Code.
 
-**Status:** Phase 0 (foundation) in progress. Nothing to install yet.
+**Status:** Phase 1 (Stralfors client) in progress. A typed client library, mutation testing and CI exist; the MCP server itself follows in Phase 2. Nothing to install yet.
 
 ## Why
 
