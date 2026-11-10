@@ -45,7 +45,13 @@ export function createClient(o: CreateClientOptions) {
     const target = query ? `${path}${path.includes('?') ? '&' : '?'}${query}` : path;
     const [p, q] = target.split('?');
     // ids in a path segment (UUIDs, long digit runs) must not reach logs, errors or onBlocked
-    const clean = p!.split('/').map((s) => (ID_SEGMENT.test(s) ? '*' : s)).join('/');
+    const clean = p!.split('/').map((s) => {
+      try {
+        return ID_SEGMENT.test(s) || ID_SEGMENT.test(decodeURIComponent(s)) ? '*' : s;
+      } catch {
+        return '*'; // malformed percent-encoding: do not echo it
+      }
+    }).join('/');
     const pathTemplate = q ? `${clean}?${q.replace(/=[^&]*/g, '=*')}` : clean;
     method = method.toUpperCase();
     const operation = opts.operation ?? `${method} ${pathTemplate}`;

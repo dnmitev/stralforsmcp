@@ -264,4 +264,13 @@ describe('ids in path segments', () => {
     expect(blocked[0]!.pathTemplate).toBe('/rest/agreements/*/*');
     expect(JSON.stringify([e.operation, e.message, mem.lines()])).not.toMatch(new RegExp(`${id}|1234567890`));
   });
+
+  it('are masked when percent-encoded, and malformed encodings are not echoed', async () => {
+    const id = randomUUID();
+    fake = await startFakeApi({ pki, api: ok });
+    const blocked: { pathTemplate: string }[] = [];
+    const { client } = testClient(pki, fake, { onBlocked: (e) => void blocked.push(e) });
+    await caught(client.post(`/rest/a/${id.replace(/-/g, '%2D')}/${[...'1234567'].map((c) => `%3${c}`).join('')}/%E0%A4%A`, {}));
+    expect(blocked[0]!.pathTemplate).toBe('/rest/a/*/*/*');
+  });
 });
