@@ -67,6 +67,7 @@ jobs:
       - name: Denylist
         env:
           DL: ${{ secrets.STRALFORSMCP_DENYLIST }}
+          BASE_REF: ${{ github.base_ref }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
@@ -79,8 +80,8 @@ jobs:
           export STRALFORSMCP_DENYLIST="$RUNNER_TEMP/denylist"
           git ls-files -z | xargs -0 cat | sh scripts/denylist-check.sh
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            git fetch --no-tags origin "${{ github.base_ref }}"
-            git log --format=%B "origin/${{ github.base_ref }}..HEAD" | sh scripts/denylist-check.sh
+            git fetch --no-tags origin "$BASE_REF"
+            git log --format=%B "origin/$BASE_REF..HEAD" | sh scripts/denylist-check.sh
             printf '%s\n%s\n' "$PR_TITLE" "$PR_BODY" | sh scripts/denylist-check.sh
           fi
 
@@ -104,8 +105,6 @@ jobs:
         run: |
           {
             echo "<!-- stralforsmcp-ci-report -->"
-            echo "## CI report (Node 24)"
-            echo
             if [ -f dl/report.md ]; then cat dl/report.md; else echo "_report unavailable_"; fi
             echo
             echo "Other Node versions: see the job summary of this run."

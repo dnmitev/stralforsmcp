@@ -15,8 +15,11 @@ export function buildReport(coverage: unknown, junitXml: string): string {
   const attrs = /<testsuites\b([^>]*)>/.exec(junitXml)?.[1];
   if (attrs === undefined) throw new Error('malformed junit: no <testsuites> root');
   const get = (k: string) => Number(new RegExp(`\\b${k}="(\\d+)"`).exec(attrs)?.[1] ?? 0);
-  const [n, f, e, s] = [get('tests'), get('failures'), get('errors'), get('skipped')] as const;
+  // Vitest puts skipped on each <testsuite>, not on the <testsuites> root
+  const s = [...junitXml.matchAll(/<testsuite\b[^>]*?\bskipped="(\d+)"/g)].reduce((a, m) => a + Number(m[1]), 0);
+  const [n, f, e] = [get('tests'), get('failures'), get('errors')] as const;
   const passed = n - f - e - s;
+  if (passed < 0) throw new Error(`malformed junit: inconsistent report (tests=${n} failures=${f} errors=${e} skipped=${s})`);
   const runnable = n - s;
 
   return [

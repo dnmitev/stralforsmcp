@@ -2,7 +2,8 @@
 //   buildReport(coverage: unknown, junitXml: string): string
 //     - coverage = Istanbul json-summary { total: { lines|branches|functions|statements: { pct } } }
 //     - each % rendered with 1 decimal (93.3%)
-//     - JUnit totals from root <testsuites tests failures errors skipped>;
+//     - JUnit totals: tests/failures/errors from root <testsuites> (no skipped attr in Vitest);
+//       skipped = sum of skipped over <testsuite> elements;
 //       failed = F+E; passed = N-F-E-S; pass % = passed/(N-S) 1 decimal; zero runnable -> n/a
 //     - mutation row contains "n/a (from Phase 1)"
 //     - throws Error whose message contains 'coverage' on malformed coverage shape
@@ -24,7 +25,7 @@ const cov = (l: number, b: number, f: number, s: number) => ({
   },
 });
 const junit = (t: number, f: number, e: number, s: number) =>
-  `<?xml version="1.0"?><testsuites name="vitest tests" tests="${t}" failures="${f}" errors="${e}" skipped="${s}" time="0.1"><testsuite name="a" tests="${t}" failures="0" errors="0" skipped="0"></testsuite></testsuites>`;
+  `<?xml version="1.0"?><testsuites name="vitest tests" tests="${t}" failures="${f}" errors="${e}" time="0.1"><testsuite name="a" tests="${t}" failures="0" errors="0" skipped="${s}"></testsuite></testsuites>`;
 
 describe('buildReport', () => {
   it('renders coverage percentages with 1 decimal', () => {
@@ -69,8 +70,21 @@ describe('buildReport', () => {
   });
 
   it('reads totals from the root testsuites, not nested suites', () => {
-    const xml = `<testsuites tests="4" failures="1" errors="0" skipped="0"><testsuite tests="99" failures="50" errors="0" skipped="0"/></testsuites>`;
+    const xml = `<testsuites tests="4" failures="1" errors="0"><testsuite tests="99" failures="50" errors="0" skipped="0"/></testsuites>`;
     expect(buildReport(cov(100, 100, 100, 100), xml)).toContain('75.0%');
+  });
+
+  it('sums skipped over multiple child testsuites', () => {
+    const xml = `<testsuites tests="10" failures="0" errors="0"><testsuite tests="6" skipped="1"/><testsuite tests="4" skipped="2"/></testsuites>`;
+    const r = buildReport(cov(100, 100, 100, 100), xml);
+    expect(r).toMatch(/skipped\D*3/i);
+    expect(r).toMatch(/passed\D*7/i);
+    expect(r).toContain('100.0%');
+  });
+
+  it('throws naming junit when skipped+failed exceed tests', () => {
+    const xml = `<testsuites tests="2" failures="0" errors="0"><testsuite tests="2" skipped="5"/></testsuites>`;
+    expect(() => buildReport(cov(100, 100, 100, 100), xml)).toThrow(/junit.*inconsistent/i);
   });
 
   it.each([
@@ -131,6 +145,15 @@ describe('main', () => {
     await writeFile(j, junit(1, 0, 0, 0));
     expect(await main([c, j], io)).not.toBe(0);
     expect(err.join('')).toContain(c);
+  });
+
+  it('names the junit file on an inconsistent report', async () => {
+    const c = join(dir, 'cov.json');
+    const j = join(dir, 'junit.xml');
+    await writeFile(c, JSON.stringify(cov(1, 1, 1, 1)));
+    await writeFile(j, '<testsuites tests="1" failures="0" errors="0"><testsuite skipped="3"/></testsuites>');
+    expect(await main([c, j], io)).not.toBe(0);
+    expect(err.join('')).toContain(j);
   });
 
   it('returns non-zero naming a coverage file with malformed shape', async () => {

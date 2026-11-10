@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const SHA = 'a'.repeat(40);
 const UNTRUSTED =
-  /\$\{\{[^}]*(github\.event\.pull_request\.(title|body|head\.ref)|github\.head_ref|github\.event\.comment\.|github\.event\.issue\.)[^}]*\}\}/;
+  /\$\{\{[^}]*(github\.event\.pull_request\.(title|body|head\.ref)|github\.head_ref|github\.base_ref|github\.event\.comment\.|github\.event\.issue\.)[^}]*\}\}/;
 const PINNED = /^[\w.-]+\/[\w.-]+(\/[\w./-]+)?@[0-9a-f]{40}$/;
 
 const indentOf = (l: string): number => l.length - l.trimStart().length;
@@ -123,6 +123,7 @@ describe('checkWorkflow fixtures', () => {
     'github.event.pull_request.body',
     'github.event.pull_request.head.ref',
     'github.head_ref',
+    'github.base_ref',
     'github.event.comment.body',
     'github.event.issue.title',
   ])('flags %s in inline run', (expr) => {
