@@ -282,4 +282,13 @@ describe('ids in path segments', () => {
     await caught(client.post(`/rest/a/x%2F${id}/ref-1234567`, {}));
     expect(blocked[0]!.pathTemplate).toBe('/rest/a/*/*');
   });
+
+  it('are masked in query keys too, safe keys and the value mask stay', async () => {
+    const id = randomUUID();
+    fake = await startFakeApi({ pki, api: ok });
+    const blocked: { pathTemplate: string }[] = [];
+    const { client } = testClient(pki, fake, { onBlocked: (e) => void blocked.push(e) });
+    await caught(client.put(`/rest/a?123456789=v&${id}=w&actionId=secret`, {}));
+    expect(blocked[0]!.pathTemplate).toBe('/rest/a?*=*&*=*&actionId=*');
+  });
 });
