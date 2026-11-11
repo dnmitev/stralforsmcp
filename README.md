@@ -2,7 +2,7 @@
 
 > A hosted [Model Context Protocol](https://modelcontextprotocol.io) server for the Strålfors Output Management API — explore channels, inspect rules, validate invoices before sending and query delivery status from Claude Desktop, Cursor or Claude Code.
 
-**Status:** Phase 1 (Stralfors client) in progress. A typed client library, mutation testing and CI exist; the MCP server itself follows in Phase 2. Nothing to install yet.
+**Status:** Phase 2 (MCP server). A typed Stralfors client library and a runnable stateless MCP server (token authentication, policy, audit, graceful shutdown, `whoami` tool) exist; the remaining tools follow in later phases. Not yet packaged for installation.
 
 ## Why
 
@@ -33,7 +33,7 @@ Plus ready-made prompts such as "Check my invoice" and "Which channels exist for
 
 ## Stack
 
-TypeScript 7 · Node.js 24 and 26 · `@modelcontextprotocol/sdk` (Streamable HTTP) · undici (mTLS) · zod · pino · OpenTelemetry · Vitest · StrykerJS · Testcontainers + WireMock · oxlint · Docker · Helm
+TypeScript 7 · Node.js 24 and 26 · `@modelcontextprotocol/server` v2 (Streamable HTTP) · undici (mTLS) · zod · pino · OpenTelemetry · Vitest · StrykerJS · Testcontainers + WireMock · oxlint · Docker · Helm
 
 ## Quality gates
 
@@ -88,9 +88,39 @@ Per profile, with `<ID>` the upper-cased profile id (`-` becomes `_`, so `test-a
 
 Smoke check against the live test API (manual, never run in CI): export the variables above, then `npm run live:channels`. It prints the token scopes, the client channel catalogue and the channels of each configured agreement by label (or `#1`, `#2`), never by id.
 
+## Running
+
+`node src/server/main.ts` starts the stateless Streamable HTTP MCP server (SDK v2). It has no Stralfors call yet; it serves `whoami` to authenticated callers. Configuration is read from the environment; an invalid value refuses to start (exit 1, `refusing to start: <fixed text>`).
+
+| Variable | Required | Default | Rule |
+|---|---|---|---|
+| `MCP_TOKEN_LIST_FILE` | yes | none | path to the token list |
+| `MCP_HOSTNAMES` | yes | none | comma-separated allowed Host hostnames (no scheme, no port; IPv6 bare or bracketed, no ports) |
+| `MCP_ORIGINS` | no | `MCP_HOSTNAMES` | allowed Origin hostnames, same format |
+| `MCP_LISTEN_HOST` | no | `0.0.0.0` | listen address |
+| `MCP_PORT` | no | `3000` | integer 0-65535 |
+| `MCP_MAX_BODY_BYTES` | no | `1048576` | integer > 0 |
+| `MCP_DRAIN_MS` | no | `10000` | integer >= 0, in-flight drain on SIGTERM/SIGINT |
+| `STRALFORS_ENV` | yes | none | `test` or `prod` |
+| `STRALFORS_ALLOW_WRITE` | no | `false` | `true` or `false`; `true` is refused with `prod` |
+
+Request pipeline (first match answers; refusals 3-7 are not audited, 401s and tool calls are):
+
+| # | Condition | Status |
+|---|---|---|
+| 1 | `/healthz` | 200 `ok` (no Host or token needed) |
+| 2 | `/readyz` | 200 `ok`, 503 `not ready` once shutdown starts |
+| 3 | Host not allowed (or absent) | 403 |
+| 4 | Origin present and not allowed | 403 |
+| 5 | path is not `/mcp` | 404 |
+| 6 | method is not `POST` | 405 (`Allow: POST`) |
+| 7 | declared `Content-Length` above the limit | 413 |
+| 8 | missing, malformed, unknown, revoked, expired or not-yet-valid token | 401, identical body for every cause |
+| 9 | authenticated | MCP handler (streamed bodies above the limit: 413) |
+
 ## Mutation testing
 
-`npm run mutation` runs [StrykerJS](https://stryker-mutator.io) with the Vitest runner over the core modules (`src/stralfors/token.ts`, `errors.ts`, `http.ts`, `index.ts`, `config.ts`, `src/auth/token-store.ts`, `src/policy/policy.ts`, `src/audit/audit.ts`). Target score is 80 %; the run fails below 70 % (`break`). Reports land in `reports/mutation/` (`mutation.html`, `mutation.json`). The incremental file `reports/stryker-incremental.json` is kept between runs, so a re-run only tests what changed. CI runs this as the `mutation` job on Node 24, publishes the score in the job summary and uploads the report as an artifact.
+`npm run mutation` runs [StrykerJS](https://stryker-mutator.io) with the Vitest runner over the core modules (`src/stralfors/token.ts`, `errors.ts`, `http.ts`, `index.ts`, `config.ts`, `src/auth/token-store.ts`, `src/policy/policy.ts`, `src/audit/audit.ts`, `src/server/auth.ts`, `src/server/tools.ts`, `src/server/guards.ts`). Target score is 80 %; the run fails below 70 % (`break`). Reports land in `reports/mutation/` (`mutation.html`, `mutation.json`). The incremental file `reports/stryker-incremental.json` is kept between runs, so a re-run only tests what changed. CI runs this as the `mutation` job on Node 24, publishes the score in the job summary and uploads the report as an artifact.
 
 Optional dashboard: enable the repository on the [Stryker dashboard](https://dashboard.stryker-mutator.io), then run `gh secret set STRYKER_DASHBOARD_API_KEY`. Until the secret exists, CI sends nothing.
 

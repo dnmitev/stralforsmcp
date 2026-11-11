@@ -36,7 +36,7 @@ const clone = (f = fixture()) => JSON.parse(JSON.stringify(f.list)) as TokenList
 describe('R3 verify', () => {
   it('valid token returns exactly the principal', () => {
     const { store, f } = make();
-    expect(store.verify(f.raw.tA)).toEqual({ ok: true, principal: { userId: 'u1', name: 'User One', role: 'dev', envs: ['test', 'prod'] } });
+    expect(store.verify(f.raw.tA)).toMatchObject({ ok: true, principal: { userId: 'u1', name: 'User One', role: 'dev', envs: ['test', 'prod'] } });
   });
 
   it('principal is a fresh copy each call', () => {

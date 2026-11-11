@@ -7,7 +7,7 @@ export type Env = 'test' | 'prod';
 export interface Principal { userId: string; name: string; role: Role; envs: Env[] }
 
 export type VerifyCode = 'malformed' | 'unknown' | 'expired' | 'revoked';
-export type VerifyResult = { ok: true; principal: Principal } | { ok: false; code: VerifyCode };
+export type VerifyResult = { ok: true; principal: Principal; expiresAt: number } | { ok: false; code: VerifyCode };
 
 export const TOKEN_RE = /^smcp_[A-Za-z0-9_-]{43}$/;
 export const MAX_TOKEN_LIFETIME_MS = 90 * 24 * 60 * 60 * 1000;
@@ -138,7 +138,7 @@ export function createTokenStore(o: TokenStoreOptions): TokenStore {
       // not valid before `created` either: the 90-day cap then bounds validity from the time of issue, not from an arbitrary future date
       if (at < Date.parse(t.created) || at >= Date.parse(t.expires)) return { ok: false, code: 'expired' };
       const u = view.users.get(t.userId)!;
-      return { ok: true, principal: { userId: u.id, name: u.name, role: u.role, envs: [...u.envs] } };
+      return { ok: true, principal: { userId: u.id, name: u.name, role: u.role, envs: [...u.envs] }, expiresAt: Date.parse(t.expires) };
     },
     reload,
     close() {
