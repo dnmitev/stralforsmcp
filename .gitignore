@@ -16,6 +16,7 @@ reports/
 .env.*
 !.env.example
 secrets/
+token-list*.json
 
 # Local / private working files (never public)
 .paul
