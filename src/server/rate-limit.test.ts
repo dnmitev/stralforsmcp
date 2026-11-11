@@ -1,6 +1,8 @@
 /* R21 token bucket. API under test (src/server/rate-limit.ts): createRateLimiter({ perMinute, burst, now? }) => { take(key), size() }. */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createRateLimiter } from './rate-limit.ts';
+
+afterEach(() => vi.restoreAllMocks());
 
 const make = (perMinute = 120, burst = 30) => {
   const c = { t: 0 };
@@ -92,7 +94,18 @@ describe('keys, cleanup, clock', () => {
     expect(lim.take('u1')).toEqual({ ok: false, retryAfterS: 1 });
   });
 
+  it('a backwards step does not let the bucket be dropped as idle when the clock returns', () => {
+    const { c, lim } = make(60, 1);
+    c.t = 1000;
+    expect(lim.take('u1').ok).toBe(true);
+    c.t = 0;
+    expect(lim.take('u1').ok).toBe(false);
+    c.t = 1000;
+    expect(lim.take('u1').ok).toBe(false);
+  });
+
   it('defaults to Date.now', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(5000);
     const lim = createRateLimiter({ perMinute: 60, burst: 1 });
     expect(lim.take('k').ok).toBe(true);
     expect(lim.take('k').ok).toBe(false);

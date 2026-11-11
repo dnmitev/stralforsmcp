@@ -2,7 +2,6 @@
  * R19 list_channels. API under test (src/server/channels.ts): createListChannels({ clients, config }), listChannelsInput/Output,
  * PROFILE_REQUIRED / UNKNOWN_PROFILE / UNKNOWN_AGREEMENT; ToolInputError from tools.ts. [fake-api] = Phase 1 in-process mTLS fake.
  */
-import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { RateLimitedError, StralforsError, type StralforsClient } from '../stralfors/index.ts';
 import { createListChannels, listChannelsOutput } from './channels.ts';
@@ -192,6 +191,6 @@ describe('list_channels policy matrix over the SDK', () => {
     const r = await c.callTool({ name: 'list_channels', arguments: {} });
     expect(r.structuredContent).toEqual({ profile: 'a', channels: ['x'] });
     expect(s.lines().map((l) => [l.tool, l.outcome])).toEqual([['list_channels', 'allowed']]);
-    expect(randomUUID()).toBeTypeOf('string');
+    expect(listChannelsOutput.strict().parse(r.structuredContent)).toBeTruthy();
   });
 });

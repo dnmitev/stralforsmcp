@@ -131,7 +131,7 @@ Request pipeline (first match answers; refusals 3-7 are not audited, 401s and to
    node -e "import('./src/auth/index.ts').then(({generateToken,hashToken})=>{const t=generateToken(),n=Date.now(),d=864e5;console.error('token (keep private):',t);console.log(JSON.stringify({users:[{id:'me',name:'Me',role:'dev',envs:['test']}],tokens:[{hash:hashToken(t),userId:'me',created:new Date(n).toISOString(),expires:new Date(n+30*d).toISOString()}]},null,2))})" > token-list.json
    ```
 
-2. Export `MCP_TOKEN_LIST_FILE` (that file), `MCP_HOSTNAMES=localhost`, `STRALFORS_ENV=test` and the `STRALFORS_PROFILES` / `STRALFORS_PROFILE_<ID>_*` variables pointing at your credential files (paths only; never put secret values in the environment or on the command line).
+2. Export `STRALFORSMCP_TOKEN` from the token printed in step 1 (in your shell only, never in a file in this repository), `MCP_TOKEN_LIST_FILE` (that file), `MCP_HOSTNAMES=localhost`, `STRALFORS_ENV=test` and the `STRALFORS_PROFILES` / `STRALFORS_PROFILE_<ID>_*` variables pointing at your credential files (paths only; never put secret values in the environment or on the command line).
 3. `node src/server/main.ts`, then `curl localhost:3000/healthz`.
 4. Add `{"type":"http","url":"http://localhost:3000/mcp","headers":{"Authorization":"Bearer ${STRALFORSMCP_TOKEN}"}}` to `.mcp.json` and call `whoami`, then `list_channels`.
 

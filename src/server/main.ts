@@ -62,6 +62,7 @@ export async function start(env: Record<string, string | undefined>, deps: Start
   const readFile = deps.readFile ?? ((p: string) => readFileSync(p, 'utf8'));
   const stderr = deps.stderr ?? process.stderr;
   const config = loadConfig(env, { readFileSync: (p) => readFile(p) }); // before the store: a config error leaves nothing to close
+  if (Object.keys(config.profiles).length === 0) throw new ConfigError('STRALFORS_PROFILES is empty');
   const deploy: Env = config.env;
   const allowWrite = config.allowWrite;
   const store = createTokenStore({ read: () => readFile(file), now, staleAfterMs, onStale: () => void stderr.write('token_list.stale\n') });
@@ -88,9 +89,13 @@ export async function start(env: Record<string, string | undefined>, deps: Start
   }
   let closing: Promise<void> | undefined;
   const close = () => (closing ??= (async () => {
-    await srv.close();
-    const r = await closeClients();
-    store.close();
+    let r: PromiseSettledResult<void>[];
+    try {
+      await srv.close();
+    } finally {
+      r = await closeClients();
+      store.close();
+    }
     if (r.some((x) => x.status === 'rejected')) throw new Error('client close failed');
   })());
   const onSignal = deps.onSignal ?? ((fn) => {

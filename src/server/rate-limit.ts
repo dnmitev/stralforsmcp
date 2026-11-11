@@ -17,7 +17,7 @@ export function createRateLimiter(o: RateLimiterOptions): RateLimiter {
       for (const [k, v] of buckets) if (t - v.at >= fullMs) buckets.delete(k);
       const b = buckets.get(key) ?? { tokens: o.burst, at: t };
       b.tokens = Math.min(o.burst, b.tokens + (Math.max(0, t - b.at) * o.perMinute) / 60000);
-      b.at = t;
+      b.at = Math.max(b.at, t); // a clock stepping back must not rewind the bucket (it would look idle on return)
       buckets.set(key, b);
       if (b.tokens >= 1) {
         b.tokens -= 1;

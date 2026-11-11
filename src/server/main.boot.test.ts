@@ -153,6 +153,7 @@ describe.each(ERAS)('end to end (%s era)', (era) => {
 describe('configuration errors refuse to start before anything opens', () => {
   const cases: [string, (env: Record<string, string | undefined>, t: TwoProfiles) => Record<string, string | undefined>, string][] = [
     ['STRALFORS_PROFILES absent', (e) => ({ ...e, STRALFORS_PROFILES: undefined }), 'missing STRALFORS_PROFILES'],
+    ['STRALFORS_PROFILES only separators', (e) => ({ ...e, STRALFORS_PROFILES: ' , ,' }), 'STRALFORS_PROFILES is empty'],
     ['a CERT_FILE unreadable', (e) => ({ ...e, STRALFORS_PROFILE_A_CERT_FILE: join(dir, 'nope') }), 'cannot read file of STRALFORS_PROFILE_A_CERT_FILE'],
     ['a ACTION_IDS invalid', (e) => ({ ...e, STRALFORS_PROFILE_A_ACTION_IDS: 'x:not-a-uuid' }), 'STRALFORS_PROFILE_A_ACTION_IDS: invalid agreement id (label x)'],
     ['STRALFORS_ENV staging', (e) => ({ ...e, STRALFORS_ENV: 'staging' }), 'STRALFORS_ENV is invalid'],
@@ -247,7 +248,8 @@ describe('shutdown', () => {
       expect(order).toEqual([]);
       release();
       expect((await inflight).structuredContent).toEqual({ profile: 'a', channels: ['x'] });
-      await vi.waitFor(() => expect(process.exitCode).toBe(0));
+      await s.close();
+      expect(process.exitCode).toBe(0);
     });
     expect(order).toEqual(['channels done', 'close a', 'close b', 'store']);
   });
@@ -262,10 +264,21 @@ describe('shutdown', () => {
     await withExitCode(async () => {
       const { s } = await boot(env, { clientFactory: (o) => clients[o.profileId]!, onSignal: (fn) => void (signal = fn) });
       signal();
-      await vi.waitFor(() => expect(process.exitCode).toBe(1));
       await expect(s.close()).rejects.toThrow();
+      expect(process.exitCode).toBe(1);
     });
     expect(order.slice(0, 3)).toEqual(['close a', 'close b', 'store']);
+  });
+
+  it('clients and the store are still closed when the HTTP drain throws', async () => {
+    const order: string[] = [];
+    const clients: Record<string, StralforsClient> = { a: stub('a', order), b: stub('b', order) };
+    const clear = vi.spyOn(globalThis, 'clearInterval');
+    const { s } = await boot(mcpEnv(), { clientFactory: (o) => clients[o.profileId]! });
+    vi.spyOn(Server.prototype, 'closeAllConnections').mockImplementation(() => { throw new Error('drain failed'); });
+    await expect(s.close()).rejects.toThrow('drain failed');
+    expect(order).toEqual(['close a', 'close b']);
+    expect(clear).toHaveBeenCalled();
   });
 
   it('every client is closed even when the first close rejects (allSettled)', async () => {
