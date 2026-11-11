@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { serverInfo } from '../index.ts';
+import { serverInfo } from '../server-info.ts';
 import type { Config } from './config.ts';
 import { ConfigError, StralforsError, SchemaError, WriteBlockedError, mapHttpError } from './errors.ts';
 import { createAgent, isAllowed, send } from './http.ts';

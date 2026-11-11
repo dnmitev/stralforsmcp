@@ -1,7 +1,7 @@
 import { McpServer, type McpServerFactory } from '@modelcontextprotocol/server';
 import type { Audit } from '../audit/index.ts';
 import type { Env, Principal } from '../auth/index.ts';
-import { serverInfo as defaultInfo } from '../index.ts';
+import { serverInfo as defaultInfo } from '../server-info.ts';
 import { registerAll, type ToolDef } from './tools.ts';
 
 export interface McpDeps {

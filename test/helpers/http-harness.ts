@@ -2,6 +2,7 @@ import { afterEach } from 'vitest';
 import type { McpRequestContext, McpServerFactory } from '@modelcontextprotocol/server';
 import { buildMcp } from '../../src/server/mcp.ts';
 import { createHttpServer, type HttpServer, type HttpServerOptions } from '../../src/server/http.ts';
+import { createRateLimiter } from '../../src/server/rate-limit.ts';
 import { whoami } from '../../src/server/whoami.ts';
 import type { ToolDef } from '../../src/server/tools.ts';
 import { MCP_HEADERS, INIT, send, sink, okTool, world, type Raw, type World } from './server.ts';
@@ -35,7 +36,7 @@ export async function startHttp(over: Partial<HttpServerOptions> & { tools?: Too
   const factory: McpServerFactory = over.factory ?? ((ctx) => (calls.push(ctx), inner(ctx)));
   const { tools: _t, allowWrite: _a, world: _w, ...rest } = over;
   const srv = createHttpServer({
-    store: w.store, audit: s.audit, env, hosts: ['mcp.example.test'], origins: ['app.example.test'], maxBodyBytes: 1024, drainMs: 100, factory, now: () => T,
+    store: w.store, audit: s.audit, env, hosts: ['mcp.example.test'], origins: ['app.example.test'], maxBodyBytes: 1024, drainMs: 100, factory, limiter: createRateLimiter({ perMinute: 60_000, burst: 10_000 }), now: () => T,
     onerror: (e) => void errors.push(e), ...rest,
   });
   open.push(srv);

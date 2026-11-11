@@ -85,9 +85,6 @@ describe('http kill', () => {
     const r = await send(h.port, { path: '//bad:bad/?id=CANARY-target' });
     expect(r.status).toBe(400); // superseded: parse failure is now a fixed 400 with no onerror
     expect(r.text).not.toContain('CANARY-target');
-    for (const e of h.errors) {
-      expect(Object.keys(e)).toEqual([]);
-      expect(`${e.name}${e.message}${e.stack}${JSON.stringify(e)}${String(e.cause)}`).not.toContain('CANARY-target');
-    }
+    expect(h.errors).toEqual([]); // the 400 path reports nothing to onerror
   });
 });

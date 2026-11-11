@@ -7,6 +7,10 @@ export interface Violation {
   criteria: string[];
   serverError?: true;
 }
+export type StralforsErrorKind =
+  | 'config' | 'tls' | 'auth' | 'forbidden' | 'agreement_not_found' | 'route_not_found' | 'bad_request'
+  | 'validation_failed' | 'conflict' | 'rate_limited' | 'upstream' | 'timeout' | 'too_large' | 'schema'
+  | 'write_blocked' | 'token_format' | 'request_invalid';
 interface Base {
   status?: number;
   traceId?: string;
@@ -16,12 +20,12 @@ interface Base {
 
 /** `message` is always the safe message: it never carries header values, body text, secrets or identity ids. */
 export class StralforsError extends Error {
-  kind: string;
+  kind: StralforsErrorKind;
   status?: number;
   traceId?: string;
   profile?: string;
   operation?: string;
-  constructor(kind: string, message: string, props: Base = {}) {
+  constructor(kind: StralforsErrorKind, message: string, props: Base = {}) {
     super(message);
     this.name = new.target.name;
     this.kind = kind;
@@ -37,7 +41,7 @@ export class StralforsError extends Error {
   }
 }
 
-const make = <E extends object = object>(kind: string) =>
+const make = <E extends object = object>(kind: StralforsErrorKind) =>
   class extends StralforsError {
     constructor(message: string, props: Base & E = {} as Base & E) {
       super(kind, message, props);

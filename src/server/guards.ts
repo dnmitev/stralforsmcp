@@ -1,6 +1,6 @@
 export interface Refusal { status: number; headers: Record<string, string>; body: string }
 
-const text = (status: number, body: string, extra: Record<string, string> = {}): Refusal => ({ status, headers: { 'Content-Type': 'text/plain', ...extra }, body });
+export const text = (status: number, body: string, extra: Record<string, string> = {}): Refusal => ({ status, headers: { 'Content-Type': 'text/plain', ...extra }, body });
 
 /** Pure path / method / declared-size checks (after the Host and Origin guards). undefined means pass. */
 export function refuse(req: { method?: string; url?: string; contentLength?: string }, maxBodyBytes: number): Refusal | undefined {
