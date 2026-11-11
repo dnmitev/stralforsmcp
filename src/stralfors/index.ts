@@ -25,6 +25,8 @@ export interface CreateClientOptions {
   /** clock in ms */
   now?: () => number;
 }
+// unanchored on purpose: an id hidden inside a segment (encoded separator, prefix) is still masked
+const ID_SEGMENT = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\d{6,}/i;
 interface RequestOpts<T> { schema?: z.ZodType<T>; query?: Record<string, string>; operation?: string }
 
 export function createClient(o: CreateClientOptions) {
@@ -40,16 +42,24 @@ export function createClient(o: CreateClientOptions) {
   const policy = { env: config.env, allowWrite: config.allowWrite, prodValidateEnabled: config.prodValidateEnabled };
 
   async function request<T>(method: string, path: string, body: unknown, opts: RequestOpts<T> = {}): Promise<T> {
-    if (!/^\/(rest|v1\/oidc)\//.test(path)) throw new ConfigError('path not allowed');
     const query = Object.entries(opts.query ?? {}).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
     const target = query ? `${path}${path.includes('?') ? '&' : '?'}${query}` : path;
     const [p, q] = target.split('?');
-    const pathTemplate = q ? `${p}?${q.replace(/=[^&]*/g, '=*')}` : p!;
+    // ids in a path segment or query key (UUIDs, long digit runs) must not reach logs, errors or onBlocked; query values are always masked
+    const hide = (s: string) => {
+      try {
+        return ID_SEGMENT.test(s) || ID_SEGMENT.test(decodeURIComponent(s)) ? '*' : s;
+      } catch {
+        return '*'; // malformed percent-encoding: do not echo it
+      }
+    };
+    const clean = p!.split('/').map(hide).join('/');
+    const pathTemplate = q ? `${clean}?${q.split('&').map((kv) => `${hide(kv.split('=')[0]!)}=*`).join('&')}` : clean;
     method = method.toUpperCase();
     const operation = opts.operation ?? `${method} ${pathTemplate}`;
     const ctx = { profile: profile!.id, operation };
     const url = new URL(target, base);
-    if (url.origin !== new URL(base).origin || !/^\/(rest|v1\/oidc)\//.test(url.pathname)) throw new ConfigError('path not allowed');
+    if (!path.startsWith('/') || url.origin !== new URL(base).origin || !/^\/(rest|v1\/oidc)\//.test(url.pathname)) throw new ConfigError('path not allowed');
     if (!isAllowed(policy, method, url.pathname + url.search)) {
       log.warn({ profile: ctx.profile, method, pathTemplate }, 'write.blocked');
       o.onBlocked?.({ profile: ctx.profile, method, pathTemplate });
@@ -59,8 +69,7 @@ export function createClient(o: CreateClientOptions) {
     try {
       const attempt = (t: Token) =>
         send(agent, url, {
-          // Stryker disable next-line ConditionalExpression: JSON.stringify(undefined) is undefined, so both branches agree for an absent body
-          method, body: body === undefined ? undefined : JSON.stringify(body), ...limits,
+          method, body: JSON.stringify(body), ...limits,
           headers: {
             authorization: `Bearer ${t.bearer()}`, accept: 'application/json', 'user-agent': `${serverInfo.name}/${serverInfo.version}`,
             ...(body === undefined ? {} : { 'content-type': 'application/json' }),

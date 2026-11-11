@@ -5,7 +5,7 @@
  *     - pino underneath, name "stralfors-client"; default level 'info' (the client uses a 'silent' logger when none is given)
  *     - allowlist of object keys: profile, operation, method, pathTemplate, status, durationMs, bytes, kind, traceId,
  *       expiresInS, scopesCount, customerCountry. Any other key is dropped and `droppedKeys` incremented.
- *     - pino redact safety net for authorization/access_token/client_secret/passphrase/key/cert/*.body
+ *     - no pino redact option: the allowlist (keys, primitive values only) is the whole mechanism
  *   Client events (msg): token.fetched, request {profile, operation, method, pathTemplate, status, durationMs, bytes},
  *     request.failed {..., kind, traceId?}, write.blocked {profile, method, pathTemplate}.
  *     pathTemplate keeps the path and replaces every query VALUE with '*': ".../channels?actionId=*".
@@ -123,6 +123,17 @@ describe('R8 logging hygiene', () => {
     expect(log.droppedKeys).toBe(2);
   });
 
+  it('canary: the allowlist alone keeps secrets out (no redact option)', () => {
+    const out: string[] = [];
+    const log = createLogger({ level: 'info', destination: { write: (s: string) => void out.push(s) } });
+    const [a, b, c, d] = ['A', 'B', 'C', 'D'].map((x) => canary(x));
+    log.info({ authorization: `Bearer ${a}`, access_token: b, body: c, headers: { authorization: d }, operation: 'channels' }, 'request');
+    const text = out.join('');
+    expect(text).toContain('channels');
+    for (const x of [a, b, c, d]) expect(text).not.toContain(x);
+    expect(log.droppedKeys).toBe(4);
+  });
+
   it('path template, not query values', async () => {
     const g = '11111111-1111-4111-8111-111111111111';
     const mem = memoryLogger();
@@ -155,5 +166,14 @@ describe('R8 logging hygiene', () => {
     const tok = lines.find((l) => l['msg'] === 'token.fetched')!;
     expect(tok).toMatchObject({ profile: 'a', expiresInS: 3600, scopesCount: 2, customerCountry: 'SE' });
     expect(Object.keys(tok).filter((k) => ['sub', 'customer', 'access_token', 'authorization'].includes(k))).toEqual([]);
+  });
+
+  it('drops nested objects under allowed keys, so a credential cannot ride in one', () => {
+    const chunks: string[] = [];
+    const log = createLogger({ level: 'info', destination: { write: (c) => void chunks.push(c) } });
+    log.info({ operation: { access_token: 'TOK-CANARY' }, profile: 'a', status: 200, kind: ['TOK-CANARY'] }, 'x');
+    expect(chunks.join('')).not.toMatch(/CANARY/);
+    expect(log.droppedKeys).toBe(2);
+    expect(JSON.parse(chunks.join(''))).toMatchObject({ profile: 'a', status: 200 });
   });
 });

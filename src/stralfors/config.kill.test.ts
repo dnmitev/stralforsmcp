@@ -53,7 +53,8 @@ describe('opacity', () => {
       expect(Object.keys(p)).not.toContain(k);
       expect(Object.keys({ ...p })).not.toContain(k);
     }
-    expect(Object.keys(p)).toEqual(expect.arrayContaining(['id', 'country', 'actionIds']));
+    expect(Object.keys(p)).toEqual(expect.arrayContaining(['id', 'country', 'agreements']));
+    expect(Object.keys(p)).not.toContain('actionIds');
   });
 
   it('an absent passphrase is not defined as a property', () => {
@@ -114,13 +115,13 @@ describe('profiles and agreement ids', () => {
   });
 
   it('labelled and unlabelled ids, whitespace tolerated, blank entries skipped', () => {
-    const ids = load({ [`${A}_ACTION_IDS`]: ` main : ${UUID.toUpperCase()} , ${UUID} , , ` }).profiles['a']!.actionIds;
+    const ids = load({ [`${A}_ACTION_IDS`]: ` main : ${UUID.toUpperCase()} , ${UUID} , , ` }).profiles['a']!.agreements;
     expect(ids).toEqual([{ label: 'main', id: UUID.toUpperCase() }, { id: UUID }]);
   });
 
   it('a whitespace-only or empty label counts as absent', () => {
-    expect(load({ [`${A}_ACTION_IDS`]: `  :${UUID}` }).profiles['a']!.actionIds).toEqual([{ id: UUID }]);
-    expect(load({ [`${A}_ACTION_IDS`]: `:${UUID}` }).profiles['a']!.actionIds).toEqual([{ id: UUID }]);
+    expect(load({ [`${A}_ACTION_IDS`]: `  :${UUID}` }).profiles['a']!.agreements).toEqual([{ id: UUID }]);
+    expect(load({ [`${A}_ACTION_IDS`]: `:${UUID}` }).profiles['a']!.agreements).toEqual([{ id: UUID }]);
   });
 
   it('invalid id: error names the label or the 1-based entry, never the value', () => {

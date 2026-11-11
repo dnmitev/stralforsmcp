@@ -29,9 +29,6 @@ export class StralforsError extends Error {
     // Fault payloads carry agreement and identity ids: keep them readable by name but out of spread, Object.keys and serializers.
     for (const k of ['faults', 'errors', 'detail', 'actionId']) if (k in props) Object.defineProperty(this, k, { enumerable: false });
   }
-  get safeMessage(): string {
-    return this.message;
-  }
   toJSON() {
     return { name: this.name, kind: this.kind, message: this.message, status: this.status, traceId: this.traceId, profile: this.profile, operation: this.operation };
   }

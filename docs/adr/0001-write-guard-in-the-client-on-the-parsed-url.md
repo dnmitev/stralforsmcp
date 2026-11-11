@@ -3,7 +3,7 @@ status: accepted
 ---
 # The write guard lives in the HTTP client and judges the parsed URL
 
-Every request passes a fail-closed method-and-path check before a token is fetched or a socket is opened; in `prod` only a fixed list of reads (plus the dry run when explicitly enabled) passes, in `test` writes need an explicit switch. We put this in the client rather than only in the MCP policy layer so that no caller, tool or script can reach a write by construction, and we evaluate it on the `URL` object that is actually sent (`pathname` + `search`) because a hand-split string let `validate?test=true?x` through while the server saw a different query.
+Every request passes a fail-closed method-and-path check before a token is fetched or a socket is opened; in `prod` only a fixed list of reads (plus the dry run when explicitly enabled) passes, in `test` writes need an explicit switch. We put this in the client rather than only in the MCP policy layer so that every request made through the client is checked, whichever caller, tool or script issues it, and we evaluate it on the `URL` object that is actually sent (`pathname` + `search`) because a hand-split string let `validate?test=true?x` through while the server saw a different query.
 
 ## Consequences
 

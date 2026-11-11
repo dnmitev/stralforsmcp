@@ -54,10 +54,11 @@ describe('R7 StralforsError serialisation', () => {
     expect(JSON.parse(JSON.stringify(e))).toEqual({ name: 'AuthError', kind: 'auth', message: 'msg', status: 401, traceId: 't', profile: 'a', operation: 'o' });
   });
 
-  it('inspect and safeMessage', () => {
+  it('inspect; message is the safe message and safeMessage is gone', () => {
     const e = new UpstreamError('boom', { status: 500 });
     expect(inspect(e)).toBe(e.stack);
-    expect(e.safeMessage).toBe('boom');
+    expect(e.message).toBe('boom');
+    expect('safeMessage' in e).toBe(false);
   });
 });
 

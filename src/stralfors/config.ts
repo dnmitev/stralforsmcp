@@ -5,7 +5,7 @@ import { ConfigError } from './errors.ts';
 export interface Profile {
   id: string;
   country: string;
-  actionIds: { label?: string; id: string }[];
+  agreements: { label?: string; id: string }[];
   clientId: string;
   clientSecret: string;
   cert: string;
@@ -36,11 +36,11 @@ const opaque = <T extends object>(o: T, label: string, secrets: string[] = []): 
   });
 
 export function loadConfig(
-  env: Record<string, string | undefined>,
+  vars: Record<string, string | undefined>,
   fs: { readFileSync(path: string, enc: 'utf8'): string } = { readFileSync },
 ): Config {
   const need = (name: string) => {
-    const v = env[name];
+    const v = vars[name];
     if (!v) throw new ConfigError(`missing ${name}`);
     return v;
   };
@@ -55,13 +55,13 @@ export function loadConfig(
     return text;
   };
   const num = (name: string, def: number) => {
-    const v = env[name];
+    const v = vars[name];
     if (v === undefined) return def;
     if (!/^\d+$/.test(v) || Number(v) < 1) throw new ConfigError(`${name} must be a positive integer`);
     return Number(v);
   };
   const bool = (name: string) => {
-    const v = env[name] ?? 'false';
+    const v = vars[name] ?? 'false';
     if (v !== 'true' && v !== 'false') throw new ConfigError(`${name} must be true or false`);
     return v === 'true';
   };
@@ -75,7 +75,7 @@ export function loadConfig(
   for (const id of need('STRALFORS_PROFILES').split(',').map((s) => s.trim()).filter(Boolean)) {
     const P = `STRALFORS_PROFILE_${id.toUpperCase().replaceAll('-', '_')}`;
     const actionName = `${P}_ACTION_IDS`;
-    const actionIds = (env[actionName] ?? '').split(',').map((e) => e.trim()).filter(Boolean).map((entry, i) => {
+    const agreements = (vars[actionName] ?? '').split(',').map((e) => e.trim()).filter(Boolean).map((entry, i) => {
       const c = entry.indexOf(':');
       // Stryker disable next-line EqualityOperator: c === 0 gives label '' (original) or undefined (mutant); both mean no label
       const label = c < 0 ? undefined : entry.slice(0, c).trim();
@@ -84,11 +84,11 @@ export function loadConfig(
       return label ? { label, id } : { id };
     });
     const profile: Profile = {
-      id, country: need(`${P}_COUNTRY`), actionIds,
+      id, country: need(`${P}_COUNTRY`), agreements,
       clientId: file(`${P}_CLIENT_ID_FILE`), clientSecret: file(`${P}_CLIENT_SECRET_FILE`),
       cert: file(`${P}_CERT_FILE`), key: file(`${P}_KEY_FILE`),
     };
-    if (env[`${P}_KEY_PASSPHRASE_FILE`]) profile.passphrase = file(`${P}_KEY_PASSPHRASE_FILE`);
+    if (vars[`${P}_KEY_PASSPHRASE_FILE`]) profile.passphrase = file(`${P}_KEY_PASSPHRASE_FILE`);
     profiles[id] = opaque(profile, `Profile(${id})`, ['clientId', 'clientSecret', 'cert', 'key', 'passphrase'].filter((k) => k in profile));
   }
 

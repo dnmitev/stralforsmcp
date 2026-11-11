@@ -83,12 +83,12 @@ describe('R7 error mapping', () => {
     expect(mapHttpError({ status: 400, contentType: 'application/json', body: fixture('error-errorresponse-400-faults.json') }, ctx)).toBeInstanceOf(ValidationFailedError);
   });
 
-  it('safeMessage never echoes identity', () => {
+  it('message never echoes identity', () => {
     const id = canary('CLIENT-ID');
     const guid = randomUUID();
     const body = JSON.stringify({ message: `ValidateInvoice | DtoGuid: ${randomUUID()} | CustomerContract was not found based on identityId '${id}' and ActionId '${guid}'.`, compositeFault: null });
     const e = mapHttpError({ status: 404, contentType: 'application/json', body }, ctx);
-    for (const s of [e.safeMessage, e.message, String(e), JSON.stringify(e), inspect(e, { depth: null }), e.stack ?? '']) {
+    for (const s of [e.message, String(e), JSON.stringify(e), inspect(e, { depth: null }), e.stack ?? '']) {
       expect(s).not.toContain(id);
     }
     expect((e as AgreementNotFoundError).actionId).toBe(guid);

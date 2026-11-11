@@ -110,8 +110,9 @@ export function createTokenSource(o: {
     try {
       claims = parseClaims(access_token);
     } catch {} // opaque token: no scopes, expiry from expires_in
-    const end = claims.exp !== undefined ? claims.exp * 1000 : now() + expires_in * 1000;
-    const marginMs = Math.min(o.marginS * 1000, (end - now()) / 2); // short-lived tokens must still be cacheable
+    const expMs = claims.exp !== undefined ? claims.exp * 1000 : undefined;
+    const end = expMs !== undefined && expMs > now() ? expMs : now() + expires_in * 1000; // exp in the past means clock skew: trust expires_in
+    const marginMs = Math.max(0, Math.min(o.marginS * 1000, (end - now()) / 2)); // short-lived tokens must still be cacheable
     const expiresAt = end - marginMs;
     log.info({ profile: profile.id, expiresInS: expires_in, scopesCount: claims.scopes.length, customerCountry: claims.summary().customerCountry }, 'token.fetched');
     if (o.env === 'prod' && claims.hasScope('apiomni.write') && !warned) {

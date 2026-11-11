@@ -1,4 +1,5 @@
 // Mutation-hardening for index.ts request(): path guard, write guard, headers, status window, error context, close, logging.
+import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { AuthError, ConfigError, ResponseTooLargeError, SchemaError, UpstreamError, WriteBlockedError, type StralforsError } from './errors.ts';
@@ -7,12 +8,6 @@ import { generatePki, type Pki } from '../../test/helpers/mtls.ts';
 import { createClient } from './index.ts';
 import { loadConfig } from './config.ts';
 import { makeEnv } from '../../test/helpers/api.ts';
-
-vi.mock('./log.ts', async (orig) => {
-  const m = await orig<typeof import('./log.ts')>();
-  return { ...m, createLogger: vi.fn(m.createLogger) };
-});
-const createLogger = vi.mocked((await import('./log.ts')).createLogger);
 
 let pki: Pki;
 let fake: FakeApi | undefined;
@@ -44,12 +39,17 @@ describe('createClient', () => {
     await expect(client.get('/rest/x')).rejects.toBeDefined();
   });
 
-  it('without a logger the client gets a silent logger', () => {
-    // pino's default stream writes to the fd, not process.stdout.write, so spying on stdout would prove nothing.
-    const config = loadConfig(makeEnv(pki).env);
-    createLogger.mockClear();
-    createClient({ config, profileId: 'a' });
-    expect(createLogger).toHaveBeenCalledExactlyOnceWith({ level: 'silent' });
+  it('client works without a logger; with a sink the call is captured as a request line', async () => {
+    fake = await startFakeApi({ pki, api: ok });
+    const files = makeEnv(pki);
+    const client = createClient({ config: loadConfig(files.env), profileId: 'a', ca: pki.ca, baseUrl: fake.url });
+    await client.get('/rest/x');
+    await client.close();
+    // behaviour with a sink: the same call yields a captured 'request' line (pino writes to the fd, so the default silent logger cannot be observed directly)
+    const mem = memoryLogger();
+    const t = testClient(pki, fake, { logger: mem.logger });
+    await t.client.get('/rest/x');
+    expect(mem.lines().map((l) => l['msg'])).toContain('request');
   });
 });
 
@@ -70,6 +70,19 @@ describe('path guard', () => {
     const e = await caught(client.get(path));
     expect(e).toBeInstanceOf(ConfigError);
     expect(e.message).toBe('path not allowed');
+    expect(fake.requests).toHaveLength(0);
+  });
+});
+
+describe('path guard without the first regex', () => {
+  it.each(['//evil', '//evil.example.invalid/rest/x', '/other', 'https://evil/rest/x', 'https://evil.example.invalid/v1/oidc/token', '/\\evil.example.invalid/rest/x', '/rest/../other'])('%s throws ConfigError, no onBlocked, no request', async (path) => {
+    fake = await startFakeApi({ pki, api: ok });
+    const blocked: unknown[] = [];
+    const { client } = testClient(pki, fake, { onBlocked: (e) => void blocked.push(e) });
+    const e = await caught(client.get(path));
+    expect(e).toBeInstanceOf(ConfigError);
+    expect(e.message).toBe('path not allowed');
+    expect(blocked).toEqual([]);
     expect(fake.requests).toHaveLength(0);
   });
 });
@@ -236,5 +249,46 @@ describe('error context and logging', () => {
   it('UpstreamError type for a 5xx', async () => {
     fake = await startFakeApi({ pki, api: (_q, res) => json(res, 502, {}) });
     expect(await caught(testClient(pki, fake).client.get('/rest/x'))).toBeInstanceOf(UpstreamError);
+  });
+});
+
+describe('ids in path segments', () => {
+  it('are masked in write.blocked logs, onBlocked and the error operation', async () => {
+    const id = randomUUID();
+    fake = await startFakeApi({ pki, api: ok });
+    const blocked: { pathTemplate: string }[] = [];
+    const mem = memoryLogger();
+    const { client } = testClient(pki, fake, { logger: mem.logger, onBlocked: (e) => void blocked.push(e) });
+    const e = await caught(client.post(`/rest/agreements/${id}/1234567890`, {}));
+    expect(e.kind).toBe('write_blocked');
+    expect(blocked[0]!.pathTemplate).toBe('/rest/agreements/*/*');
+    expect(JSON.stringify([e.operation, e.message, mem.lines()])).not.toMatch(new RegExp(`${id}|1234567890`));
+  });
+
+  it('are masked when percent-encoded, and malformed encodings are not echoed', async () => {
+    const id = randomUUID();
+    fake = await startFakeApi({ pki, api: ok });
+    const blocked: { pathTemplate: string }[] = [];
+    const { client } = testClient(pki, fake, { onBlocked: (e) => void blocked.push(e) });
+    await caught(client.post(`/rest/a/${id.replace(/-/g, '%2D')}/${[...'1234567'].map((c) => `%3${c}`).join('')}/%E0%A4%A`, {}));
+    expect(blocked[0]!.pathTemplate).toBe('/rest/a/*/*/*');
+  });
+
+  it('are masked when hidden inside a segment (encoded separator, prefix)', async () => {
+    const id = randomUUID();
+    fake = await startFakeApi({ pki, api: ok });
+    const blocked: { pathTemplate: string }[] = [];
+    const { client } = testClient(pki, fake, { onBlocked: (e) => void blocked.push(e) });
+    await caught(client.post(`/rest/a/x%2F${id}/ref-1234567`, {}));
+    expect(blocked[0]!.pathTemplate).toBe('/rest/a/*/*');
+  });
+
+  it('are masked in query keys too, safe keys and the value mask stay', async () => {
+    const id = randomUUID();
+    fake = await startFakeApi({ pki, api: ok });
+    const blocked: { pathTemplate: string }[] = [];
+    const { client } = testClient(pki, fake, { onBlocked: (e) => void blocked.push(e) });
+    await caught(client.put(`/rest/a?123456789=v&${id}=w&actionId=secret`, {}));
+    expect(blocked[0]!.pathTemplate).toBe('/rest/a?*=*&*=*&actionId=*');
   });
 });
