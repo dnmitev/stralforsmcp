@@ -17,6 +17,8 @@ export interface StartDeps {
   stderr?: { write(s: string): void };
   audit?: Audit;
   now?: () => number;
+  /** limiter clock; must not step backwards (unlike wall-clock now, which token expiry needs) */
+  monotonic?: () => number;
   onSignal?: (fn: () => void) => void;
   clientFactory?: (o: CreateClientOptions) => StralforsClient;
 }
@@ -79,7 +81,7 @@ export async function start(env: Record<string, string | undefined>, deps: Start
     }
     const profiles = Object.values(config.profiles).map((p) => ({ id: p.id, country: p.country }));
     const tools = [createWhoami(profiles), createListChannels({ clients, config })];
-    const limiter = createRateLimiter({ perMinute, burst, now });
+    const limiter = createRateLimiter({ perMinute, burst, now: deps.monotonic ?? (() => performance.now()) });
     srv = createHttpServer({ store, audit, env: deploy, hosts, origins, maxBodyBytes, drainMs, now, limiter, factory: buildMcp({ env: deploy, allowWrite, audit, tools, now }) });
     listening = await srv.listen(port, env.MCP_LISTEN_HOST ?? '0.0.0.0');
   } catch (e) {

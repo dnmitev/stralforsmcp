@@ -313,11 +313,21 @@ describe('new environment variables', () => {
     expect(r[2]!.headers['retry-after']).toBe('60');
   });
 
-  it('the limiter uses the injected clock', async () => {
-    let t = T;
-    const { s } = await boot(mcpEnv({ MCP_RATE_PER_MINUTE: '60', MCP_RATE_BURST: '1' }), { now: () => t });
+  it('the limiter uses the injected monotonic clock', async () => {
+    let t = 0;
+    const { s } = await boot(mcpEnv({ MCP_RATE_PER_MINUTE: '60', MCP_RATE_BURST: '1' }), { monotonic: () => t });
     expect((await posts(s.port, 2)).map((x) => x.status)).toEqual([200, 429]);
     t += 1000;
+    expect((await posts(s.port, 1))[0]!.status).toBe(200);
+  });
+
+  it('the limiter ignores the wall clock stepping backwards', async () => {
+    let wall = T;
+    let mono = 0;
+    const { s } = await boot(mcpEnv({ MCP_RATE_PER_MINUTE: '60', MCP_RATE_BURST: '1' }), { now: () => wall, monotonic: () => mono });
+    expect((await posts(s.port, 2)).map((x) => x.status)).toEqual([200, 429]);
+    wall -= 3_600_000;
+    mono += 1000;
     expect((await posts(s.port, 1))[0]!.status).toBe(200);
   });
 });
