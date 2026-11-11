@@ -1,9 +1,11 @@
+import { SpanKind, SpanStatusCode, type Span } from '@opentelemetry/api';
 import type { CallToolResult, McpServer } from '@modelcontextprotocol/server';
 import type * as z from 'zod/v4';
 import type { Audit, AuditInput } from '../audit/index.ts';
 import type { Env, Principal } from '../auth/index.ts';
 import { withPrincipal } from './context.ts';
 import { StralforsError, type StralforsErrorKind } from '../stralfors/errors.ts';
+import { setSafe, withSpan, type Telemetry } from '../telemetry/index.ts';
 import { decide, visibleTools, type DenyReason, type ScopeHolder, type ToolSpec } from '../policy/index.ts';
 
 export interface ToolContext { principal: Principal; env: Env; allowWrite: boolean; visible: ToolSpec[] }
@@ -18,7 +20,7 @@ export interface ToolDef<I extends z.ZodObject = z.ZodObject, O extends z.ZodObj
   run(args: z.infer<I>, ctx: ToolContext): Promise<z.infer<O>>;
 }
 
-export interface RegistryDeps { env: Env; allowWrite: boolean; audit: Audit; now?: () => number; claims?: ScopeHolder }
+export interface RegistryDeps { env: Env; allowWrite: boolean; audit: Audit; now?: () => number; claims?: ScopeHolder; telemetry?: Telemetry }
 
 export const DENIED_TEXT = (reason: DenyReason) => `not allowed: ${reason}`;
 export const ERROR_TEXT = 'tool failed';
@@ -32,10 +34,25 @@ const fail = (text: string): CallToolResult => ({ isError: true, content: [{ typ
 
 /** Policy re-check, one audit line, sanitised errors. Arguments and results never reach the audit. */
 export async function callTool(def: ToolDef, args: unknown, principal: Principal, deps: RegistryDeps, visible?: ToolSpec[]): Promise<CallToolResult> {
+  const tel = deps.telemetry;
+  if (!tel) return run(def, args, principal, deps, visible);
+  return withSpan(tel.tracer, `mcp.tool ${def.spec.name}`, SpanKind.INTERNAL, { tool: def.spec.name, env: deps.env }, (span) => run(def, args, principal, deps, visible, span), () => 'error');
+}
+
+async function run(def: ToolDef, args: unknown, principal: Principal, deps: RegistryDeps, visible?: ToolSpec[], span?: Span): Promise<CallToolResult> {
   const now = deps.now ?? Date.now;
   const start = now();
   const ctx = { principal, env: deps.env, allowWrite: deps.allowWrite, claims: deps.claims };
-  const record = (r: Pick<AuditInput, 'outcome' | 'reason' | 'traceId'>) => deps.audit.record({ principal, tool: def.spec.name, env: deps.env, durationMs: Math.max(0, Math.round(now() - start)), ...r });
+  const record = (r: Pick<AuditInput, 'outcome' | 'reason' | 'traceId'>) => {
+    const ms = now() - start;
+    deps.audit.record({ principal, tool: def.spec.name, env: deps.env, durationMs: Math.max(0, Math.round(ms)), ...r });
+    const tel = deps.telemetry;
+    if (!span || !tel) return;
+    setSafe(span, { outcome: r.outcome, ...(r.reason === undefined ? {} : { 'error.type': r.reason }) });
+    if (r.outcome === 'error') span.setStatus({ code: SpanStatusCode.ERROR });
+    tel.instruments.toolCalls.add(1, { tool: def.spec.name, outcome: r.outcome, env: deps.env });
+    tel.instruments.toolDuration.record(Math.max(0, ms) / 1000, { tool: def.spec.name, outcome: r.outcome });
+  };
   const d = decide({ ...ctx, tool: def.spec });
   if (!d.allow) {
     record({ outcome: 'denied', reason: d.reason });

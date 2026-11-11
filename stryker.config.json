@@ -19,7 +19,9 @@
     "src/server/guards.ts",
     "src/server/channels.ts",
     "src/server/rate-limit.ts",
-    "src/server/context.ts"
+    "src/server/context.ts",
+    "src/telemetry/instruments.ts",
+    "src/telemetry/telemetry.ts"
   ],
   "incremental": true,
   "incrementalFile": "reports/stryker-incremental.json",

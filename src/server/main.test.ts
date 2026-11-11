@@ -22,7 +22,7 @@ let pki: Pki;
 let base: Record<string, string>;
 beforeAll(() => {
   pki = generatePki();
-  base = { MCP_TOKEN_LIST_FILE: 'x', MCP_HOSTNAMES: '127.0.0.1', MCP_PORT: '0', MCP_LISTEN_HOST: '127.0.0.1', ...makeEnv(pki).env };
+  base = { MCP_TOKEN_LIST_FILE: 'x', MCP_HOSTNAMES: '127.0.0.1', MCP_PORT: '0', MCP_METRICS_PORT: '0', MCP_METRICS_HOST: '127.0.0.1', MCP_LISTEN_HOST: '127.0.0.1', ...makeEnv(pki).env };
 });
 afterAll(() => pki.cleanup());
 const route = (f: Fixture) => (p: string) => (p === 'x' ? f.text() : readFileSync(p, 'utf8'));
@@ -107,7 +107,7 @@ describe('start', () => {
   it('defaults: origins follow hostnames, body limit 1 MiB, listen host 0.0.0.0', async () => {
     const listen = vi.spyOn(Server.prototype, 'listen');
     const { s } = await go({ MCP_LISTEN_HOST: undefined });
-    expect(listen.mock.calls[0]!.slice(0, 2)).toEqual([0, '0.0.0.0']);
+    expect(listen.mock.calls[1]!.slice(0, 2)).toEqual([0, '0.0.0.0']) // [0] is the metrics listener (02-04);
     const h = { ...MCP_HEADERS, host: '127.0.0.1' };
     expect((await send(s.port, { headers: { ...h, origin: 'http://127.0.0.1' }, body: INIT })).status).toBe(401);
     expect((await send(s.port, { headers: { ...h, origin: 'http://evil.example' }, body: INIT })).status).toBe(403);

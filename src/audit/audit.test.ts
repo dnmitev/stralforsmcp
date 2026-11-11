@@ -52,7 +52,7 @@ describe('audit events', () => {
   });
 
   it('AUDIT_KEYS is the documented allowlist', () => {
-    expect([...AUDIT_KEYS]).toEqual(['ts', 'userId', 'role', 'tool', 'env', 'outcome', 'reason', 'durationMs', 'traceId']);
+    expect([...AUDIT_KEYS]).toEqual(['ts', 'userId', 'role', 'tool', 'env', 'outcome', 'reason', 'durationMs', 'traceId', 'trace_id']); // 02-04: + the OTel trace id (R33)
   });
 
   it('denied with reason, no traceId key', () => {
