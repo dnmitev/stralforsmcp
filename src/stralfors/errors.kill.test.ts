@@ -32,7 +32,7 @@ describe('R7 class kinds', () => {
 
 describe('R7 StralforsError serialisation', () => {
   it.each(['faults', 'errors', 'detail', 'actionId'])('%s is readable but non-enumerable', (k) => {
-    const e = new StralforsError('x', 'm', { [k]: 'v' } as never);
+    const e = new StralforsError('upstream', 'm', { [k]: 'v' } as never);
     expect((e as unknown as Record<string, unknown>)[k]).toBe('v');
     expect(Object.keys(e)).not.toContain(k);
     expect(Object.keys({ ...e })).not.toContain(k);
@@ -45,7 +45,7 @@ describe('R7 StralforsError serialisation', () => {
   });
 
   it('other props stay enumerable', () => {
-    const e = new StralforsError('x', 'm', { status: 500, traceId: 't', profile: 'a', operation: 'o' });
+    const e = new StralforsError('upstream', 'm', { status: 500, traceId: 't', profile: 'a', operation: 'o' });
     expect(Object.keys(e)).toEqual(expect.arrayContaining(['kind', 'status', 'traceId', 'profile', 'operation']));
   });
 

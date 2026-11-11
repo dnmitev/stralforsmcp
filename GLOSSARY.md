@@ -25,7 +25,7 @@ The UUID that selects one customer contract on the API side. Required for valida
 _Avoid_: action id, contract id, GUID (unqualified)
 
 **Agreement label** (`Profile.agreements[].label`):
-A human name given to an agreement id in configuration so reports and logs can refer to the agreement without exposing the id.
+A human name given to an agreement id in configuration so reports and logs can refer to the agreement without exposing the id. The only agreement handle a tool accepts or returns; the server maps the label to the id.
 _Avoid_: profile label
 
 **Channel**:
@@ -79,7 +79,7 @@ The client's parsed view of one fault: rule id, tag, parameter path and the list
 _Avoid_: fault (when the parsed form is meant), issue, error item
 
 **Error kind** (`StralforsError.kind`):
-The stable, machine-readable classification of a failure (`auth`, `agreement_not_found`, `write_blocked`, ...). Consumers branch on the kind, never on message text.
+The stable, machine-readable classification of a failure (`auth`, `agreement_not_found`, `write_blocked`, ...). A closed literal union (`StralforsErrorKind`) from which the audit reason is derived. Consumers branch on the kind, never on message text.
 
 **Trace id** (`StralforsError.traceId`):
 The identifier the API or its framework attaches to a failed request, surfaced for support tickets.
@@ -166,7 +166,7 @@ One line per tool call outcome, or per refused authentication, carrying identity
 _Avoid_: access log, trace
 
 **Reason** (`AuditReason`):
-The closed set of codes an audit event may carry as its reason: a policy deny reason, a verify code, a Stralfors error kind, `write_guard` or `error`. The type rejects any other string.
+The closed set of codes an audit event may carry as its reason: a policy deny reason, a verify code, a Stralfors error kind, `write_guard`, `bad_input` or `error`. Derived from the error kind union, so a new kind is a new reason without a second list. `rate_limited` names both this server's own limit (outcome `denied`, tool `-`) and the upstream 429 (outcome `error`). The type rejects any other string.
 _Avoid_: message, detail, cause (free text)
 
 **Outcome** (`Outcome`):
@@ -226,6 +226,35 @@ _Avoid_: session, sticky, connection (for a client relationship)
 **Drain** (`drainMs`):
 The bounded wait during shutdown for requests already in flight to finish after the listener has closed and readiness has gone to 503.
 _Avoid_: graceful shutdown (the whole sequence), timeout (unqualified)
+
+**Client per profile** (`clients`, keyed by profile id):
+One Stralfors client (connection agent and token source) per credential profile, created before the server listens and closed after the drain. Tools look a client up by profile id; a tool with one configured profile may default to it.
+_Avoid_: connection, session, per-request client
+
+**Principal context** (`withPrincipal`, `currentPrincipal`):
+The async-local scope that carries the calling principal through one tool call, so code the tool reaches indirectly (the client's blocked-write hook) can attribute its audit event. Empty outside a tool call.
+_Avoid_: thread-local, global user, request context
+
+**Tool input error** (`ToolInputError`, reason `bad_input`):
+A tool refusing its own arguments with a fixed text before any upstream call: a missing or unknown profile, an unknown agreement label.
+_Avoid_: validation error (that is the SDK's schema check or the upstream dry run), bad request
+
+**Rate limit** (`createRateLimiter`, `MCP_RATE_PER_MINUTE`, `MCP_RATE_BURST`):
+A token bucket per authenticated principal held in the memory of one process: `perMinute` refill, `burst` capacity. A refusal is a 429 with `Retry-After` in whole seconds and an audit event with reason `rate_limited` and tool `-`.
+_Avoid_: throttling (the upstream 429), quota
+
+**Bucket**:
+The per-principal state of the rate limit: its remaining tokens and the time of its last use. A bucket that has been full and idle for a whole refill period is forgotten, so the number of buckets never exceeds the number of users in the token list.
+
+**Burst** (`burst`):
+The number of calls a principal may make at once from a full bucket before the per-minute rate applies.
+
+**Staleness** (`staleMs`, `MCP_TOKEN_STALE_MS`, `token_list.stale`):
+How long the token list has been served from its last good load while reloads keep failing; zero while the last reload succeeded. Past the threshold one fixed warning is written; it is never a readiness condition.
+_Avoid_: expiry, outage, unhealthy
+
+**Whoami** (`whoami`):
+The read tool that returns the caller's name, role and permitted environments, the deployment environment, the tools visible to the caller and the configured profiles (id and country). Never a token, scope, secret or agreement id.
 
 ## Quality
 

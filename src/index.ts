@@ -1,4 +1,2 @@
-import pkg from '../package.json' with { type: 'json' };
-
-export const serverInfo = { name: pkg.name, version: pkg.version };
+export { serverInfo } from './server-info.ts';
 export { start } from './server/main.ts';

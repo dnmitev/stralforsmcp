@@ -16,7 +16,10 @@
     "src/audit/audit.ts",
     "src/server/auth.ts",
     "src/server/tools.ts",
-    "src/server/guards.ts"
+    "src/server/guards.ts",
+    "src/server/channels.ts",
+    "src/server/rate-limit.ts",
+    "src/server/context.ts"
   ],
   "incremental": true,
   "incrementalFile": "reports/stryker-incremental.json",

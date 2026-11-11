@@ -2,9 +2,10 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { createMcpHandler, type McpServerFactory } from '@modelcontextprotocol/server';
 import { hostHeaderValidation, originValidation, toNodeHandler } from '@modelcontextprotocol/node';
 import type { Audit } from '../audit/index.ts';
-import type { Env, TokenStore } from '../auth/index.ts';
+import type { Env, Principal, TokenStore } from '../auth/index.ts';
 import { UNAUTHORIZED_BODY, WWW_AUTHENTICATE, authenticate } from './auth.ts';
-import { refuse, type Refusal } from './guards.ts';
+import { refuse, text, type Refusal } from './guards.ts';
+import type { RateLimiter } from './rate-limit.ts';
 
 export interface HttpServerOptions {
   store: TokenStore;
@@ -15,6 +16,7 @@ export interface HttpServerOptions {
   maxBodyBytes: number;
   drainMs: number;
   factory: McpServerFactory;
+  limiter: RateLimiter;
   now?: () => number;
   onerror?: (e: Error) => void;
   /** test seam for the drain timer */
@@ -30,7 +32,7 @@ export interface HttpServer {
 // WHATWG URL reports an IPv6 hostname with brackets; accept the allowlist bare or already bracketed
 const bracket = (h: string) => (h.includes(':') && !h.startsWith('[') ? `[${h}]` : h);
 const send = (res: ServerResponse, r: Refusal) => void res.writeHead(r.status, r.headers).end(r.body);
-const plain = (status: number, body: string): Refusal => ({ status, headers: { 'Content-Type': 'text/plain' }, body });
+export const TOO_MANY_BODY = 'too many requests';
 
 export function createHttpServer(o: HttpServerOptions): HttpServer {
   const now = o.now ?? Date.now;
@@ -52,10 +54,10 @@ export function createHttpServer(o: HttpServerOptions): HttpServer {
     try {
       path = new URL(req.url ?? '/', 'http://x').pathname;
     } catch {
-      return send(res, plain(400, 'bad request')); // fixed body: never echo the request target
+      return send(res, text(400, 'bad request')); // fixed body: never echo the request target
     }
-    if (path === '/healthz') return send(res, plain(200, 'ok'));
-    if (path === '/readyz') return send(res, ready ? plain(200, 'ok') : plain(503, 'not ready'));
+    if (path === '/healthz') return send(res, text(200, 'ok'));
+    if (path === '/readyz') return send(res, ready ? text(200, 'ok') : text(503, 'not ready'));
     if (!hostOk(req, res) || !originOk(req, res)) return;
     const refusal = refuse({ method: req.method, url: req.url, contentLength: req.headers['content-length'] }, o.maxBodyBytes);
     if (refusal) return send(res, refusal);
@@ -63,6 +65,12 @@ export function createHttpServer(o: HttpServerOptions): HttpServer {
     if (!a.ok) {
       o.audit.record({ tool: 'auth', env: o.env, outcome: 'denied', reason: a.code, durationMs: 0 });
       return send(res, { status: 401, headers: { 'WWW-Authenticate': WWW_AUTHENTICATE, 'Content-Type': 'application/json' }, body: UNAUTHORIZED_BODY });
+    }
+    const principal = a.authInfo.extra?.principal as Principal;
+    const lim = o.limiter.take(principal.userId);
+    if (!lim.ok) {
+      o.audit.record({ principal, tool: '-', env: o.env, outcome: 'denied', reason: 'rate_limited', durationMs: 0 });
+      return send(res, text(429, TOO_MANY_BODY, { 'Retry-After': String(lim.retryAfterS) }));
     }
     (req as IncomingMessage & { auth?: unknown }).auth = a.authInfo;
     await mcp(req, res);
@@ -75,7 +83,7 @@ export function createHttpServer(o: HttpServerOptions): HttpServer {
     });
     route(req, res).catch((e: unknown) => {
       onerror(e);
-      if (!res.headersSent) send(res, plain(500, 'internal error'));
+      if (!res.headersSent) send(res, text(500, 'internal error'));
       else res.destroy();
     });
   });

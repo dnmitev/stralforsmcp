@@ -75,6 +75,8 @@ export interface TokenStore {
   verify(raw: string, at?: number): VerifyResult;
   reload(): void;
   close(): void;
+  /** 0 while the last reload succeeded (or none ran); otherwise now() minus the time of the last successful load. */
+  staleMs(): number;
 }
 
 export interface TokenStoreOptions {
@@ -84,6 +86,8 @@ export interface TokenStoreOptions {
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (handle: unknown) => void;
   onReload?: (r: { ok: true; users: number; tokens: number } | { ok: false }) => void;
+  staleAfterMs?: number;
+  onStale?: () => void;
   log?: { warn(obj: object, msg: string): void; info(obj: object, msg: string): void };
 }
 
@@ -103,18 +107,28 @@ export function createTokenStore(o: TokenStoreOptions): TokenStore {
 
   let view = load().view;
   let lastFailure: string | undefined;
+  let lastOk = o.now();
+  let armed = true;
 
   function reload() {
     try {
       const next = load();
       view = next.view;
       lastFailure = undefined;
+      lastOk = o.now();
+      armed = true;
       o.onReload?.({ ok: true, users: next.list.users.length, tokens: next.list.tokens.length });
     } catch (e) {
       const text = e instanceof ConfigError ? e.message : 'unknown';
       if (text !== lastFailure) o.log?.warn({ kind: 'config' }, 'reload.failed');
       lastFailure = text;
       o.onReload?.({ ok: false });
+      if (armed && o.staleAfterMs !== undefined && o.now() - lastOk >= o.staleAfterMs) {
+        armed = false;
+        try {
+          o.onStale?.();
+        } catch {}
+      }
     }
   }
 
@@ -141,6 +155,7 @@ export function createTokenStore(o: TokenStoreOptions): TokenStore {
       return { ok: true, principal: { userId: u.id, name: u.name, role: u.role, envs: [...u.envs] }, expiresAt: Date.parse(t.expires) };
     },
     reload,
+    staleMs: () => (lastFailure !== undefined ? o.now() - lastOk : 0),
     close() {
       if (closed) return;
       closed = true;

@@ -90,7 +90,7 @@ Smoke check against the live test API (manual, never run in CI): export the vari
 
 ## Running
 
-`node src/server/main.ts` starts the stateless Streamable HTTP MCP server (SDK v2). It has no Stralfors call yet; it serves `whoami` to authenticated callers. Configuration is read from the environment; an invalid value refuses to start (exit 1, `refusing to start: <fixed text>`).
+`node src/server/main.ts` starts the stateless Streamable HTTP MCP server (SDK v2). It creates one Stralfors client per credential profile at start and serves `whoami` and `list_channels` to authenticated callers. Configuration is read from the environment; an invalid value refuses to start (exit 1, `refusing to start: <fixed text>`).
 
 | Variable | Required | Default | Rule |
 |---|---|---|---|
@@ -103,6 +103,10 @@ Smoke check against the live test API (manual, never run in CI): export the vari
 | `MCP_DRAIN_MS` | no | `10000` | integer >= 0, in-flight drain on SIGTERM/SIGINT |
 | `STRALFORS_ENV` | yes | none | `test` or `prod` |
 | `STRALFORS_ALLOW_WRITE` | no | `false` | `true` or `false`; `true` is refused with `prod` |
+| `MCP_RATE_PER_MINUTE` | no | `120` | integer >= 1, per-principal refill (per pod) |
+| `MCP_RATE_BURST` | no | `30` | integer >= 1, per-principal bucket size |
+| `MCP_TOKEN_STALE_MS` | no | `900000` | integer >= 1, a failing token list reload this long logs one `token_list.stale` line |
+| `STRALFORS_PROFILES`, `STRALFORS_PROFILE_<ID>_*` | yes | none | profile variables as read by the Stralfors client library (see above); secrets by file path only |
 
 Request pipeline (first match answers; refusals 3-7 are not audited, 401s and tool calls are):
 
@@ -116,11 +120,24 @@ Request pipeline (first match answers; refusals 3-7 are not audited, 401s and to
 | 6 | method is not `POST` | 405 (`Allow: POST`) |
 | 7 | declared `Content-Length` above the limit | 413 |
 | 8 | missing, malformed, unknown, revoked, expired or not-yet-valid token | 401, identical body for every cause |
+| 8b | authenticated but over the per-principal rate limit | 429 `too many requests`, `Retry-After` (audited) |
 | 9 | authenticated | MCP handler (streamed bodies above the limit: 413) |
+
+### Local run against TEST
+
+1. Create a token list (a user and one token). The raw token is printed once to your terminal; only its hash goes into the file:
+
+   ```sh
+   node -e "import('./src/auth/index.ts').then(({generateToken,hashToken})=>{const t=generateToken(),n=Date.now(),d=864e5;console.error('token (keep private):',t);console.log(JSON.stringify({users:[{id:'me',name:'Me',role:'dev',envs:['test']}],tokens:[{hash:hashToken(t),userId:'me',created:new Date(n).toISOString(),expires:new Date(n+30*d).toISOString()}]},null,2))})" > token-list.json
+   ```
+
+2. Export `MCP_TOKEN_LIST_FILE` (that file), `MCP_HOSTNAMES=localhost`, `STRALFORS_ENV=test` and the `STRALFORS_PROFILES` / `STRALFORS_PROFILE_<ID>_*` variables pointing at your credential files (paths only; never put secret values in the environment or on the command line).
+3. `node src/server/main.ts`, then `curl localhost:3000/healthz`.
+4. Add `{"type":"http","url":"http://localhost:3000/mcp","headers":{"Authorization":"Bearer ${STRALFORSMCP_TOKEN}"}}` to `.mcp.json` and call `whoami`, then `list_channels`.
 
 ## Mutation testing
 
-`npm run mutation` runs [StrykerJS](https://stryker-mutator.io) with the Vitest runner over the core modules (`src/stralfors/token.ts`, `errors.ts`, `http.ts`, `index.ts`, `config.ts`, `src/auth/token-store.ts`, `src/policy/policy.ts`, `src/audit/audit.ts`, `src/server/auth.ts`, `src/server/tools.ts`, `src/server/guards.ts`). Target score is 80 %; the run fails below 70 % (`break`). Reports land in `reports/mutation/` (`mutation.html`, `mutation.json`). The incremental file `reports/stryker-incremental.json` is kept between runs, so a re-run only tests what changed. CI runs this as the `mutation` job on Node 24, publishes the score in the job summary and uploads the report as an artifact.
+`npm run mutation` runs [StrykerJS](https://stryker-mutator.io) with the Vitest runner over the core modules (`src/stralfors/token.ts`, `errors.ts`, `http.ts`, `index.ts`, `config.ts`, `src/auth/token-store.ts`, `src/policy/policy.ts`, `src/audit/audit.ts`, `src/server/auth.ts`, `src/server/tools.ts`, `src/server/guards.ts`, `channels.ts`, `rate-limit.ts`, `context.ts`). Target score is 80 %; the run fails below 70 % (`break`). Reports land in `reports/mutation/` (`mutation.html`, `mutation.json`). The incremental file `reports/stryker-incremental.json` is kept between runs, so a re-run only tests what changed. CI runs this as the `mutation` job on Node 24, publishes the score in the job summary and uploads the report as an artifact.
 
 Optional dashboard: enable the repository on the [Stryker dashboard](https://dashboard.stryker-mutator.io), then run `gh secret set STRYKER_DASHBOARD_API_KEY`. Until the secret exists, CI sends nothing.
 
