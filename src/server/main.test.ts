@@ -1,6 +1,7 @@
 /*
  * R15 entry point. API under test (src/server/main.ts, re-exported by src/index.ts): start(env, deps?) => { port, close }.
  */
+import { mkdirSync, symlinkSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createConnection } from 'node:net';
 import { Server } from 'node:http';
@@ -157,6 +158,16 @@ describe('process entry', () => {
 
   it('missing configuration exits 1', () => {
     const r = spawnSync(process.execPath, ['src/server/main.ts'], { cwd: new URL('../..', import.meta.url).pathname, env: { PATH: process.env.PATH ?? '' }, encoding: 'utf8', timeout: 20_000 });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('refusing to start: missing MCP_TOKEN_LIST_FILE');
+  });
+
+  it('starts when launched through a symlinked path', () => {
+    const dir = '/private/tmp/claude-501/-Users-dimitarmitev-Repos-stralforsmcp/a5bcd367-baba-41fc-83c4-d65efeabe59f/scratchpad/symlink-entry';
+    mkdirSync(dir, { recursive: true });
+    const link = `${dir}/main-link-${process.pid}.ts`;
+    symlinkSync(new URL('./main.ts', import.meta.url).pathname, link);
+    const r = spawnSync(process.execPath, [link], { env: { PATH: process.env.PATH ?? '' }, encoding: 'utf8', timeout: 20_000 });
     expect(r.status).toBe(1);
     expect(r.stderr).toContain('refusing to start: missing MCP_TOKEN_LIST_FILE');
   });

@@ -34,7 +34,9 @@ const plain = (status: number, body: string): Refusal => ({ status, headers: { '
 
 export function createHttpServer(o: HttpServerOptions): HttpServer {
   const now = o.now ?? Date.now;
-  const onerror = o.onerror ?? (() => undefined);
+  // Only a fixed message and the error's class name leave here: SDK/URL errors can carry the request target or body in enumerable props.
+  const report = o.onerror ?? (() => undefined);
+  const onerror = (e: unknown) => report(new Error(`request failed: ${e instanceof Error ? e.name : 'unknown'}`));
   const handler = createMcpHandler(o.factory, { responseMode: 'json', legacy: 'stateless', maxRequestBodySize: o.maxBodyBytes, onerror });
   const mcp = toNodeHandler(handler, { maxRequestBodySize: o.maxBodyBytes, onerror });
   const hostOk = hostHeaderValidation(o.hosts.map(bracket));
@@ -67,7 +69,7 @@ export function createHttpServer(o: HttpServerOptions): HttpServer {
       if (--inflight === 0) idle?.();
     });
     route(req, res).catch((e: unknown) => {
-      onerror(e instanceof Error ? e : new Error('request failed'));
+      onerror(e);
       if (!res.headersSent) send(res, plain(500, 'internal error'));
       else res.destroy();
     });

@@ -79,4 +79,15 @@ describe('http kill', () => {
       expect(`${e.message}${e.stack}${JSON.stringify(e)}`).not.toContain(canary);
     }
   });
+
+  it('onerror gets a sanitised error: a URL-parse failure never leaks the request target', async () => {
+    const h = await startHttp();
+    const r = await send(h.port, { path: '//bad:bad/?id=CANARY-target' });
+    expect(r.status).toBe(500);
+    expect(h.errors.length).toBeGreaterThan(0);
+    for (const e of h.errors) {
+      expect(Object.keys(e)).toEqual([]);
+      expect(`${e.name}${e.message}${e.stack}${JSON.stringify(e)}${String(e.cause)}`).not.toContain('CANARY-target');
+    }
+  });
 });

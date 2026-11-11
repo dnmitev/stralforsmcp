@@ -28,23 +28,28 @@ describe('graceful shutdown', () => {
     const d = deferred();
     const entered = deferred();
     const h = await startHttp({ hosts: ['127.0.0.1'], drainMs: 2000, timer: ft.timer, tools: [whoami, slow(d, entered)] });
-    const c = await connect('modern', h.fetchFor(h.w.tA), `http://127.0.0.1:${h.port}/mcp`);
-    const inflight = c.callTool({ name: 'slow', arguments: {} });
-    await entered.promise;
-    let closed = false;
-    const closing = h.srv.close().then(() => (closed = true));
-    await Promise.resolve();
-    // readiness is false the moment close() starts: either 503 or the listener is already gone
-    const ready = await send(h.port, { method: 'GET', path: '/readyz' }).then((r) => r.status, () => 503);
-    expect(ready).toBe(503);
-    expect(await refused(h.port)).toBe(true);
-    expect(closed).toBe(false);
-    d.resolve();
-    const r = await inflight;
-    expect(r.structuredContent).toEqual({ v: 1 });
-    await closing;
-    expect(closed).toBe(true);
-    expect(ft.ms).toEqual([2000]); // drain was armed, never fired
+    try {
+      const c = await connect('modern', h.fetchFor(h.w.tA), `http://127.0.0.1:${h.port}/mcp`);
+      const inflight = c.callTool({ name: 'slow', arguments: {} });
+      await entered.promise;
+      let closed = false;
+      const closing = h.srv.close().then(() => (closed = true));
+      await Promise.resolve();
+      // readiness is false the moment close() starts: either 503 or the listener is already gone
+      const ready = await send(h.port, { method: 'GET', path: '/readyz' }).then((r) => r.status, () => 503);
+      expect(ready).toBe(503);
+      expect(await refused(h.port)).toBe(true);
+      expect(closed).toBe(false);
+      d.resolve();
+      const r = await inflight;
+      expect(r.structuredContent).toEqual({ v: 1 });
+      await closing;
+      expect(closed).toBe(true);
+      expect(ft.ms).toEqual([2000]); // drain was armed, never fired
+    } finally {
+      d.resolve();
+      ft.fns.forEach((f) => f());
+    }
   });
 
   it('after close the readiness flag is false and listen() rejects', async () => {
@@ -58,18 +63,23 @@ describe('graceful shutdown', () => {
     const entered = deferred();
     const ft = fakeTimer();
     const h = await startHttp({ hosts: ['127.0.0.1'], drainMs: 50, timer: ft.timer, tools: [whoami, slow(d, entered)] });
-    const c = await connect('modern', h.fetchFor(h.w.tA), `http://127.0.0.1:${h.port}/mcp`);
-    const inflight = c.callTool({ name: 'slow', arguments: {} }).then(() => 'ok', () => 'failed');
-    await entered.promise;
-    let closed = false;
-    const closing = h.srv.close().then(() => (closed = true));
-    await vi.waitFor(() => expect(ft.fns).toHaveLength(1));
-    expect(ft.ms).toEqual([50]);
-    expect(closed).toBe(false); // still draining until the timer expires
-    ft.fns[0]!();
-    await closing;
-    expect(await inflight).toBe('failed');
-    d.resolve();
+    try {
+      const c = await connect('modern', h.fetchFor(h.w.tA), `http://127.0.0.1:${h.port}/mcp`);
+      const inflight = c.callTool({ name: 'slow', arguments: {} }).then(() => 'ok', () => 'failed');
+      await entered.promise;
+      let closed = false;
+      const closing = h.srv.close().then(() => (closed = true));
+      await vi.waitFor(() => expect(ft.fns).toHaveLength(1));
+      expect(ft.ms).toEqual([50]);
+      expect(closed).toBe(false); // still draining until the timer expires
+      ft.fns[0]!();
+      await closing;
+      expect(await inflight).toBe('failed');
+      d.resolve();
+    } finally {
+      d.resolve();
+      ft.fns.forEach((f) => f());
+    }
   });
 
   it('drainMs 0 does not wait for in-flight work', async () => {
@@ -77,13 +87,18 @@ describe('graceful shutdown', () => {
     const entered = deferred();
     const ft = fakeTimer();
     const h = await startHttp({ hosts: ['127.0.0.1'], drainMs: 0, timer: ft.timer, tools: [whoami, slow(d, entered)] });
-    const c = await connect('modern', h.fetchFor(h.w.tA), `http://127.0.0.1:${h.port}/mcp`);
-    const inflight = c.callTool({ name: 'slow', arguments: {} }).then(() => 'ok', () => 'failed');
-    await entered.promise;
-    await h.srv.close();
-    expect(ft.fns).toHaveLength(0); // no drain timer armed
-    d.resolve();
-    await inflight;
+    try {
+      const c = await connect('modern', h.fetchFor(h.w.tA), `http://127.0.0.1:${h.port}/mcp`);
+      const inflight = c.callTool({ name: 'slow', arguments: {} }).then(() => 'ok', () => 'failed');
+      await entered.promise;
+      await h.srv.close();
+      expect(ft.fns).toHaveLength(0); // no drain timer armed
+      d.resolve();
+      await inflight;
+    } finally {
+      d.resolve();
+      ft.fns.forEach((f) => f());
+    }
   });
 
   it('close is idempotent and server.close runs once', async () => {
