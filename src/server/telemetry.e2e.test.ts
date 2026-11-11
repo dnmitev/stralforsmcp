@@ -12,9 +12,13 @@ import { send, INIT, MCP_HEADERS } from '../../test/helpers/server.ts';
 import { json } from '../../test/helpers/api.ts';
 
 const W = useStartWorld();
-/** bounded poll: resolves when ok() holds, fails the test after ~2 s */
+/** bounded poll: resolves when ok() holds, rejects after ~2 s */
 const until = async (ok: () => Promise<boolean>): Promise<void> => {
-  for (let i = 0; i < 200 && !(await ok()); i++) await new Promise((r) => setTimeout(r, 10));
+  for (let i = 0; i < 200; i++) {
+    if (await ok()) return;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  throw new Error('until: condition not met within 200 polls');
 };
 const HEX32 = /^[0-9a-f]{32}$/;
 const HEX16 = /^[0-9a-f]{16}$/;

@@ -69,9 +69,10 @@ describe('upstreamInstrument [fake-api]', () => {
   });
 
   it('a call that outlives the deadline -> CLIENT span and metrics with error.type timeout', async () => {
-    const { m, client, reply } = await world({ STRALFORS_TIMEOUT_MS: '50' });
+    const { m, client, reply, channelRequests } = await world({ STRALFORS_TIMEOUT_MS: '50' });
     reply.current = (_q, res) => void setTimeout(() => res.destroyed || res.end('[]'), 600); // never answers within the deadline
     await rejection(client.channels());
+    expect(channelRequests()).toHaveLength(1); // the request reached the endpoint, so this is not a token-step timeout
     const [span] = m.byName('stralfors.request');
     expect(span!.attributes).toEqual({ ...base, 'error.type': 'timeout' });
     expect(span!.status.code).toBe(SpanStatusCode.ERROR);
