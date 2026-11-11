@@ -6,6 +6,11 @@ export interface RateLimiter {
   size(): number;
 }
 
+/**
+ * The server passes a monotonic clock (`performance.now`, see `start()`), so a wall-clock step never reaches the limiter.
+ * The `Date.now` default and the `max()` guard below only matter for direct callers with a non-monotonic clock;
+ * for them `retryAfterS` can be short after a backward step.
+ */
 export function createRateLimiter(o: RateLimiterOptions): RateLimiter {
   const now = o.now ?? Date.now;
   const fullMs = (o.burst * 60000) / o.perMinute;
