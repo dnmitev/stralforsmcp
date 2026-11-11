@@ -1,6 +1,6 @@
 // Mutation-kill tests for telemetry.ts (gauge metadata, upstream duration unit, status code rule, shutdown ownership).
 import { SpanKind } from '@opentelemetry/api';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ConfigError, StralforsError } from '../stralfors/errors.ts';
 import { memTelemetry, hist, pick, scrape } from '../../test/helpers/telemetry.ts';
 import { upstreamInstrument, withSpan, activeIds } from './index.ts';
@@ -20,10 +20,15 @@ describe('telemetry kill tests', () => {
 
   it('upstream duration is recorded in seconds, elapsed time only', async () => {
     const m = memTelemetry();
-    await upstreamInstrument(m.t)(info, () => new Promise((r) => setTimeout(() => r(1), 30)));
+    let t = 1000; // controlled clock: the run advances it by 250 ms
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => t);
+    try {
+      await upstreamInstrument(m.t)(info, async () => (t += 250));
+    } finally {
+      now.mockRestore();
+    }
     const h = hist(pick(await m.series('stralfors.request.duration'), { operation: 'op', outcome: 'ok' }));
-    expect(h.sum).toBeGreaterThan(0.02);
-    expect(h.sum).toBeLessThan(2);
+    expect(h.sum).toBe(0.25);
   });
 
   it('status code only for a StralforsError with a numeric status', async () => {

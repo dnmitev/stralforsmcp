@@ -12,6 +12,10 @@ import { send, INIT, MCP_HEADERS } from '../../test/helpers/server.ts';
 import { json } from '../../test/helpers/api.ts';
 
 const W = useStartWorld();
+/** bounded poll: resolves when ok() holds, fails the test after ~2 s */
+const until = async (ok: () => Promise<boolean>): Promise<void> => {
+  for (let i = 0; i < 200 && !(await ok()); i++) await new Promise((r) => setTimeout(r, 10));
+};
 const HEX32 = /^[0-9a-f]{32}$/;
 const HEX16 = /^[0-9a-f]{16}$/;
 const hdr = (token: string | null, extra: Record<string, string> = {}) => ({ ...MCP_HEADERS, host: '127.0.0.1', ...(token === null ? {} : { authorization: `Bearer ${token}` }), ...extra });
@@ -61,7 +65,7 @@ describe('exporter output (pinned as observed)', () => {
     const post = await send(s.port, { path: '/metrics', headers: hdr(W.state.f.raw.tA), body: INIT });
     expect(post.status).toBe(404);
     expect(post.text).toBe('not found');
-    await new Promise((r) => setTimeout(r, 20));
+    await until(async () => (await m.series('http.server.request.duration')).length > 0);
     const d = await m.series('http.server.request.duration');
     expect(hist(pick(d, { 'http.request.method': 'GET', 'http.response.status_code': 404, 'http.route': '/mcp' })).count).toBe(1);
   });
@@ -105,7 +109,7 @@ describe('correlation across spans, logs and audit', () => {
     expect(line.reason).toBe('agreement_not_found');
     expect(line.trace_id).toMatch(HEX32);
     expect(line.trace_id).toBe(m.byName('mcp.tool list_channels')[0]!.spanContext().traceId);
-    expect(line.traceId === undefined || line.traceId === vendor).toBe(true);
+    expect(line.traceId).toBe(vendor);
     expect(line.traceId).not.toBe(line.trace_id);
   });
 
@@ -185,8 +189,9 @@ describe('privacy canary: every path, every sink', () => {
     await send(b.s.port, { headers: hdr(A), body: INIT }); // consumes the burst
     await send(b.s.port, { headers: hdr(A), body: INIT }); // 429
     await send(b.s.port, { method: 'GET', path: '/nope', headers: { host: '127.0.0.1' } });
-    await new Promise((r) => setTimeout(r, 30));
-    const text = (await get(b.s.metricsPort, '/metrics')).text;
+    const scrape = async () => (await get(b.s.metricsPort, '/metrics')).text;
+    await until(async () => { const t = await scrape(); return ['401', '200', '429', '404'].every((c) => t.includes(`http_response_status_code="${c}"`)); });
+    const text = await scrape();
     const keys = new Set(Object.values(INSTRUMENTS).flatMap((i) => i.keys).map((k) => k.replaceAll('.', '_')).concat(['le']));
     const allowed: Record<string, RegExp> = {
       http_request_method: /^(GET|HEAD|POST|PUT|DELETE|OPTIONS|PATCH|CONNECT|TRACE|_OTHER)$/,

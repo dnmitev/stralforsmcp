@@ -46,6 +46,7 @@ export interface Telemetry {
 // ponytail: a telemetry that is never shut down keeps the manager alive for the process; fine, the process owns one.
 let shared: AsyncLocalStorageContextManager | undefined;
 let owners = 0;
+let registered = false; // true only while this module's manager is the global one; never disable another SDK's
 let dropped = 0; // ponytail: process-wide counter; droppedKeys reports the delta since creation, exact while one telemetry lives
 
 /** Sets only keys in ALLOWED_SPAN_KEYS; drops and counts the rest. */
@@ -58,7 +59,7 @@ export function setSafe(span: Span, attrs: Attributes): void {
 
 /** Active span around fn; on throw: status ERROR, fixed error.type, rethrow. No exception event, no message. */
 export function withSpan<T>(tracer: Tracer, name: string, kind: SpanKind, attrs: Attributes, fn: (span: Span) => Promise<T>, errorType: (e: unknown) => AuditReason): Promise<T> {
-  return tracer.startActiveSpan(name, { kind }, async (span) => {
+  return tracer.startActiveSpan(name, { kind, root: kind === SpanKind.SERVER }, async (span) => {
     setSafe(span, attrs);
     try {
       return await fn(span);
@@ -82,7 +83,7 @@ export const logMixin = (): Record<string, string> => activeIds() ?? {};
 export function createTelemetry(o: TelemetryOptions): Telemetry {
   shared ??= new AsyncLocalStorageContextManager().enable();
   owners++;
-  context.setGlobalContextManager(shared);
+  registered ||= context.setGlobalContextManager(shared);
   const baseline = dropped;
 
   const resource = resourceFromAttributes({ 'service.name': SERVICE_NAME, 'service.version': o.serviceVersion, 'deployment.environment.name': o.env });
@@ -128,7 +129,8 @@ export function createTelemetry(o: TelemetryOptions): Telemetry {
     shutdown: () => (closing ??= (async () => {
       await Promise.all([tracerProvider.shutdown(), meterProvider.shutdown()]).catch(() => undefined);
       if (--owners === 0) {
-        context.disable();
+        if (registered) context.disable();
+        registered = false;
         shared?.disable();
         shared = undefined;
       }

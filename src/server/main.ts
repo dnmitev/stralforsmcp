@@ -59,11 +59,19 @@ const ratio = (v: string | undefined): number => {
   if (!RATIO.test(v) || Number(v) > 1) throw new ConfigError('MCP_TRACE_SAMPLE_RATIO is invalid');
   return Number(v);
 };
-const endpoint = (v: string | undefined): string | undefined => {
+const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
+const endpoint = (v: string | undefined, env: Record<string, string | undefined>): string | undefined => {
   if (!v) return undefined;
   try {
-    if (/^https?:$/.test(new URL(v).protocol)) return v;
-  } catch { /* falls through */ }
+    const u = new URL(v);
+    if (/^https?:$/.test(u.protocol) && !/[?#]/.test(v)) { // the exporter path is appended to the raw string: no query or fragment
+      // the exporter reads these headers from the environment whatever the url: never send them in cleartext off the host
+      if (u.protocol === 'http:' && !LOOPBACK.has(u.hostname) && (env.OTEL_EXPORTER_OTLP_HEADERS || env.OTEL_EXPORTER_OTLP_TRACES_HEADERS)) throw new ConfigError('OTEL_EXPORTER_OTLP_ENDPOINT must be https when OTLP headers are set');
+      return v;
+    }
+  } catch (e) {
+    if (e instanceof ConfigError) throw e;
+  }
   throw new ConfigError('OTEL_EXPORTER_OTLP_ENDPOINT is invalid');
 };
 
@@ -83,7 +91,7 @@ export async function start(env: Record<string, string | undefined>, deps: Start
   const metricsHost = env.MCP_METRICS_HOST ?? '0.0.0.0';
   if (!metricsHost.trim()) throw new ConfigError('MCP_METRICS_HOST is invalid');
   const sampleRatio = ratio(env.MCP_TRACE_SAMPLE_RATIO);
-  const otlpEndpoint = endpoint(env.OTEL_EXPORTER_OTLP_ENDPOINT);
+  const otlpEndpoint = endpoint(env.OTEL_EXPORTER_OTLP_ENDPOINT, env);
   const perMinute = int('MCP_RATE_PER_MINUTE', env.MCP_RATE_PER_MINUTE, 120, 1);
   const burst = int('MCP_RATE_BURST', env.MCP_RATE_BURST, 30, 1);
   const staleAfterMs = int('MCP_TOKEN_STALE_MS', env.MCP_TOKEN_STALE_MS, 900_000, 1);
@@ -113,8 +121,12 @@ export async function start(env: Record<string, string | undefined>, deps: Start
     }
   };
   const metrics: Server = createServer((req, res) => {
-    if (req.method === 'GET' && new URL(req.url ?? '/', 'http://x').pathname === '/metrics') return telemetry.metricsHandler(req, res);
-    const r = text(404, 'not found');
+    let path: string | undefined;
+    try {
+      path = new URL(req.url ?? '/', 'http://x').pathname;
+    } catch { /* malformed target, e.g. '//' */ }
+    if (req.method === 'GET' && path === '/metrics') return telemetry.metricsHandler(req, res);
+    const r = path === undefined ? text(400, 'bad request') : text(404, 'not found');
     res.writeHead(r.status, r.headers).end(r.body);
   });
   const closeMetrics = () => new Promise<void>((r) => {

@@ -35,10 +35,10 @@ describe('no OTel in the client packages', () => {
   });
 
   it('no propagation.inject / extract anywhere in src', () => {
-    const walk = (u: URL): string[] => readdirSync(u, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(new URL(`${e.name}/`, u)) : e.name.endsWith('.ts') && !e.name.includes('.test.') ? [new URL(e.name, u).pathname] : []));
+    const walk = (u: URL): URL[] => readdirSync(u, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(new URL(`${e.name}/`, u)) : e.name.endsWith('.ts') && !e.name.includes('.test.') ? [new URL(e.name, u)] : []));
     for (const f of walk(SRC)) {
       const text = readFileSync(f, 'utf8');
-      expect(text, f).not.toMatch(/propagation\.(inject|extract)|recordException|addEvent\(/);
+      expect(text, f.href).not.toMatch(/propagation\.(inject|extract)|recordException|addEvent\(/);
     }
   });
 });

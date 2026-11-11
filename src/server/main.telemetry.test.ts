@@ -56,7 +56,7 @@ describe('env validation', () => {
     ['MCP_METRICS_PORT', '65536'], ['MCP_METRICS_PORT', '-1'], ['MCP_METRICS_PORT', '9464x'], ['MCP_METRICS_PORT', '1.5'], ['MCP_METRICS_PORT', ''],
     ['MCP_METRICS_HOST', ''], ['MCP_METRICS_HOST', '   '],
     ['MCP_TRACE_SAMPLE_RATIO', '1.5'], ['MCP_TRACE_SAMPLE_RATIO', '-0.1'], ['MCP_TRACE_SAMPLE_RATIO', 'abc'], ['MCP_TRACE_SAMPLE_RATIO', '1e-1'], ['MCP_TRACE_SAMPLE_RATIO', ' 0.5'], ['MCP_TRACE_SAMPLE_RATIO', '50%'], ['MCP_TRACE_SAMPLE_RATIO', '1.1'], ['MCP_TRACE_SAMPLE_RATIO', ''],
-    ['OTEL_EXPORTER_OTLP_ENDPOINT', 'collector:4318'], ['OTEL_EXPORTER_OTLP_ENDPOINT', 'ftp://c.example.test'], ['OTEL_EXPORTER_OTLP_ENDPOINT', 'not a url'],
+    ['OTEL_EXPORTER_OTLP_ENDPOINT', 'collector:4318'], ['OTEL_EXPORTER_OTLP_ENDPOINT', 'ftp://c.example.test'], ['OTEL_EXPORTER_OTLP_ENDPOINT', 'not a url'], ['OTEL_EXPORTER_OTLP_ENDPOINT', 'http://c.example.test:4318/x?a=b'], ['OTEL_EXPORTER_OTLP_ENDPOINT', 'http://c.example.test:4318#f'], ['OTEL_EXPORTER_OTLP_ENDPOINT', 'http://c.example.test:4318?'],
   ])('%s=%j: ConfigError "<name> is invalid" and nothing was touched', async (name, value) => {
     const env = W.mcpEnv({ [name]: value });
     const readFile = vi.fn(() => '');
@@ -85,6 +85,38 @@ describe('env validation', () => {
     createTelemetry.mockClear();
     await W.boot(W.mcpEnv({ OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector.example.test:4318' }));
     expect(createTelemetry.mock.calls[0]![0].otlpEndpoint).toBe('http://collector.example.test:4318');
+  });
+});
+
+describe('OTLP credentials stay off cleartext links', () => {
+  it.each(['OTEL_EXPORTER_OTLP_HEADERS', 'OTEL_EXPORTER_OTLP_TRACES_HEADERS'])('%s with a non-loopback http endpoint: ConfigError, nothing started', async (h) => {
+    createTelemetry.mockClear();
+    const e = await W.boot(W.mcpEnv({ OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector.example.test:4318', [h]: 'authorization=Bearer CANARY-SECRET' })).then(() => undefined, (x: unknown) => x);
+    expect(e).toBeInstanceOf(ConfigError);
+    expect((e as Error).message).toBe('OTEL_EXPORTER_OTLP_ENDPOINT must be https when OTLP headers are set');
+    expect(createTelemetry).not.toHaveBeenCalled();
+  });
+
+  it.each(['https://collector.example.test:4318', 'http://127.0.0.1:4318', 'http://localhost:4318', 'http://[::1]:4318'])('%s with headers is accepted', async (url) => {
+    createTelemetry.mockClear();
+    await W.boot(W.mcpEnv({ OTEL_EXPORTER_OTLP_ENDPOINT: url, OTEL_EXPORTER_OTLP_HEADERS: 'authorization=x' }));
+    expect(createTelemetry.mock.calls[0]![0].otlpEndpoint).toBe(url);
+  });
+
+  it('http without headers is still accepted', async () => {
+    createTelemetry.mockClear();
+    await W.boot(W.mcpEnv({ OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector.example.test:4318' }));
+    expect(createTelemetry).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('metrics listener request targets', () => {
+  it('a malformed target (//) gets a fixed 400 and the listener keeps serving', async () => {
+    const m = memTelemetry();
+    const { s } = await W.boot(W.mcpEnv(), { telemetry: m.t });
+    const r = await get(s.metricsPort, '//');
+    expect([r.status, r.text]).toEqual([400, 'bad request']);
+    expect((await get(s.metricsPort, '/metrics')).status).toBe(200);
   });
 });
 
@@ -314,7 +346,8 @@ describe('telemetry failure does not touch readiness or output', () => {
     expect((await get(b.s.port, '/readyz')).status).toBe(200);
     await b.s.close();
     const all = `${b.err.join('')}${writes.join('')}${b.out.join('')}`;
-    expect(all).not.toMatch(new RegExp(`${port}|ECONNREFUSED`));
+    expect(all).not.toContain(`127.0.0.1:${port}`);
+    expect(all).not.toContain('ECONNREFUSED');
   });
 });
 

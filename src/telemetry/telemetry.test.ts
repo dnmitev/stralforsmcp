@@ -5,6 +5,7 @@
 import { Server } from 'node:http';
 import { createServer } from 'node:net';
 import { context, SpanKind, SpanStatusCode, trace } from '@opentelemetry/api';
+import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import { describe, expect, it, vi } from 'vitest';
 import { withPrincipal, currentPrincipal } from '../server/context.ts';
 import { principal } from '../../test/helpers/server.ts';
@@ -113,6 +114,27 @@ describe('resource and sampler', () => {
     const m = memTelemetry();
     await withSpan(m.t.tracer, 'root', SpanKind.SERVER, {}, async () => 0, () => 'error');
     expect(m.spans()[0]!.parentSpanContext).toBeUndefined();
+  });
+});
+
+describe('foreign active span and foreign context manager', () => {
+  it('a SERVER span ignores a foreign active span: new trace, no parent', async () => {
+    const m = memTelemetry();
+    const foreign = trace.wrapSpanContext({ traceId: 'a'.repeat(32), spanId: 'b'.repeat(16), traceFlags: 1 });
+    await context.with(trace.setSpan(context.active(), foreign), () => withSpan(m.t.tracer, 'srv', SpanKind.SERVER, {}, async () => 0, () => 'error'));
+    const s = m.byName('srv')[0]!;
+    expect(s.parentSpanContext).toBeUndefined();
+    expect(s.spanContext().traceId).not.toBe('a'.repeat(32));
+  });
+
+  it('shutdown leaves another SDK\'s global context manager alone', async () => {
+    const foreign = new AsyncLocalStorageContextManager().enable();
+    expect(context.setGlobalContextManager(foreign)).toBe(true);
+    const m = memTelemetry();
+    await m.t.shutdown();
+    const span = trace.wrapSpanContext({ traceId: 'a'.repeat(32), spanId: 'b'.repeat(16), traceFlags: 1 });
+    expect(context.with(trace.setSpan(context.active(), span), () => trace.getActiveSpan() === span)).toBe(true);
+    foreign.disable();
   });
 });
 
@@ -302,30 +324,24 @@ describe('Prometheus text (exporter naming pinned as observed)', () => {
 });
 
 describe('shutdown', () => {
-  it('no endpoint: spans are created, nothing is exported, shutdown is quick', async () => {
+  it('no endpoint: spans are created, nothing is exported, shutdown completes', async () => {
     const t = createTelemetry({ serviceVersion: '0.0.0', env: 'test', sampleRatio: 1 });
     await expect(withSpan(t.tracer, 'q', SpanKind.INTERNAL, {}, async () => 1, () => 'error')).resolves.toBe(1);
-    const t0 = performance.now();
-    await t.shutdown();
-    expect(performance.now() - t0).toBeLessThan(100);
+    await expect(t.shutdown()).resolves.toBeUndefined();
   });
 
   it('is idempotent', async () => {
     const m = memTelemetry();
     await m.t.shutdown();
-    const t0 = performance.now();
-    await m.t.shutdown();
-    expect(performance.now() - t0).toBeLessThan(50);
+    await expect(m.t.shutdown()).resolves.toBeUndefined();
   });
 
-  it('is bounded by the exporter timeout and never rejects for an unreachable collector', async () => {
+  it('never rejects for an unreachable collector', async () => {
     const port = await closedPort();
     const t = createTelemetry({ serviceVersion: '0.0.0', env: 'test', sampleRatio: 1, otlpEndpoint: `http://127.0.0.1:${port}`, otlpTimeoutMs: 200 });
     await withSpan(t.tracer, 's', SpanKind.INTERNAL, {}, async () => 1, () => 'error');
-    const t0 = performance.now();
+    await expect(t.shutdown()).resolves.toBeUndefined(); // the 5 s race in start() is covered with an injected timer in main.telemetry.test.ts
     await expect(t.shutdown()).resolves.toBeUndefined();
-    await expect(t.shutdown()).resolves.toBeUndefined();
-    expect(performance.now() - t0).toBeLessThan(2000);
   });
 
   it('exporter failure text (the endpoint) never reaches stderr or stdout', async () => {

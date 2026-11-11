@@ -30,33 +30,30 @@ const rejection = (p: Promise<unknown>) => p.then(() => undefined, (e: unknown) 
 
 describe('upstreamInstrument [fake-api]', () => {
   const agreementUuid = '11111111-2222-3333-4444-555555555555';
-  async function world() {
+  async function world(extra: Record<string, string> = {}) { // default deadline: only the timeout test shortens it
     const m = memTelemetry();
-    const w = await setup(upstreamInstrument(m.t), { STRALFORS_TIMEOUT_MS: '150' });
+    const w = await setup(upstreamInstrument(m.t), extra);
     return { m, ...w };
   }
   const base = { 'stralfors.operation': 'channels', 'http.request.method': 'GET' };
 
-  it('four calls: ok, 404, 429, timeout -> four CLIENT spans with exact attributes and statuses', async () => {
+  it('three calls: ok, 404, 429 -> three CLIENT spans with exact attributes and statuses', async () => {
     const { m, client, reply } = await world();
     await client.channels();
     reply.current = (_q, res) => json(res, 404, { message: `action id '${agreementUuid}' not found` });
     await rejection(client.channels(agreementUuid));
     reply.current = (_q, res) => (res.writeHead(429, { 'retry-after': '1', 'content-type': 'application/json' }), res.end('{}'));
     await rejection(client.channels());
-    reply.current = (_q, res) => void setTimeout(() => res.destroyed || res.end('[]'), 600);
-    await rejection(client.channels());
 
     const spans = m.byName('stralfors.request');
-    expect(spans).toHaveLength(4);
+    expect(spans).toHaveLength(3);
     for (const s of spans) expect(s.kind).toBe(SpanKind.CLIENT);
     expect(spans.map((s) => s.attributes)).toEqual([
       base,
       { ...base, 'error.type': 'agreement_not_found', 'http.response.status_code': 404 },
       { ...base, 'error.type': 'rate_limited', 'http.response.status_code': 429 },
-      { ...base, 'error.type': 'timeout' },
     ]);
-    expect(spans.map((s) => s.status.code)).toEqual([SpanStatusCode.UNSET, SpanStatusCode.ERROR, SpanStatusCode.ERROR, SpanStatusCode.ERROR]);
+    expect(spans.map((s) => s.status.code)).toEqual([SpanStatusCode.UNSET, SpanStatusCode.ERROR, SpanStatusCode.ERROR]);
     for (const s of spans) {
       expect(s.status.message).toBeUndefined();
       expect(s.events).toEqual([]);
@@ -64,12 +61,22 @@ describe('upstreamInstrument [fake-api]', () => {
 
     const req = await m.series('stralfors.requests');
     expect(num(pick(req, { operation: 'channels', outcome: 'ok' }))).toBe(1);
-    for (const kind of ['agreement_not_found', 'rate_limited', 'timeout']) expect(num(pick(req, { operation: 'channels', outcome: 'error', 'error.type': kind }))).toBe(1);
-    expect(req).toHaveLength(4);
+    for (const kind of ['agreement_not_found', 'rate_limited']) expect(num(pick(req, { operation: 'channels', outcome: 'error', 'error.type': kind }))).toBe(1);
+    expect(req).toHaveLength(3);
     const dur = await m.series('stralfors.request.duration');
     expect(hist(pick(dur, { operation: 'channels', outcome: 'ok' })).count).toBe(1);
-    expect(hist(pick(dur, { operation: 'channels', outcome: 'error', 'error.type': 'timeout' })).count).toBe(1);
-    expect(dur).toHaveLength(4);
+    expect(dur).toHaveLength(3);
+  });
+
+  it('a call that outlives the deadline -> CLIENT span and metrics with error.type timeout', async () => {
+    const { m, client, reply } = await world({ STRALFORS_TIMEOUT_MS: '50' });
+    reply.current = (_q, res) => void setTimeout(() => res.destroyed || res.end('[]'), 600); // never answers within the deadline
+    await rejection(client.channels());
+    const [span] = m.byName('stralfors.request');
+    expect(span!.attributes).toEqual({ ...base, 'error.type': 'timeout' });
+    expect(span!.status.code).toBe(SpanStatusCode.ERROR);
+    expect(num(pick(await m.series('stralfors.requests'), { operation: 'channels', outcome: 'error', 'error.type': 'timeout' }))).toBe(1);
+    expect(hist(pick(await m.series('stralfors.request.duration'), { operation: 'channels', outcome: 'error', 'error.type': 'timeout' })).count).toBe(1);
   });
 
   it('a non-Stralfors throw is error.type "error" without a status code', async () => {
@@ -95,7 +102,9 @@ describe('upstreamInstrument [fake-api]', () => {
     const { m, client, fake } = await world();
     await client.channels(agreementUuid);
     const all = dump(m.spans()) + (await m.text());
-    for (const bad of [agreementUuid, 'outputmanagement', 'invoices', `${fake.port}`, '127.0.0.1', 'actionId']) expect(all).not.toContain(bad);
+    for (const bad of [agreementUuid, 'outputmanagement', 'invoices', '127.0.0.1', 'actionId']) expect(all).not.toContain(bad);
+    // the port is checked in endpoint-bearing form only: a decimal substring of a generated trace id is not a leak
+    for (const bad of [`:${fake.port}`, `port="${fake.port}"`, `"${fake.port}"`]) expect(all).not.toContain(bad);
   });
 
   it('inside an active root span: child of it, and no tracing header reaches the fake API (token or API request)', async () => {

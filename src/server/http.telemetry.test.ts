@@ -145,12 +145,12 @@ describe('refusals', () => {
 describe('request duration histogram', () => {
   it('records seconds (not milliseconds) on the second-scale buckets with the three labels', async () => {
     const m = memTelemetry();
-    const h = await startHttp({ telemetry: m.t });
+    let ms = -250; // controlled clock: start 0, finish 250 ms
+    const h = await startHttp({ telemetry: m.t, monotonic: () => (ms += 250) });
     await h.post({ body: INIT });
     const d = await flush(m, 1);
     expect(d[0]!.attributes).toEqual({ 'http.request.method': 'POST', 'http.response.status_code': 200, 'http.route': '/mcp' });
-    expect(hist(d[0]).sum).toBeGreaterThan(0);
-    expect(hist(d[0]).sum).toBeLessThan(2); // milliseconds would be tens or hundreds
+    expect(hist(d[0]).sum).toBe(0.25); // seconds, not milliseconds
     expect(hist(d[0]).buckets.boundaries[0]).toBe(0.005);
   });
 
