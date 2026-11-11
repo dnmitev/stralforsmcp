@@ -65,8 +65,8 @@ const endpoint = (v: string | undefined, env: Record<string, string | undefined>
   try {
     const u = new URL(v);
     if (/^https?:$/.test(u.protocol) && !/[?#]/.test(v)) { // the exporter path is appended to the raw string: no query or fragment
-      // the exporter reads these headers from the environment whatever the url: never send them in cleartext off the host
-      if (u.protocol === 'http:' && !LOOPBACK.has(u.hostname) && (env.OTEL_EXPORTER_OTLP_HEADERS || env.OTEL_EXPORTER_OTLP_TRACES_HEADERS)) throw new ConfigError('OTEL_EXPORTER_OTLP_ENDPOINT must be https when OTLP headers are set');
+      // the exporter reads these headers from process.env whatever the url, so check it and the supplied env: never send them in cleartext off the host
+      if (u.protocol === 'http:' && !LOOPBACK.has(u.hostname) && (env.OTEL_EXPORTER_OTLP_HEADERS || env.OTEL_EXPORTER_OTLP_TRACES_HEADERS || process.env.OTEL_EXPORTER_OTLP_HEADERS || process.env.OTEL_EXPORTER_OTLP_TRACES_HEADERS)) throw new ConfigError('OTEL_EXPORTER_OTLP_ENDPOINT must be https when OTLP headers are set');
       return v;
     }
   } catch (e) {

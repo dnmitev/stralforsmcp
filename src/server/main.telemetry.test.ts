@@ -103,6 +103,21 @@ describe('OTLP credentials stay off cleartext links', () => {
     expect(createTelemetry.mock.calls[0]![0].otlpEndpoint).toBe(url);
   });
 
+  it.each(['OTEL_EXPORTER_OTLP_HEADERS', 'OTEL_EXPORTER_OTLP_TRACES_HEADERS'])('%s set only on process.env (the exporter reads it there): ConfigError, nothing started', async (h) => {
+    createTelemetry.mockClear();
+    const prev = process.env[h];
+    process.env[h] = 'authorization=Bearer CANARY-SECRET';
+    try {
+      const e = await W.boot(W.mcpEnv({ OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector.example.test:4318' })).then(() => undefined, (x: unknown) => x);
+      expect(e).toBeInstanceOf(ConfigError);
+      expect((e as Error).message).toBe('OTEL_EXPORTER_OTLP_ENDPOINT must be https when OTLP headers are set');
+      expect(createTelemetry).not.toHaveBeenCalled();
+    } finally {
+      if (prev === undefined) delete process.env[h];
+      else process.env[h] = prev;
+    }
+  });
+
   it('http without headers is still accepted', async () => {
     createTelemetry.mockClear();
     await W.boot(W.mcpEnv({ OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector.example.test:4318' }));
