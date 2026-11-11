@@ -128,7 +128,7 @@ describe('start', () => {
   it('full-form IPv6 without :: is accepted; bad IPv6 or hostnames are refused with a fixed message', async () => {
     const { s } = await go({ MCP_HOSTNAMES: '2001:db8:0:0:0:0:0:1' });
     expect((await send(s.port, { headers: { ...MCP_HEADERS, host: '[2001:db8::1]' }, body: INIT })).status).toBe(401);
-    for (const bad of ['[::1', '::1]', '[::1]:80', ':::', '1:2', 'a b', '[a.example]', '-', '.']) {
+    for (const bad of ['[::1', '::1]', '[::1]:80', ':::', '1:2', 'a b', '[a.example]', '-', '.', 'fe80::1%eth0', '[fe80::1%eth0]']) {
       await expect(start({ ...base, MCP_HOSTNAMES: bad }, { readFile: () => fixture().text(), audit: sink().audit, now: () => T, onSignal: () => undefined })).rejects.toThrow(new ConfigError('MCP_HOSTNAMES is invalid'));
     }
   });

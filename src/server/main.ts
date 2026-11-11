@@ -22,7 +22,7 @@ const HOSTNAME = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/;
 const entry = (h: string): string | undefined => {
   const m = /^\[(.*)\]$/.exec(h);
   const inner = m ? m[1]! : h;
-  if (isIPv6(inner)) return new URL(`http://[${inner}]`).hostname; // canonical form, as the Host check sees it
+  if (isIPv6(inner)) return inner.includes('%') ? undefined : new URL(`http://[${inner}]`).hostname; // canonical form, as the Host check sees it; zone ids are not valid in a Host header
   return m || !HOSTNAME.test(h) ? undefined : h;
 };
 const list = (name: string, v: string): string[] => {
