@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { createAudit, type Audit } from '../audit/index.ts';
 import { createTokenStore, type Env } from '../auth/index.ts';
 import { ConfigError } from '../stralfors/errors.ts';
@@ -49,7 +50,10 @@ export async function start(env: Record<string, string | undefined>, deps: Start
   const store = createTokenStore({ read: () => readFile(file), now });
   const audit = deps.audit ?? createAudit({ destination: process.stdout, now });
   const srv = createHttpServer({ store, audit, env: deploy, hosts, origins, maxBodyBytes, drainMs, now, factory: buildMcp({ env: deploy, allowWrite, audit, tools: [whoami], now }) });
-  const listening = await srv.listen(port, env.MCP_LISTEN_HOST ?? '0.0.0.0');
+  const listening = await srv.listen(port, env.MCP_LISTEN_HOST ?? '0.0.0.0').catch((e: unknown) => {
+    store.close();
+    throw e;
+  });
   const close = async () => {
     await srv.close();
     store.close();
@@ -62,7 +66,8 @@ export async function start(env: Record<string, string | undefined>, deps: Start
   return { port: listening.port, close };
 }
 
-if (import.meta.main) {
+// import.meta.main needs Node 24.2; engines allows 24.0
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   start(process.env).catch((e: unknown) => {
     process.stderr.write(`refusing to start: ${e instanceof ConfigError ? e.message : 'unexpected error'}\n`);
     process.exit(1);

@@ -69,9 +69,14 @@ describe('http kill', () => {
     expect(h.port).toBeGreaterThan(0);
   });
 
-  it('the SDK onerror receives errors but never the request or headers', async () => {
-    const h = await startHttp();
-    await h.post({ body: '{not json' });
-    for (const e of h.errors) expect(e).toBeInstanceOf(Error);
+  it('onerror receives errors but never the request body or headers', async () => {
+    const canary = 'CANARY-body-7f3a';
+    const h = await startHttp({ factory: () => { throw new Error('boom'); } });
+    await h.post({ body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { canary } }), headers: { 'x-canary': canary } });
+    expect(h.errors.length).toBeGreaterThan(0);
+    for (const e of h.errors) {
+      expect(e).toBeInstanceOf(Error);
+      expect(`${e.message}${e.stack}${JSON.stringify(e)}`).not.toContain(canary);
+    }
   });
 });

@@ -208,7 +208,7 @@ A tool spec plus title, description, input and output schemas, annotations and t
 _Avoid_: handler (that is only the function inside), command
 
 **Registry** (`registerAll`, `callTool`):
-The only path from a tool definition to a tool the MCP server exposes. Every call passes through its wrapper: policy re-check, one audit event, sanitised errors.
+The only path from a tool definition to a tool the MCP server exposes. Every call passes through its wrapper: policy re-check, one audit event, sanitised errors. Calls the SDK rejects for schema-invalid arguments never reach the wrapper and produce no audit event.
 _Avoid_: router, dispatcher
 
 **Sanitised tool error** (`DENIED_TEXT`, `ERROR_TEXT`):

@@ -35,6 +35,13 @@ describe('start', () => {
     expect(r.status).toBe(401);
   });
 
+  it('a failed listen closes the token store (no leaked reload timer)', async () => {
+    const clear = vi.spyOn(globalThis, 'clearInterval');
+    const taken = await go({});
+    await expect(start({ ...base, MCP_PORT: String(taken.s.port) }, { readFile: () => taken.f.text(), audit: sink().audit, now: () => T, onSignal: () => undefined })).rejects.toThrow();
+    expect(clear).toHaveBeenCalledTimes(1);
+  });
+
   it('index.ts exports start', () => {
     expect(index.start).toBe(start);
     expect(index.serverInfo.name).toBeTypeOf('string');

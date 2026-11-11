@@ -32,8 +32,8 @@ describe('AuditReason closed union', () => {
 
   it('has exactly the documented members (compile-time exhaustiveness)', () => {
     type Missing = Exclude<AuditReason, (typeof MEMBERS)[number]>;
-    const none: Missing[] = [];
-    expect(none).toEqual([]);
+    const exhaustive: [Missing] extends [never] ? true : false = true; // compile error when a member is not listed
+    expect(exhaustive).toBe(true);
     expect(MEMBERS).toHaveLength(27);
     expect(new Set(MEMBERS).size).toBe(27);
   });

@@ -2,7 +2,7 @@
 
 > A hosted [Model Context Protocol](https://modelcontextprotocol.io) server for the Strålfors Output Management API — explore channels, inspect rules, validate invoices before sending and query delivery status from Claude Desktop, Cursor or Claude Code.
 
-**Status:** Phase 1 (Stralfors client) in progress. A typed client library, mutation testing and CI exist; the MCP server itself follows in Phase 2. Nothing to install yet.
+**Status:** Phase 2 (MCP server). A typed Stralfors client library and a runnable stateless MCP server (token authentication, policy, audit, graceful shutdown, `whoami` tool) exist; the remaining tools follow in later phases. Not yet packaged for installation.
 
 ## Why
 
@@ -33,7 +33,7 @@ Plus ready-made prompts such as "Check my invoice" and "Which channels exist for
 
 ## Stack
 
-TypeScript 7 · Node.js 24 and 26 · `@modelcontextprotocol/sdk` (Streamable HTTP) · undici (mTLS) · zod · pino · OpenTelemetry · Vitest · StrykerJS · Testcontainers + WireMock · oxlint · Docker · Helm
+TypeScript 7 · Node.js 24 and 26 · `@modelcontextprotocol/server` v2 (Streamable HTTP) · undici (mTLS) · zod · pino · OpenTelemetry · Vitest · StrykerJS · Testcontainers + WireMock · oxlint · Docker · Helm
 
 ## Quality gates
 

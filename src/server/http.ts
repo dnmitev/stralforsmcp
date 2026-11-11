@@ -17,6 +17,8 @@ export interface HttpServerOptions {
   factory: McpServerFactory;
   now?: () => number;
   onerror?: (e: Error) => void;
+  /** test seam for the drain timer */
+  timer?: typeof setTimeout;
 }
 export interface HttpServer {
   listen(port: number, host?: string): Promise<{ port: number }>;
@@ -90,7 +92,7 @@ export function createHttpServer(o: HttpServerOptions): HttpServer {
       server.closeIdleConnections();
       if (inflight > 0 && o.drainMs > 0) {
         await new Promise<void>((r) => {
-          const t = setTimeout(r, o.drainMs);
+          const t = (o.timer ?? setTimeout)(r, o.drainMs);
           idle = () => (clearTimeout(t), r());
         });
       }
