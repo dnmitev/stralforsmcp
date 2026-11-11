@@ -69,13 +69,15 @@ describe('upstreamInstrument [fake-api]', () => {
   });
 
   it('a call that outlives the deadline -> CLIENT span and metrics with error.type timeout', async () => {
-    const { m, client, reply, channelRequests } = await world({ STRALFORS_TIMEOUT_MS: '50' });
-    reply.current = (_q, res) => void setTimeout(() => res.destroyed || res.end('[]'), 600); // never answers within the deadline
+    const { m, client, reply, channelRequests } = await world({ STRALFORS_TIMEOUT_MS: '300' });
+    await client.channels(); // warm: the token is cached, so the deadline below only covers the channels request
+    const warm = channelRequests().length;
+    reply.current = (_q, res) => void setTimeout(() => res.destroyed || res.end('[]'), 1500); // never answers within the deadline
     await rejection(client.channels());
-    expect(channelRequests()).toHaveLength(1); // the request reached the endpoint, so this is not a token-step timeout
-    const [span] = m.byName('stralfors.request');
-    expect(span!.attributes).toEqual({ ...base, 'error.type': 'timeout' });
-    expect(span!.status.code).toBe(SpanStatusCode.ERROR);
+    expect(channelRequests()).toHaveLength(warm + 1); // the request reached the endpoint, so this is not a token-step timeout
+    const span = m.byName('stralfors.request').at(-1)!;
+    expect(span.attributes).toEqual({ ...base, 'error.type': 'timeout' });
+    expect(span.status.code).toBe(SpanStatusCode.ERROR);
     expect(num(pick(await m.series('stralfors.requests'), { operation: 'channels', outcome: 'error', 'error.type': 'timeout' }))).toBe(1);
     expect(hist(pick(await m.series('stralfors.request.duration'), { operation: 'channels', outcome: 'error', 'error.type': 'timeout' })).count).toBe(1);
   });
