@@ -1,0 +1,156 @@
+/*
+ * R15 entry point. API under test (src/server/main.ts, re-exported by src/index.ts): start(env, deps?) => { port, close }.
+ */
+import { spawnSync } from 'node:child_process';
+import { createConnection } from 'node:net';
+import { Server } from 'node:http';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ConfigError } from '../stralfors/errors.ts';
+import * as index from '../index.ts';
+import { start, type Started } from './main.ts';
+import { connect, send, sink, INIT, MCP_HEADERS, LIST } from '../../test/helpers/server.ts';
+import { fixture, T } from '../../test/helpers/token-list.ts';
+
+const base = { MCP_TOKEN_LIST_FILE: 'x', MCP_HOSTNAMES: '127.0.0.1', MCP_PORT: '0', MCP_LISTEN_HOST: '127.0.0.1', STRALFORS_ENV: 'test' };
+const started: Started[] = [];
+const go = async (env: Record<string, string | undefined>, f = fixture(), extra: Parameters<typeof start>[1] = {}) => {
+  const err: string[] = [];
+  const s = await start({ ...base, ...env }, { readFile: () => f.text(), stderr: { write: (x) => void err.push(x) }, audit: sink().audit, now: () => T, onSignal: () => undefined, ...extra });
+  started.push(s);
+  return { s, f, err };
+};
+afterEach(async () => {
+  vi.restoreAllMocks();
+  await Promise.all(started.splice(0).map((s) => s.close()));
+});
+
+describe('start', () => {
+  it('minimal env starts, serves health and lists whoami for a valid token', async () => {
+    const { s, f } = await go({});
+    expect((await send(s.port, { method: 'GET', path: '/healthz', headers: { host: '127.0.0.1' } })).text).toBe('ok');
+    const fetchWith: typeof fetch = (url, init) => fetch(`http://127.0.0.1:${s.port}/mcp`, { ...init, headers: { ...Object.fromEntries(new Headers(init?.headers)), authorization: `Bearer ${f.raw.tA}` } });
+    const c = await connect('modern', fetchWith);
+    expect((await c.listTools()).tools.map((t) => t.name)).toEqual(['whoami']);
+    const r = await send(s.port, { headers: { ...MCP_HEADERS, host: '127.0.0.1' }, body: LIST });
+    expect(r.status).toBe(401);
+  });
+
+  it('index.ts exports start', () => {
+    expect(index.start).toBe(start);
+    expect(index.serverInfo.name).toBeTypeOf('string');
+  });
+
+  it.each([
+    [{ MCP_TOKEN_LIST_FILE: undefined }, 'missing MCP_TOKEN_LIST_FILE'],
+    [{ MCP_HOSTNAMES: undefined }, 'missing MCP_HOSTNAMES'],
+    [{ MCP_HOSTNAMES: ',,' }, 'MCP_HOSTNAMES is invalid'],
+    [{ MCP_HOSTNAMES: 'https://a.example' }, 'MCP_HOSTNAMES is invalid'],
+    [{ MCP_HOSTNAMES: 'a.example:8080' }, 'MCP_HOSTNAMES is invalid'],
+    [{ MCP_ORIGINS: 'https://a.example' }, 'MCP_ORIGINS is invalid'],
+    [{ MCP_PORT: '70000' }, 'MCP_PORT is invalid'],
+    [{ MCP_PORT: 'abc' }, 'MCP_PORT is invalid'],
+    [{ MCP_PORT: '-1' }, 'MCP_PORT is invalid'],
+    [{ MCP_MAX_BODY_BYTES: '0' }, 'MCP_MAX_BODY_BYTES is invalid'],
+    [{ MCP_MAX_BODY_BYTES: 'x' }, 'MCP_MAX_BODY_BYTES is invalid'],
+    [{ MCP_DRAIN_MS: '-1' }, 'MCP_DRAIN_MS is invalid'],
+    [{ MCP_DRAIN_MS: '1.5' }, 'MCP_DRAIN_MS is invalid'],
+    [{ STRALFORS_ENV: 'staging' }, 'STRALFORS_ENV is invalid'],
+    [{ STRALFORS_ENV: undefined }, 'STRALFORS_ENV is invalid'],
+    [{ STRALFORS_ENV: 'prod', STRALFORS_ALLOW_WRITE: 'true' }, 'write is never allowed in prod (STRALFORS_ALLOW_WRITE)'],
+  ])('invalid configuration %j refuses to start with %j and opens no socket', async (defect, text) => {
+    const listen = vi.spyOn(Server.prototype, 'listen');
+    await expect(go(defect as Record<string, string | undefined>)).rejects.toSatisfy((e: Error) => e instanceof ConfigError && e.message.includes(text));
+    expect(listen).not.toHaveBeenCalled();
+  });
+
+  it('an unreadable token list refuses to start', async () => {
+    const listen = vi.spyOn(Server.prototype, 'listen');
+    await expect(go({}, fixture(), { readFile: () => { throw new Error('ENOENT secret/path'); } })).rejects.toSatisfy((e: Error) => e instanceof ConfigError && e.message.includes('token list: cannot read'));
+    expect(listen).not.toHaveBeenCalled();
+  });
+
+  it('an invalid token list refuses to start, naming only the field path', async () => {
+    const f = fixture();
+    const list = JSON.parse(f.text());
+    list.users[0].role = 'root';
+    f.file.content = JSON.stringify(list);
+    await expect(go({}, f)).rejects.toSatisfy((e: Error) => e instanceof ConfigError && e.message.includes('token list: users[0].role is invalid') && !e.message.includes(f.raw.tA));
+  });
+
+  it('the token list is read from MCP_TOKEN_LIST_FILE', async () => {
+    const paths: string[] = [];
+    await go({ MCP_TOKEN_LIST_FILE: '/some/where/tokens.json' }, fixture(), { readFile: (p) => (paths.push(p), fixture().text()) });
+    expect(paths[0]).toBe('/some/where/tokens.json');
+  });
+
+  it('defaults: origins follow hostnames, body limit 1 MiB, listen host 0.0.0.0', async () => {
+    const listen = vi.spyOn(Server.prototype, 'listen');
+    const { s } = await go({ MCP_LISTEN_HOST: undefined });
+    expect(listen.mock.calls[0]!.slice(0, 2)).toEqual([0, '0.0.0.0']);
+    const h = { ...MCP_HEADERS, host: '127.0.0.1' };
+    expect((await send(s.port, { headers: { ...h, origin: 'http://127.0.0.1' }, body: INIT })).status).toBe(401);
+    expect((await send(s.port, { headers: { ...h, origin: 'http://evil.example' }, body: INIT })).status).toBe(403);
+    expect((await send(s.port, { headers: { ...h, 'content-length': '1048576' }, hold: true })).status).toBe(401);
+    expect((await send(s.port, { headers: { ...h, 'content-length': '1048577' }, hold: true })).status).toBe(413);
+  });
+
+  it('configured values override the defaults', async () => {
+    const { s } = await go({ MCP_ORIGINS: 'app.example.test', MCP_MAX_BODY_BYTES: '50' });
+    const h = { ...MCP_HEADERS, host: '127.0.0.1' };
+    expect((await send(s.port, { headers: { ...h, origin: 'https://app.example.test' }, body: INIT })).status).toBe(413);
+    expect((await send(s.port, { headers: { ...h, origin: 'http://127.0.0.1' }, body: INIT })).status).toBe(403);
+  });
+
+  it('hostnames are trimmed and deduplicated', async () => {
+    const { s } = await go({ MCP_HOSTNAMES: ' a.example , b.example,a.example ' });
+    for (const host of ['a.example', 'b.example']) expect((await send(s.port, { headers: { ...MCP_HEADERS, host }, body: INIT })).status).toBe(401);
+    expect((await send(s.port, { headers: { ...MCP_HEADERS, host: '127.0.0.1' }, body: INIT })).status).toBe(403);
+  });
+
+  it('SIGTERM handler: readiness flips, close resolves, exitCode is 0 (process.exit is never called)', async () => {
+    let handler: (() => void) | undefined;
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+    const prev = process.exitCode;
+    process.exitCode = 5;
+    try {
+      const { s } = await go({ MCP_DRAIN_MS: '2000' }, fixture(), { onSignal: (fn) => void (handler = fn) });
+      expect(handler).toBeTypeOf('function');
+      handler!();
+      const ready = await send(s.port, { method: 'GET', path: '/readyz' }).then((r) => r.status, () => 503);
+      expect(ready).toBe(503);
+      await vi.waitFor(() => expect(process.exitCode).toBe(0));
+      expect(exit).not.toHaveBeenCalled();
+      expect(await new Promise<boolean>((r) => { const c = createConnection({ port: s.port, host: '127.0.0.1' }); c.once('error', () => r(true)); c.once('connect', () => (c.destroy(), r(false))); })).toBe(true);
+    } finally {
+      process.exitCode = prev;
+    }
+  });
+
+  it('a second signal during drain does nothing extra', async () => {
+    let handler: (() => void) | undefined;
+    const { s } = await go({}, fixture(), { onSignal: (fn) => void (handler = fn) });
+    handler!();
+    expect(() => handler!()).not.toThrow();
+    await s.close();
+  });
+});
+
+describe('process entry', () => {
+  it('node src/server/main.ts with an unreadable token list exits 1 with a fixed message', () => {
+    const r = spawnSync(process.execPath, ['src/server/main.ts'], {
+      cwd: new URL('../..', import.meta.url).pathname,
+      env: { PATH: process.env.PATH ?? '', MCP_TOKEN_LIST_FILE: '/nonexistent-dir/tokens.json', MCP_HOSTNAMES: '127.0.0.1', MCP_PORT: '0', STRALFORS_ENV: 'test' },
+      encoding: 'utf8',
+      timeout: 20_000,
+    });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('refusing to start: token list: cannot read');
+    expect(r.stderr).not.toContain('nonexistent-dir');
+  });
+
+  it('missing configuration exits 1', () => {
+    const r = spawnSync(process.execPath, ['src/server/main.ts'], { cwd: new URL('../..', import.meta.url).pathname, env: { PATH: process.env.PATH ?? '' }, encoding: 'utf8', timeout: 20_000 });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('refusing to start: missing MCP_TOKEN_LIST_FILE');
+  });
+});

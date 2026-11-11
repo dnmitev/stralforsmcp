@@ -3,8 +3,13 @@ import type { Principal, Role, VerifyCode } from '../auth/index.ts';
 import type { DenyReason } from '../policy/index.ts';
 
 export type Outcome = 'allowed' | 'denied' | 'blocked' | 'error';
-/** A fixed code: a deny reason, a verify code, 'write_guard' or a StralforsError kind. Never free text. */
-export type AuditReason = DenyReason | VerifyCode | 'write_guard' | (string & {});
+/** The `StralforsError.kind` literals (src/stralfors/errors.ts). */
+export type StralforsErrorKind =
+  | 'config' | 'tls' | 'auth' | 'forbidden' | 'agreement_not_found' | 'route_not_found' | 'bad_request'
+  | 'validation_failed' | 'conflict' | 'rate_limited' | 'upstream' | 'timeout' | 'too_large' | 'schema'
+  | 'write_blocked' | 'token_format' | 'request_invalid';
+/** A fixed code: a deny reason, a verify code, a StralforsError kind, 'write_guard' or 'error'. Never free text. */
+export type AuditReason = DenyReason | VerifyCode | StralforsErrorKind | 'write_guard' | 'error';
 
 export interface AuditInput {
   principal?: Principal;
@@ -22,7 +27,7 @@ export interface AuditEvent {
   tool: string;
   env: 'test' | 'prod';
   outcome: Outcome;
-  reason?: string;
+  reason?: AuditReason;
   durationMs: number;
   traceId?: string;
 }

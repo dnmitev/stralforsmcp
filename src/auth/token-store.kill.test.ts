@@ -70,7 +70,7 @@ describe('hash and order', () => {
   it('verify codes carry no extra keys', () => {
     const f = fixture();
     expect(Object.keys(store(f).verify(f.raw.tB))).toEqual(['ok', 'code']);
-    expect(Object.keys(store(f).verify(f.raw.tA))).toEqual(['ok', 'principal']);
+    expect(Object.keys(store(f).verify(f.raw.tA))).toEqual(['ok', 'principal', 'expiresAt']);
     const r = store(f).verify(f.raw.tA);
     if (r.ok) expect(Object.keys(r.principal).sort()).toEqual(['envs', 'name', 'role', 'userId']);
   });

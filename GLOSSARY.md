@@ -162,14 +162,70 @@ _Avoid_: authorization (ambiguous with the header), check
 The rule that a tool a principal may not call is not listed to that principal.
 
 **Audit event** (`AuditEvent`, `log.type = audit`):
-One line per tool call outcome carrying identity, outcome codes, duration and the API trace id; it has no field for arguments, payloads, agreement ids or consignment ids.
+One line per tool call outcome, or per refused authentication, carrying identity, outcome codes, duration and the API trace id; it has no field for arguments, payloads, agreement ids or consignment ids. The reason is a closed union, never free text.
 _Avoid_: access log, trace
+
+**Reason** (`AuditReason`):
+The closed set of codes an audit event may carry as its reason: a policy deny reason, a verify code, a Stralfors error kind, `write_guard` or `error`. The type rejects any other string.
+_Avoid_: message, detail, cause (free text)
 
 **Outcome** (`Outcome`):
 `allowed`, `denied`, `blocked` (stopped by the write guard) or `error` (upstream or client failure).
 
 **Masked identifier** (`mask`):
 An identifier shown as its first and last four characters; anything shorter than sixteen characters is shown as "…" only.
+
+**Authentication** (`authenticate`):
+Turning the Authorization header of one request into a principal through the token store, before the request reaches the MCP handler. Anything that is not exactly `Bearer <token>` is treated as a malformed token.
+_Avoid_: login, sign-in, authorization (that is the policy decision)
+
+**Authentication result** (`AuthResult`):
+Either a principal wrapped for the MCP handler or a verify code; the only thing the HTTP layer learns from the Authorization header. A refusal is answered with one fixed 401 whatever the cause.
+
+**Transport guard** (`refuse`, Host and Origin validation):
+A check on the raw request before authentication: Host, Origin, path, method and declared body size. A refusal (403, 404, 405, 413) carries no identity and is not an audit event.
+_Avoid_: middleware, filter, firewall
+
+**Liveness** (`/healthz`):
+The answer "the process runs"; always 200 while it does.
+
+**Readiness** (`/readyz`):
+The answer "this instance accepts work"; 200 until shutdown begins, 503 from then on so a load balancer stops routing to it.
+_Avoid_: health (ambiguous between the two)
+
+## Server
+
+**Factory** (`buildMcp`, `McpServerFactory`):
+The function the MCP handler calls once per request to build a fresh MCP server holding only the caller's visible tools. Without a principal it builds a server with no tools.
+_Avoid_: singleton, shared server, session server
+
+**Per-caller tools** (`registerAll`, `visibleTools`):
+The property that the tool list a caller sees is computed for that caller at request time; a tool the caller may not use is absent, and calling it is an unknown-tool protocol error rather than a denial.
+_Avoid_: hidden tools, disabled tools
+
+**Tool definition** (`ToolDef`):
+A tool spec plus title, description, input and output schemas, annotations and the function that does the work. The static, policy-free description of one tool.
+_Avoid_: handler (that is only the function inside), command
+
+**Registry** (`registerAll`, `callTool`):
+The only path from a tool definition to a tool the MCP server exposes. Every call passes through its wrapper: policy re-check, one audit event, sanitised errors.
+_Avoid_: router, dispatcher
+
+**Sanitised tool error** (`DENIED_TEXT`, `ERROR_TEXT`):
+The only two error texts a tool call returns to a client: `not allowed: <code>` for a policy denial and `tool failed` for anything thrown. The thrown message never reaches the client.
+_Avoid_: error message (unqualified), stack
+
+**Era** (`ctx.era`):
+The MCP protocol generation a request speaks: `modern` (the 2026-07-28 envelope) or `legacy` (the 2025 initialize handshake). Both are served from the same endpoint, both statelessly.
+_Avoid_: version (ambiguous with the server version), mode
+
+**Stateless**:
+The server issues and accepts no session id; every request carries its own token and any replica can answer it.
+_Avoid_: session, sticky, connection (for a client relationship)
+
+**Drain** (`drainMs`):
+The bounded wait during shutdown for requests already in flight to finish after the listener has closed and readiness has gone to 503.
+_Avoid_: graceful shutdown (the whole sequence), timeout (unqualified)
 
 ## Quality
 
