@@ -1,12 +1,16 @@
 import { readFileSync, realpathSync } from 'node:fs';
 import { isIPv6 } from 'node:net';
+import { createServer, type Server } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { createAudit, fromBlocked, type Audit } from '../audit/index.ts';
 import { createTokenStore, type Env } from '../auth/index.ts';
 import { ConfigError } from '../stralfors/errors.ts';
 import { createClient, createLogger, loadConfig, type CreateClientOptions, type StralforsClient } from '../stralfors/index.ts';
 import { createListChannels } from './channels.ts';
+import { serverInfo } from '../server-info.ts';
+import { activeIds, createTelemetry, logMixin, upstreamInstrument, type Telemetry } from '../telemetry/index.ts';
 import { currentPrincipal } from './context.ts';
+import { text } from './guards.ts';
 import { createHttpServer } from './http.ts';
 import { buildMcp } from './mcp.ts';
 import { createRateLimiter } from './rate-limit.ts';
@@ -21,8 +25,13 @@ export interface StartDeps {
   monotonic?: () => number;
   onSignal?: (fn: () => void) => void;
   clientFactory?: (o: CreateClientOptions) => StralforsClient;
+  /** prebuilt telemetry (in-memory seams in tests); start() still owns its shutdown */
+  telemetry?: Telemetry;
+  /** test seam for the telemetry flush bound */
+  timer?: typeof setTimeout;
 }
-export interface Started { port: number; close(): Promise<void> }
+export interface Started { port: number; metricsPort: number; close(): Promise<void> }
+export const TELEMETRY_FLUSH_MS = 5_000;
 
 const HOSTNAME = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/;
 // Allowlist entries: a hostname, or an IPv6 literal bare or bracketed (stored bracketed, as WHATWG URL reports it). No scheme, no port.
@@ -44,6 +53,20 @@ const int = (name: string, v: string | undefined, def: number, min: number, max 
   return n;
 };
 
+const RATIO = /^(0|1|0?\.\d+|1\.0+)$/;
+const ratio = (v: string | undefined): number => {
+  if (v === undefined) return 0.1;
+  if (!RATIO.test(v) || Number(v) > 1) throw new ConfigError('MCP_TRACE_SAMPLE_RATIO is invalid');
+  return Number(v);
+};
+const endpoint = (v: string | undefined): string | undefined => {
+  if (!v) return undefined;
+  try {
+    if (/^https?:$/.test(new URL(v).protocol)) return v;
+  } catch { /* falls through */ }
+  throw new ConfigError('OTEL_EXPORTER_OTLP_ENDPOINT is invalid');
+};
+
 export async function start(env: Record<string, string | undefined>, deps: StartDeps = {}): Promise<Started> {
   const file = env.MCP_TOKEN_LIST_FILE;
   if (!file) throw new ConfigError('missing MCP_TOKEN_LIST_FILE');
@@ -56,6 +79,11 @@ export async function start(env: Record<string, string | undefined>, deps: Start
   if (env.STRALFORS_ENV !== 'test' && env.STRALFORS_ENV !== 'prod') throw new ConfigError('STRALFORS_ENV is invalid');
   if (env.STRALFORS_ALLOW_WRITE !== undefined && env.STRALFORS_ALLOW_WRITE !== 'true' && env.STRALFORS_ALLOW_WRITE !== 'false') throw new ConfigError('STRALFORS_ALLOW_WRITE is invalid');
   if (env.STRALFORS_ENV === 'prod' && env.STRALFORS_ALLOW_WRITE === 'true') throw new ConfigError('write is never allowed in prod (STRALFORS_ALLOW_WRITE)');
+  const metricsPort = int('MCP_METRICS_PORT', env.MCP_METRICS_PORT, 9464, 0, 65535);
+  const metricsHost = env.MCP_METRICS_HOST ?? '0.0.0.0';
+  if (!metricsHost.trim()) throw new ConfigError('MCP_METRICS_HOST is invalid');
+  const sampleRatio = ratio(env.MCP_TRACE_SAMPLE_RATIO);
+  const otlpEndpoint = endpoint(env.OTEL_EXPORTER_OTLP_ENDPOINT);
   const perMinute = int('MCP_RATE_PER_MINUTE', env.MCP_RATE_PER_MINUTE, 120, 1);
   const burst = int('MCP_RATE_BURST', env.MCP_RATE_BURST, 30, 1);
   const staleAfterMs = int('MCP_TOKEN_STALE_MS', env.MCP_TOKEN_STALE_MS, 900_000, 1);
@@ -68,44 +96,76 @@ export async function start(env: Record<string, string | undefined>, deps: Start
   const deploy: Env = config.env;
   const allowWrite = config.allowWrite;
   const store = createTokenStore({ read: () => readFile(file), now, staleAfterMs, onStale: () => void stderr.write('token_list.stale\n') });
-  const audit = deps.audit ?? createAudit({ destination: process.stdout, now });
+  const telemetry = deps.telemetry ?? createTelemetry({ serviceVersion: serverInfo.version, env: deploy, sampleRatio, otlpEndpoint });
+  telemetry.instruments.observeStale(store.staleMs);
+  const audit = deps.audit ?? createAudit({ destination: process.stdout, now, otelTraceId: () => activeIds()?.trace_id });
   const clients = new Map<string, StralforsClient>();
   const closeClients = () => Promise.allSettled([...clients.values()].map((c) => c.close()));
-  const logger = createLogger({ level: 'info', destination: stderr });
+  const logger = createLogger({ level: 'info', destination: stderr, mixin: logMixin });
   const make = deps.clientFactory ?? createClient;
+  const timer = deps.timer ?? setTimeout;
+  const shutdownTelemetry = async () => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([telemetry.shutdown(), new Promise<never>((_, rej) => void (t = timer(() => rej(new Error('timeout')), TELEMETRY_FLUSH_MS)).unref?.())]);
+    } finally {
+      clearTimeout(t);
+    }
+  };
+  const metrics: Server = createServer((req, res) => {
+    if (req.method === 'GET' && new URL(req.url ?? '/', 'http://x').pathname === '/metrics') return telemetry.metricsHandler(req, res);
+    const r = text(404, 'not found');
+    res.writeHead(r.status, r.headers).end(r.body);
+  });
+  const closeMetrics = () => new Promise<void>((r) => {
+    if (!metrics.listening) return r();
+    metrics.close(() => r());
+    metrics.closeAllConnections();
+  });
   let srv: ReturnType<typeof createHttpServer>;
   let listening: { port: number };
+  let metricsListening: number;
   try {
     for (const id of Object.keys(config.profiles)) {
-      clients.set(id, make({ config, profileId: id, logger, now, onBlocked: (e) => void audit.record({ ...fromBlocked(e), principal: currentPrincipal(), env: deploy }) }));
+      clients.set(id, make({ config, profileId: id, logger, now, instrument: upstreamInstrument(telemetry), onBlocked: (e) => void audit.record({ ...fromBlocked(e), principal: currentPrincipal(), env: deploy }) }));
     }
     const profiles = Object.values(config.profiles).map((p) => ({ id: p.id, country: p.country }));
     const tools = [createWhoami(profiles), createListChannels({ clients, config })];
     const limiter = createRateLimiter({ perMinute, burst, now: deps.monotonic ?? (() => performance.now()) });
-    srv = createHttpServer({ store, audit, env: deploy, hosts, origins, maxBodyBytes, drainMs, now, limiter, factory: buildMcp({ env: deploy, allowWrite, audit, tools, now }) });
+    metricsListening = await new Promise<number>((resolve, reject) => {
+      metrics.once('error', () => reject(new ConfigError('metrics listener failed'))); // the OS error carries the address: not forwarded
+      metrics.listen(metricsPort, metricsHost, () => resolve((metrics.address() as { port: number }).port));
+    });
+    srv = createHttpServer({ store, audit, telemetry, monotonic: deps.monotonic, env: deploy, hosts, origins, maxBodyBytes, drainMs, now, limiter, factory: buildMcp({ env: deploy, allowWrite, audit, tools, now, telemetry }) });
     listening = await srv.listen(port, env.MCP_LISTEN_HOST ?? '0.0.0.0');
   } catch (e) {
     await closeClients();
+    await closeMetrics();
+    await shutdownTelemetry().catch(() => undefined);
     store.close();
     throw e;
   }
   let closing: Promise<void> | undefined;
   const close = () => (closing ??= (async () => {
     let r: PromiseSettledResult<void>[];
+    let first: string | undefined;
     try {
       await srv.close();
     } finally {
       r = await closeClients();
+      if (r.some((x) => x.status === 'rejected')) first = 'client close failed';
+      await closeMetrics().catch(() => undefined);
+      await shutdownTelemetry().catch(() => void (first ??= 'telemetry shutdown failed'));
       store.close();
     }
-    if (r.some((x) => x.status === 'rejected')) throw new Error('client close failed');
+    if (first) throw new Error(first);
   })());
   const onSignal = deps.onSignal ?? ((fn) => {
     process.once('SIGTERM', fn);
     process.once('SIGINT', fn);
   });
   onSignal(() => void close().then(() => void (process.exitCode = 0), () => void (process.exitCode = 1)));
-  return { port: listening.port, close };
+  return { port: listening.port, metricsPort: metricsListening, close };
 }
 
 // import.meta.main needs Node 24.2; engines allows 24.0

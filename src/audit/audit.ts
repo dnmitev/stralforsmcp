@@ -26,18 +26,21 @@ export interface AuditEvent {
   reason?: AuditReason;
   durationMs: number;
   traceId?: string;
+  trace_id?: string;
 }
-export const AUDIT_KEYS = ['ts', 'userId', 'role', 'tool', 'env', 'outcome', 'reason', 'durationMs', 'traceId'] as const;
+// `traceId` is the vendor's request id (from upstream error bodies); `trace_id` is this server's OpenTelemetry trace id (32 hex).
+export const AUDIT_KEYS = ['ts', 'userId', 'role', 'tool', 'env', 'outcome', 'reason', 'durationMs', 'traceId', 'trace_id'] as const;
 
 export interface Audit { record(input: AuditInput): AuditEvent }
 
 /** First 4 + "…" + last 4 for ids of 16+ chars; anything shorter is fully hidden. */
 export const mask = (id: string): string => (id.length >= 16 ? `${id.slice(0, 4)}…${id.slice(-4)}` : '…');
 
-export function createAudit(o: { destination: { write(chunk: string): void }; now: () => number }): Audit {
+export function createAudit(o: { destination: { write(chunk: string): void }; now: () => number; otelTraceId?: () => string | undefined }): Audit {
   const p = pino({ base: { 'log.type': 'audit' }, timestamp: false }, o.destination);
   return {
     record(i) {
+      const otel = o.otelTraceId?.();
       const ev: AuditEvent = {
         ts: new Date(o.now()).toISOString(),
         userId: i.principal?.userId ?? 'anonymous',
@@ -48,6 +51,7 @@ export function createAudit(o: { destination: { write(chunk: string): void }; no
         ...(i.reason === undefined ? {} : { reason: i.reason }),
         durationMs: i.durationMs,
         ...(i.traceId === undefined ? {} : { traceId: i.traceId }),
+        ...(otel ? { trace_id: otel } : {}),
       };
       p.info(ev);
       return ev;

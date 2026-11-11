@@ -81,8 +81,9 @@ _Avoid_: fault (when the parsed form is meant), issue, error item
 **Error kind** (`StralforsError.kind`):
 The stable, machine-readable classification of a failure (`auth`, `agreement_not_found`, `write_blocked`, ...). A closed literal union (`StralforsErrorKind`) from which the audit reason is derived. Consumers branch on the kind, never on message text.
 
-**Trace id** (`StralforsError.traceId`):
-The identifier the API or its framework attaches to a failed request, surfaced for support tickets.
+**Vendor trace id** (`traceId`, `StralforsError.traceId`):
+The identifier the API or its framework attaches to a failed request, surfaced for support tickets and audited as-is. Not this server's trace id.
+_Avoid_: trace_id (that is this server's OpenTelemetry trace id), request id
 
 ## Safety
 
@@ -97,7 +98,7 @@ The fixed set of read paths the write guard lets through in `prod`.
 The check that a request path stays under the API's own prefixes and never leaves the fixed base URL.
 
 **Log key allowlist** (`createLogger`, `droppedKeys`):
-The fixed set of field names a log line may carry. Any other field is dropped and counted, so a new field cannot leak by accident.
+The fixed set of field names a log line may carry. Any other field is dropped and counted, so a new field cannot leak by accident. It governs what call sites pass, not what the log mixin adds.
 
 **Safe message** (`StralforsError.message`):
 An error message made of fixed text only: it never contains header values, body text, secrets or identity ids.
@@ -166,7 +167,7 @@ One line per tool call outcome, or per refused authentication, carrying identity
 _Avoid_: access log, trace
 
 **Reason** (`AuditReason`):
-The closed set of codes an audit event may carry as its reason: a policy deny reason, a verify code, a Stralfors error kind, `write_guard`, `bad_input` or `error`. Derived from the error kind union, so a new kind is a new reason without a second list. `rate_limited` names both this server's own limit (outcome `denied`, tool `-`) and the upstream 429 (outcome `error`). The type rejects any other string.
+The closed set of codes an audit event may carry as its reason: a policy deny reason, a verify code, a Stralfors error kind, `write_guard`, `bad_input` or `error`. Derived from the error kind union, so a new kind is a new reason without a second list. `rate_limited` names both this server's own limit (outcome `denied`, tool `-`) and the upstream 429 (outcome `error`). The type rejects any other string. Also the only values the span attribute and metric label `error.type` may take.
 _Avoid_: message, detail, cause (free text)
 
 **Outcome** (`Outcome`):
@@ -250,11 +251,83 @@ The per-principal state of the rate limit: its remaining tokens and the time of 
 The number of calls a principal may make at once from a full bucket before the per-minute rate applies.
 
 **Staleness** (`staleMs`, `MCP_TOKEN_STALE_MS`, `token_list.stale`):
-How long the token list has been served from its last good load while reloads keep failing; zero while the last reload succeeded. Past the threshold one fixed warning is written; it is never a readiness condition.
+How long the token list has been served from its last good load while reloads keep failing; zero while the last reload succeeded. Past the threshold one fixed warning is written; it is never a readiness condition. Exported as the gauge `mcp_token_list_stale_seconds`.
 _Avoid_: expiry, outage, unhealthy
 
 **Whoami** (`whoami`):
 The read tool that returns the caller's name, role and permitted environments, the deployment environment, the tools visible to the caller and the configured profiles (id and country). Never a token, scope, secret or agreement id.
+
+## Observability
+
+**Manual instrumentation**:
+The rule that every span and metric comes from explicit code in this repository: no auto-instrumentation package, no loader hook, no `traceparent` sent to the API.
+_Avoid_: agent, auto-instrumentation, plug-in
+
+**Span** (`withSpan`):
+One timed unit of work with a fixed name, a kind and attributes drawn from the span key allowlist. This server creates exactly three kinds: the root server span, the tool span and the upstream span. A failure sets status `ERROR` and `error.type`; it never records an exception or a message.
+_Avoid_: trace (the tree of spans), event, log
+
+**Root server span** (`POST /mcp`, kind `SERVER`):
+The span around one request on the MCP port after the transport guards; always a root, because the incoming `traceparent` and `tracestate` are ignored. Health probes and guard refusals have no span. A 401 or 429 leaves the status unset but carries `error.type`.
+_Avoid_: request span (ambiguous with the upstream span), trace
+
+**Tool span** (`mcp.tool <name>`, kind `INTERNAL`):
+The span around one tool call through the registry, a child of the root server span, carrying the tool name, environment, outcome and reason.
+
+**Upstream span** (`stralfors.request`, kind `CLIENT`):
+The span around one request to the API, created by the instrument hook, carrying the operation and method and, on failure, the status code and error kind. It never carries a path, query, id or URL.
+_Avoid_: client span (ambiguous with the MCP client), vendor span
+
+**Span key allowlist** (`ALLOWED_SPAN_KEYS`, `setSafe`, `droppedKeys`):
+The closed set of attribute keys any span may carry. Attributes set through `setSafe` with another key are dropped and counted; attributes set on the span directly are not covered.
+_Avoid_: scrubber, redaction
+
+**Instrument** (`INSTRUMENTS`):
+One named metric with a kind (counter, histogram, observable gauge), a unit, a description and its label keys. The unit is exported as a `# UNIT` line, never as a name suffix.
+_Avoid_: metric series, label set (that is the output), gauge (unqualified)
+
+**Instrument table** (`INSTRUMENTS`):
+The single table that defines every instrument together with its label keys, so the label allowlist and the call sites cannot drift apart. An instrument not in the table has no allowlist.
+
+**Structural label allowlist** (allowlist View, `createAllowListAttributesProcessor`):
+One per-instrument View that drops any label not in the instrument's key list before aggregation, so the set of label keys is bounded by the table and not by call-site discipline. It bounds keys, not values.
+_Avoid_: filter, scrubber, cardinality limit (that would bound values)
+
+**Method label** (`METHOD_LABEL`, `_OTHER`):
+The HTTP method as a label or attribute: one of the nine standard methods verbatim, anything else `_OTHER`, so caller text never becomes a label value.
+
+**Route label** (`http.route`):
+The fixed template `/mcp` on every measured request on the MCP port, whatever the path was. Never the request path.
+
+**Trace id and span id** (`trace_id`, `span_id`, `activeIds`):
+The 32- and 16-hex identifiers of the active span, copied onto log lines and, the trace id only, onto audit lines, sampled or not. They correlate lines of one request and are never a metric label. Not secret, not an identity.
+_Avoid_: traceId (the vendor trace id), request id, correlation id
+
+**Log mixin** (`logMixin`):
+The function that adds `trace_id` and `span_id` to every log line written inside a span. It runs after the log key allowlist, so it is the one path that can add keys the allowlist does not see.
+
+**Metrics listener** (`MCP_METRICS_HOST`, `MCP_METRICS_PORT`, `GET /metrics`):
+A second plain HTTP listener owned by the server that answers only `GET /metrics` in Prometheus text format and 404 to everything else. It has no guards, authentication or TLS and is meant to be reachable from the scraper only; the MCP port answers 404 for `/metrics`.
+_Avoid_: admin port, management port, exporter server (the library's own server is never started)
+
+**Sample ratio** (`MCP_TRACE_SAMPLE_RATIO`, `TraceIdRatioBasedSampler`):
+The fraction of root spans that are recorded and exported, decided here and only here; a caller cannot raise it or choose ids. An unsampled span still has valid ids for correlation.
+_Avoid_: trace rate, sampling header
+
+**Trace exporter** (`OTEL_EXPORTER_OTLP_ENDPOINT`):
+The optional OTLP/HTTP destination for spans. Without it spans are created but never exported; with it, export failures are swallowed and never affect readiness.
+
+**Instrument hook** (`instrument`, `InstrumentInfo`):
+The client's seam that wraps one upstream request, after the write guard and around the token fetch and retry, with only an operation name and a method. It keeps the client library free of telemetry imports.
+_Avoid_: middleware, interceptor
+
+**Telemetry shutdown bound** (`TELEMETRY_FLUSH_MS`):
+The fixed time shutdown waits for exporters to flush before giving up and reporting a failed close. The only observable failure of telemetry shutdown is time.
+_Avoid_: flush timeout (unqualified), drain (that is the HTTP wait)
+
+**Context manager ownership** (`shared`, `owners`):
+The rule that the process has one async-local context manager, registered globally by the first telemetry created and disabled by the last one shut down. The tracer and meter providers are never registered globally.
+_Avoid_: global tracer, global SDK
 
 ## Quality
 

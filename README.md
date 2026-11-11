@@ -106,6 +106,10 @@ Smoke check against the live test API (manual, never run in CI): export the vari
 | `MCP_RATE_PER_MINUTE` | no | `120` | integer >= 1, per-principal refill (per pod) |
 | `MCP_RATE_BURST` | no | `30` | integer >= 1, per-principal bucket size |
 | `MCP_TOKEN_STALE_MS` | no | `900000` | integer >= 1, a failing token list reload this long logs one `token_list.stale` line |
+| `MCP_METRICS_PORT` | no | `9464` | integer 0-65535 (`0` = random), the separate `/metrics` listener |
+| `MCP_METRICS_HOST` | no | `0.0.0.0` | metrics listen address, non-empty |
+| `MCP_TRACE_SAMPLE_RATIO` | no | `0.1` | decimal 0 to 1 (`0`, `.5`, `0.25`, `1.0`; no sign, exponent or percent): fraction of requests whose trace is exported |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | no | unset | `http(s)` base URL of an OTLP/HTTP collector; unset or empty = spans are created but not exported |
 | `STRALFORS_PROFILES`, `STRALFORS_PROFILE_<ID>_*` | yes | none | profile variables as read by the Stralfors client library (see above); secrets by file path only |
 
 Request pipeline (first match answers; refusals 3-7 are not audited, 401s and tool calls are):
@@ -134,6 +138,39 @@ Request pipeline (first match answers; refusals 3-7 are not audited, 401s and to
 2. Export `STRALFORSMCP_TOKEN` from the token printed in step 1 (in your shell only, never in a file in this repository), `MCP_TOKEN_LIST_FILE` (that file), `MCP_HOSTNAMES=localhost`, `STRALFORS_ENV=test` and the `STRALFORS_PROFILES` / `STRALFORS_PROFILE_<ID>_*` variables pointing at your credential files (paths only; never put secret values in the environment or on the command line).
 3. `node src/server/main.ts`, then `curl localhost:3000/healthz`.
 4. Add `{"type":"http","url":"http://localhost:3000/mcp","headers":{"Authorization":"Bearer ${STRALFORSMCP_TOKEN}"}}` to `.mcp.json` and call `whoami`, then `list_channels`.
+
+## Observability
+
+Manual instrumentation only (no auto-instrumentation, no loader hook). Traces go over OTLP/HTTP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set; metrics are pulled by Prometheus from a second listener (`MCP_METRICS_HOST:MCP_METRICS_PORT`, `GET /metrics`). The MCP port answers 404 for `/metrics`; keep the metrics port off the ingress and reachable from Prometheus only (NetworkPolicy). An incoming `traceparent` is ignored (every request is its own root span) and none is sent to Stralfors. No span or label carries a payload, token, user id, agreement id, path, query or exception message.
+
+Spans: `POST /mcp` (server), `mcp.tool <name>` (internal), `stralfors.request` (client). Attribute keys are a closed set: `http.request.method`, `http.response.status_code`, `http.route`, `error.type`, `tool`, `outcome`, `env`, `stralfors.operation`.
+
+| Prometheus name (as exported) | Type | Labels |
+|---|---|---|
+| `http_server_request_duration_{bucket,sum,count}` (seconds) | histogram | `http_request_method` (known methods or `_OTHER`), `http_response_status_code`, `http_route` (always `/mcp`) |
+| `mcp_auth_rejections_total` | counter | `reason` (`malformed`, `unknown`, `expired`, `revoked`) |
+| `mcp_http_rate_limited_total` | counter | none |
+| `mcp_tool_calls_total` | counter | `tool`, `outcome` (`allowed`, `denied`, `error`), `env` |
+| `mcp_tool_duration_{bucket,sum,count}` (seconds) | histogram | `tool`, `outcome` |
+| `stralfors_requests_total` | counter | `operation`, `outcome` (`ok`, `error`), `error_type` |
+| `stralfors_request_duration_{bucket,sum,count}` (seconds) | histogram | `operation`, `outcome`, `error_type` |
+| `mcp_token_list_stale_seconds` | gauge | none |
+| `target_info` | info | `service_name`, `service_version`, `deployment_environment_name` |
+
+Units are `# UNIT` lines, not name suffixes. Health probes are not measured.
+
+Scrape example (named port `metrics`, not routed by the ingress):
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+spec:
+  endpoints:
+    - port: metrics
+      path: /metrics
+```
+
+Logs and audit lines written inside a request carry `trace_id` (32 hex) and, on log lines, `span_id` (16 hex). `traceId` in an audit or log line is the Stralfors vendor request id; `trace_id` is this server's trace. Loki derived field (never a Loki label): `"trace_id":"(\w+)"`.
 
 ## Mutation testing
 

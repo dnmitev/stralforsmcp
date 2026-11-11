@@ -48,7 +48,7 @@ const mcpEnv = (extra: Record<string, string | undefined> = {}) => {
   tokenFile = join(dir, `tokens-${Math.random().toString(16).slice(2)}.json`);
   writeFileSync(tokenFile, f.text());
   tp = twoProfiles(pki);
-  return { MCP_TOKEN_LIST_FILE: tokenFile, MCP_HOSTNAMES: '127.0.0.1', MCP_PORT: '0', MCP_LISTEN_HOST: '127.0.0.1', ...tp.env, ...extra };
+  return { MCP_TOKEN_LIST_FILE: tokenFile, MCP_HOSTNAMES: '127.0.0.1', MCP_PORT: '0', MCP_METRICS_PORT: '0', MCP_METRICS_HOST: '127.0.0.1', MCP_LISTEN_HOST: '127.0.0.1', ...tp.env, ...extra };
 };
 type Deps = NonNullable<Parameters<typeof start>[1]>;
 const real = (o: CreateClientOptions): StralforsClient => createClient({ ...o, ca: pki.ca, baseUrl: api.fake.url });

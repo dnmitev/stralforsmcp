@@ -24,7 +24,11 @@ export interface CreateClientOptions {
   onBlocked?: (e: { profile: string; method: string; pathTemplate: string }) => void;
   /** clock in ms */
   now?: () => number;
+  /** wraps one upstream request (after the write guard, including the token fetch and the 401 retry); default runs it as is. Keeps the client free of telemetry imports. */
+  // ponytail: not generic (R32 sketches <T>): vi.fn() mocks lose generics and would not typecheck; the client casts the result back
+  instrument?: (info: InstrumentInfo, run: () => Promise<unknown>) => Promise<unknown>;
 }
+export interface InstrumentInfo { operation: string; method: string }
 // unanchored on purpose: an id hidden inside a segment (encoded separator, prefix) is still masked
 const ID_SEGMENT = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\d{6,}/i;
 interface RequestOpts<T> { schema?: z.ZodType<T>; query?: Record<string, string>; operation?: string }
@@ -36,6 +40,7 @@ export function createClient(o: CreateClientOptions) {
   const base = o.baseUrl ?? config.baseUrl;
   const log = o.logger ?? createLogger({ level: 'silent' });
   const now = o.now ?? Date.now;
+  const instrument = o.instrument ?? ((_i, run) => run());
   const agent = createAgent(profile, { ca: o.ca });
   const limits = { timeoutMs: config.timeoutMs, maxBytes: config.maxBodyBytes };
   const token = createTokenSource({ profile, agent, url: new URL('/v1/oidc/token', base), env: config.env, marginS: config.tokenRefreshMarginS, now, log, ...limits });
@@ -65,6 +70,7 @@ export function createClient(o: CreateClientOptions) {
       o.onBlocked?.({ profile: ctx.profile, method, pathTemplate });
       throw new WriteBlockedError(`${method} ${pathTemplate} is blocked by the write guard`, ctx);
     }
+    return instrument({ operation: opts.operation ?? 'raw', method }, async (): Promise<T> => {
     const started = now();
     try {
       const attempt = (t: Token) =>
@@ -105,6 +111,7 @@ export function createClient(o: CreateClientOptions) {
       }
       throw e;
     }
+    }) as Promise<T>;
   }
 
   const core = {
