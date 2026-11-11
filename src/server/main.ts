@@ -1,4 +1,5 @@
 import { readFileSync, realpathSync } from 'node:fs';
+import { isIPv6 } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { createAudit, type Audit } from '../audit/index.ts';
 import { createTokenStore, type Env } from '../auth/index.ts';
@@ -16,12 +17,18 @@ export interface StartDeps {
 }
 export interface Started { port: number; close(): Promise<void> }
 
-const HOSTNAME = /^[A-Za-z0-9.:[\]_-]+$/;
+const HOSTNAME = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/;
+// Allowlist entries: a hostname, or an IPv6 literal bare or bracketed (stored bracketed, as WHATWG URL reports it). No scheme, no port.
+const entry = (h: string): string | undefined => {
+  const m = /^\[(.*)\]$/.exec(h);
+  const inner = m ? m[1]! : h;
+  if (isIPv6(inner)) return new URL(`http://[${inner}]`).hostname; // canonical form, as the Host check sees it
+  return m || !HOSTNAME.test(h) ? undefined : h;
+};
 const list = (name: string, v: string): string[] => {
-  const out = [...new Set(v.split(',').map((s) => s.trim()).filter(Boolean))];
-  // hostname only: no scheme, no port (a bare IPv6 literal contains ':' and is accepted only in brackets-free form by the SDK guards)
-  if (out.length === 0 || out.some((h) => !HOSTNAME.test(h) || (h.includes(':') && !h.includes('::')))) throw new ConfigError(`${name} is invalid`);
-  return out;
+  const out = v.split(',').map((s) => s.trim()).filter(Boolean).map(entry);
+  if (out.length === 0 || out.includes(undefined)) throw new ConfigError(`${name} is invalid`);
+  return [...new Set(out as string[])];
 };
 const int = (name: string, v: string | undefined, def: number, min: number, max = Number.MAX_SAFE_INTEGER): number => {
   if (v === undefined) return def;
@@ -62,7 +69,7 @@ export async function start(env: Record<string, string | undefined>, deps: Start
     process.once('SIGTERM', fn);
     process.once('SIGINT', fn);
   });
-  onSignal(() => void close().then(() => void (process.exitCode = 0)));
+  onSignal(() => void close().then(() => void (process.exitCode = 0), () => void (process.exitCode = 1)));
   return { port: listening.port, close };
 }
 

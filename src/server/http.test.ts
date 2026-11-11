@@ -33,6 +33,18 @@ describe('health and readiness', () => {
   });
 });
 
+describe('unparsable request target', () => {
+  it('answers 400 with a fixed body, no onerror, no audit, before the Host guard', async () => {
+    const h = await startHttp();
+    for (const host of ['mcp.example.test', 'evil.example']) {
+      const r = await send(h.port, { method: 'GET', path: 'http://[', headers: { host } });
+      expect([r.status, r.text]).toEqual([400, 'bad request']);
+    }
+    expect(h.errors).toEqual([]);
+    expect(h.s.text()).toBe('');
+  });
+});
+
 describe('Host guard', () => {
   it.each([['mcp.example.test', true], ['mcp.example.test:8443', true], ['evil.example', false], [null, false]])('Host %s -> passes=%s', async (host, passes) => {
     const h = await startHttp();

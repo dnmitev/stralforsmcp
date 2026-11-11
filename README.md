@@ -95,7 +95,7 @@ Smoke check against the live test API (manual, never run in CI): export the vari
 | Variable | Required | Default | Rule |
 |---|---|---|---|
 | `MCP_TOKEN_LIST_FILE` | yes | none | path to the token list |
-| `MCP_HOSTNAMES` | yes | none | comma-separated allowed Host hostnames (no scheme, no port) |
+| `MCP_HOSTNAMES` | yes | none | comma-separated allowed Host hostnames (no scheme, no port; IPv6 bare or bracketed, no ports) |
 | `MCP_ORIGINS` | no | `MCP_HOSTNAMES` | allowed Origin hostnames, same format |
 | `MCP_LISTEN_HOST` | no | `0.0.0.0` | listen address |
 | `MCP_PORT` | no | `3000` | integer 0-65535 |

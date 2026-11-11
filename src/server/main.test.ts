@@ -118,6 +118,36 @@ describe('start', () => {
     expect((await send(s.port, { headers: { ...MCP_HEADERS, host: '127.0.0.1' }, body: INIT })).status).toBe(403);
   });
 
+  it.each(['[::1]', '::1'])('IPv6 allowlist entry %s matches Host [::1]', async (entry) => {
+    const { s } = await go({ MCP_HOSTNAMES: entry });
+    expect((await send(s.port, { headers: { ...MCP_HEADERS, host: '[::1]' }, body: INIT })).status).toBe(401);
+    expect((await send(s.port, { headers: { ...MCP_HEADERS, host: '[::1]:8443' }, body: INIT })).status).toBe(401);
+    expect((await send(s.port, { headers: { ...MCP_HEADERS, host: '[::2]' }, body: INIT })).status).toBe(403);
+  });
+
+  it('full-form IPv6 without :: is accepted; bad IPv6 or hostnames are refused with a fixed message', async () => {
+    const { s } = await go({ MCP_HOSTNAMES: '2001:db8:0:0:0:0:0:1' });
+    expect((await send(s.port, { headers: { ...MCP_HEADERS, host: '[2001:db8::1]' }, body: INIT })).status).toBe(401);
+    for (const bad of ['[::1', '::1]', '[::1]:80', ':::', '1:2', 'a b', '[a.example]', '-', '.']) {
+      await expect(start({ ...base, MCP_HOSTNAMES: bad }, { readFile: () => fixture().text(), audit: sink().audit, now: () => T, onSignal: () => undefined })).rejects.toThrow(new ConfigError('MCP_HOSTNAMES is invalid'));
+    }
+  });
+
+  it('a close() failure in the signal handler sets exitCode 1 and does not crash', async () => {
+    let handler: (() => void) | undefined;
+    const prev = process.exitCode;
+    process.exitCode = 0;
+    try {
+      const s = await start({ ...base }, { readFile: () => fixture().text(), audit: sink().audit, now: () => T, onSignal: (fn) => void (handler = fn) });
+      vi.spyOn(Server.prototype, 'closeAllConnections').mockImplementation(() => { throw new Error('boom'); });
+      handler!();
+      await vi.waitFor(() => expect(process.exitCode).toBe(1));
+      await expect(s.close()).rejects.toThrow('boom');
+    } finally {
+      process.exitCode = prev;
+    }
+  });
+
   it('SIGTERM handler: readiness flips, close resolves, exitCode is 0 (process.exit is never called)', async () => {
     let handler: (() => void) | undefined;
     const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never);

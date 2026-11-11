@@ -27,8 +27,8 @@ export interface HttpServer {
   readonly server: Server;
 }
 
-// WHATWG URL reports an IPv6 hostname with brackets; the allowlist is written bare (::1)
-const bracket = (h: string) => (h.includes(':') ? `[${h}]` : h);
+// WHATWG URL reports an IPv6 hostname with brackets; accept the allowlist bare or already bracketed
+const bracket = (h: string) => (h.includes(':') && !h.startsWith('[') ? `[${h}]` : h);
 const send = (res: ServerResponse, r: Refusal) => void res.writeHead(r.status, r.headers).end(r.body);
 const plain = (status: number, body: string): Refusal => ({ status, headers: { 'Content-Type': 'text/plain' }, body });
 
@@ -48,7 +48,12 @@ export function createHttpServer(o: HttpServerOptions): HttpServer {
 
   // Order is binding: health, Host, Origin, path, method, declared size, auth, handler. Guard refusals are not audited.
   async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const path = new URL(req.url ?? '/', 'http://x').pathname;
+    let path: string;
+    try {
+      path = new URL(req.url ?? '/', 'http://x').pathname;
+    } catch {
+      return send(res, plain(400, 'bad request')); // fixed body: never echo the request target
+    }
     if (path === '/healthz') return send(res, plain(200, 'ok'));
     if (path === '/readyz') return send(res, ready ? plain(200, 'ok') : plain(503, 'not ready'));
     if (!hostOk(req, res) || !originOk(req, res)) return;
