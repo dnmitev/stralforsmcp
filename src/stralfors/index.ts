@@ -1,8 +1,11 @@
+import { createPrivateKey } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import type { Dispatcher } from 'undici';
 import { z } from 'zod';
 import { serverInfo } from '../server-info.ts';
-import type { Config } from './config.ts';
+import type { Config, Profile } from './config.ts';
 import { ConfigError, StralforsError, SchemaError, WriteBlockedError, mapHttpError } from './errors.ts';
-import { createAgent, isAllowed, send } from './http.ts';
+import { createAgent as defaultCreateAgent, isAllowed, send } from './http.ts';
 import { createLogger, type Logger } from './log.ts';
 import { operations } from './operations.ts';
 import { createTokenSource, type Token } from './token.ts';
@@ -27,6 +30,11 @@ export interface CreateClientOptions {
   /** wraps one upstream request (after the write guard, including the token fetch and the 401 retry); default runs it as is. Keeps the client free of telemetry imports. */
   // ponytail: not generic (R32 sketches <T>): vi.fn() mocks lose generics and would not typecheck; the client casts the result back
   instrument?: (info: InstrumentInfo, run: () => Promise<unknown>) => Promise<unknown>;
+  /** cert hot-swap seams (same shape as createTokenStore); the default timer is an unref'd interval of config.certReloadS */
+  readFile?: (path: string) => string;
+  setTimer?: (fn: () => void, ms: number) => unknown;
+  clearTimer?: (handle: unknown) => void;
+  createAgent?: typeof defaultCreateAgent;
 }
 export interface InstrumentInfo { operation: string; method: string }
 // unanchored on purpose: an id hidden inside a segment (encoded separator, prefix) is still masked
@@ -41,9 +49,52 @@ export function createClient(o: CreateClientOptions) {
   const log = o.logger ?? createLogger({ level: 'silent' });
   const now = o.now ?? Date.now;
   const instrument = o.instrument ?? ((_i, run) => run());
-  const agent = createAgent(profile, { ca: o.ca });
+  const make = o.createAgent ?? defaultCreateAgent;
+  let agent: Dispatcher = make(profile, { ca: o.ca });
+  const readFile = o.readFile ?? ((p: string) => readFileSync(p, 'utf8'));
+  // Stryker disable next-line MethodExpression: equivalent, loadConfig already trims all three values, so trim() here is defensive only
+  let current = { cert: profile.cert.trim(), key: profile.key.trim(), passphrase: profile.passphrase?.trim() };
+  let closed = false;
+  let lastFailure: string | undefined;
+  /** One tick: re-read the files; swap the agent only when the content changed and the new material loads. Failures keep the last good agent. */
+  // ponytail: content compare, not mtime; one interval per client, so N profiles poll N times (cheap: three small files each)
+  function reloadCredentials(): void {
+    if (closed) return;
+    let kind: 'read' | 'empty' | 'pem' | 'key' | undefined;
+    try {
+      const { cert, key, passphrase } = profile!.files;
+      const next = { cert: readFile(cert).trim(), key: readFile(key).trim(), passphrase: passphrase === undefined ? undefined : readFile(passphrase).trim() };
+      if (!next.cert || !next.key || next.passphrase === '') kind = 'empty';
+      else if (next.cert !== current.cert || next.key !== current.key || next.passphrase !== current.passphrase) {
+        try {
+          createPrivateKey({ key: next.key, passphrase: next.passphrase });
+        } catch {
+          kind = 'key';
+        }
+        // createAgent checks the key only, so the cert is checked here
+        if (!kind && !next.cert.includes('-----BEGIN CERTIFICATE-----')) kind = 'pem';
+        if (!kind) {
+          const old = agent;
+          agent = make({ id: profile!.id, ...next } as Profile, { ca: o.ca });
+          current = next;
+          void old.close().catch(() => undefined); // close, never destroy: in-flight requests finish
+        }
+      }
+    } catch {
+      kind = 'read';
+    }
+    if (kind && kind !== lastFailure) log.warn({ profile: profile!.id, kind }, 'credentials.reload_failed');
+    lastFailure = kind;
+  }
+  const setTimer = o.setTimer ?? ((fn, ms) => {
+    const h = setInterval(fn, ms);
+    h.unref();
+    return h;
+  });
+  const clearTimer = o.clearTimer ?? ((h) => clearInterval(h as NodeJS.Timeout));
+  const timer = setTimer(reloadCredentials, config.certReloadS * 1000);
   const limits = { timeoutMs: config.timeoutMs, maxBytes: config.maxBodyBytes };
-  const token = createTokenSource({ profile, agent, url: new URL('/v1/oidc/token', base), env: config.env, marginS: config.tokenRefreshMarginS, now, log, ...limits });
+  const token = createTokenSource({ profile, agent: () => agent, url: new URL('/v1/oidc/token', base), env: config.env, marginS: config.tokenRefreshMarginS, now, log, ...limits });
   const policy = { env: config.env, allowWrite: config.allowWrite, prodValidateEnabled: config.prodValidateEnabled };
 
   async function request<T>(method: string, path: string, body: unknown, opts: RequestOpts<T> = {}): Promise<T> {
@@ -120,7 +171,12 @@ export function createClient(o: CreateClientOptions) {
     put: <T = unknown>(path: string, body: unknown, opts?: RequestOpts<T>) => request('PUT', path, body, opts),
     post: <T = unknown>(path: string, body?: unknown, opts?: RequestOpts<T>) => request('POST', path, body, opts),
     delete: <T = unknown>(path: string, opts?: RequestOpts<T>) => request('DELETE', path, undefined, opts),
-    close: () => agent.close(),
+    reloadCredentials,
+    close: () => {
+      clearTimer(timer);
+      closed = true;
+      return agent.close();
+    },
   };
   return { ...core, ...operations(core) };
 }

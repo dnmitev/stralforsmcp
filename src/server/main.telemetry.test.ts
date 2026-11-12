@@ -347,7 +347,8 @@ describe('close order', () => {
       await expect(p1).rejects.toThrow('telemetry shutdown failed');
       await vi.waitFor(() => expect(process.exitCode).toBe(1));
     });
-    expect(order).toEqual(['store']);
+    // every clearInterval is logged as 'store': the token store's timer plus one cert-reload timer per profile client (a and b)
+    expect(order).toEqual(['store', 'store', 'store']);
     expect(ms).toContain(TELEMETRY_FLUSH_MS);
   });
 

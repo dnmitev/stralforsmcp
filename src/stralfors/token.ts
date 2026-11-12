@@ -73,7 +73,7 @@ const tokenResponse = z.object({ access_token: z.string(), expires_in: z.number(
 
 export function createTokenSource(o: {
   profile: Profile;
-  agent: Dispatcher;
+  agent: () => Dispatcher;
   url: URL;
   env: 'test' | 'prod';
   marginS: number;
@@ -89,7 +89,7 @@ export function createTokenSource(o: {
 
   async function load(): Promise<Token> {
     const basic = Buffer.from(`${profile.clientId}:${profile.clientSecret}`).toString('base64');
-    const res = await send(o.agent, o.url, {
+    const res = await send(o.agent(), o.url, {
       method: 'POST', body: 'grant_type=client_credentials', timeoutMs: Math.min(o.timeoutMs, 10_000), maxBytes: o.maxBytes,
       headers: { authorization: `Basic ${basic}`, 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
     });

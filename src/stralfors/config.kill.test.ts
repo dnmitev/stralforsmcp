@@ -37,7 +37,7 @@ describe('opacity', () => {
   it('own property names are exactly the data fields plus the three label hooks', () => {
     const c = load();
     expect(Object.getOwnPropertyNames(c).sort()).toEqual(
-      ['allowWrite', 'baseUrl', 'env', 'maxBodyBytes', 'profiles', 'prodValidateEnabled', 'timeoutMs', 'toJSON', 'toString', 'tokenRefreshMarginS'].sort(),
+      ['allowWrite', 'baseUrl', 'certReloadS', 'env', 'maxBodyBytes', 'profiles', 'prodValidateEnabled', 'timeoutMs', 'toJSON', 'toString', 'tokenRefreshMarginS'].sort(),
     );
   });
 

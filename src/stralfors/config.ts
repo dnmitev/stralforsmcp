@@ -11,6 +11,8 @@ export interface Profile {
   cert: string;
   key: string;
   passphrase?: string;
+  /** credential file paths, non-enumerable; the client re-reads them to pick up a rotated cert/key */
+  files: { cert: string; key: string; passphrase?: string };
 }
 export interface Config {
   env: 'test' | 'prod';
@@ -20,6 +22,7 @@ export interface Config {
   timeoutMs: number;
   tokenRefreshMarginS: number;
   maxBodyBytes: number;
+  certReloadS: number;
   profiles: Record<string, Profile>;
 }
 
@@ -83,18 +86,20 @@ export function loadConfig(
       if (!UUID.test(id)) throw new ConfigError(`${actionName}: invalid agreement id (${label ? `label ${label}` : `entry ${i + 1}`})`);
       return label ? { label, id } : { id };
     });
+    const files: Profile['files'] = { cert: need(`${P}_CERT_FILE`), key: need(`${P}_KEY_FILE`) };
+    if (vars[`${P}_KEY_PASSPHRASE_FILE`]) files.passphrase = need(`${P}_KEY_PASSPHRASE_FILE`);
     const profile: Profile = {
-      id, country: need(`${P}_COUNTRY`), agreements,
+      files, id, country: need(`${P}_COUNTRY`), agreements,
       clientId: file(`${P}_CLIENT_ID_FILE`), clientSecret: file(`${P}_CLIENT_SECRET_FILE`),
       cert: file(`${P}_CERT_FILE`), key: file(`${P}_KEY_FILE`),
     };
     if (vars[`${P}_KEY_PASSPHRASE_FILE`]) profile.passphrase = file(`${P}_KEY_PASSPHRASE_FILE`);
-    profiles[id] = opaque(profile, `Profile(${id})`, ['clientId', 'clientSecret', 'cert', 'key', 'passphrase'].filter((k) => k in profile));
+    profiles[id] = opaque(profile, `Profile(${id})`, ['files', 'clientId', 'clientSecret', 'cert', 'key', 'passphrase'].filter((k) => k in profile));
   }
 
   return opaque({
     env: mode, baseUrl: BASE[mode], allowWrite, prodValidateEnabled: bool('STRALFORS_PROD_VALIDATE_ENABLED'),
     timeoutMs: num('STRALFORS_TIMEOUT_MS', 30000), tokenRefreshMarginS: num('STRALFORS_TOKEN_REFRESH_MARGIN_S', 300),
-    maxBodyBytes: num('STRALFORS_MAX_BODY_BYTES', 8388608), profiles,
+    maxBodyBytes: num('STRALFORS_MAX_BODY_BYTES', 8388608), certReloadS: num('STRALFORS_CERT_RELOAD_S', 60), profiles,
   }, `Config(${mode})`);
 }
