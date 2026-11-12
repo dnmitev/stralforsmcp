@@ -40,6 +40,6 @@
   "privacy_policies": ["https://github.com/dnmitev/stralforsmcp#readme"],
   "compatibility": {
     "platforms": ["darwin", "win32"],
-    "runtimes": { "node": ">=18" }
+    "runtimes": { "node": ">=20" }
   }
 }

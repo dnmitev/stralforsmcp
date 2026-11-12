@@ -6,7 +6,7 @@ import { join } from 'node:path';
 
 const root = join(import.meta.dirname, '..');
 
-/** Bundles extension/src/proxy.ts to `<outDir>/server/index.js` (single file, node18, no sourcemap, not minified). */
+/** Bundles extension/src/proxy.ts to `<outDir>/server/index.js` (single file, node20, no sourcemap, not minified). */
 export async function bundleBridge(outDir: string) {
   const file = join(outDir, 'server/index.js');
   const { metafile } = await build({
@@ -15,7 +15,7 @@ export async function bundleBridge(outDir: string) {
     bundle: true,
     platform: 'node',
     format: 'esm',
-    target: 'node18',
+    target: 'node20',
     sourcemap: false,
     minify: false,
     metafile: true,
@@ -35,6 +35,7 @@ export async function buildMcpb(): Promise<string> {
   const entries = {
     'README.md': readFileSync(join(root, 'extension/README.md')),
     'manifest.json': Buffer.from(manifest),
+    'server/package.json': Buffer.from('{"type":"module"}\n'), // the extracted bundle is ESM with top-level await; without this Node may load it as CommonJS
     'server/index.js': readFileSync(file),
   };
   const zip = zipSync(Object.fromEntries(Object.entries(entries).sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, v]) => [k, [new Uint8Array(v), { mtime }]])), { level: 9 });
@@ -44,4 +45,11 @@ export async function buildMcpb(): Promise<string> {
   return out;
 }
 
-if (import.meta.main) console.log(await buildMcpb());
+if (import.meta.main) {
+  try {
+    console.log(await buildMcpb());
+  } catch (e) {
+    console.error(`build-mcpb: build failed${e instanceof Error ? `: ${e.message}` : ''}`);
+    process.exitCode = 1;
+  }
+}

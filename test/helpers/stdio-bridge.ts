@@ -2,7 +2,7 @@
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createServer, type IncomingHttpHeaders } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import { createServer as createTcp, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/client';
@@ -12,6 +12,7 @@ export const LINES = {
   config: 'stralforsmcp-bridge: MCP_URL and MCP_TOKEN are required',
   url: 'stralforsmcp-bridge: MCP_URL must be https, or http on localhost',
   upstream: 'stralforsmcp-bridge: upstream error',
+  auth: 'stralforsmcp-bridge: authorization failed',
 };
 
 let built: Promise<{ dir: string; file: string; metafile: { inputs: Record<string, unknown>; outputs: Record<string, { imports: { path: string; kind: string; external?: boolean }[] }> } }> | undefined;
@@ -89,4 +90,13 @@ export async function recordingUpstream() {
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   const port = (server.address() as AddressInfo).port;
   return { port, url: `http://127.0.0.1:${port}/mcp`, seen, close: () => new Promise<void>((r) => server.close(() => r())) };
+}
+
+/** Test-owned TCP listener that accepts and immediately destroys every connection (a transport failure that needs no assumption about free ports). */
+export async function destroyingListener(host = '127.0.0.1') {
+  let connections = 0;
+  const server = createTcp((sock) => { connections++; sock.on('error', () => undefined); sock.destroy(); });
+  await new Promise<void>((r, j) => { server.once('error', j); server.listen(0, host, r); });
+  const port = (server.address() as AddressInfo).port;
+  return { port, connections: () => connections, close: () => new Promise<void>((r) => server.close(() => r())) };
 }

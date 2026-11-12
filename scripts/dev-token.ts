@@ -1,4 +1,4 @@
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, renameSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { generateToken, hashToken, type TokenList } from '../src/auth/index.ts';
 
@@ -18,7 +18,10 @@ export function devTokenList(now = Date.now()): { raw: string; list: TokenList }
 export function writeDevToken(path: string, force: boolean, now?: number): string {
   if (!force && existsSync(path)) throw new Error('token list exists; pass --force to replace it');
   const { raw, list } = devTokenList(now);
-  writeFileSync(path, `${JSON.stringify(list, null, 2)}\n`, { mode: 0o600 });
+  // New 0600 file beside the target, renamed over it: a pre-existing looser mode is never inherited.
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify(list, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
+  renameSync(tmp, path);
   return raw;
 }
 

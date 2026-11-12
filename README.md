@@ -143,7 +143,7 @@ Prerequisites: Node 24+, `npm ci` run once in this checkout, and your TEST crede
 
    Set the `STRALFORS_PROFILE_DEV_*_FILE` paths (the profile id `dev` becomes `DEV` in the names; rename it if you like, upper case, `-` as `_`). `MCP_DRAIN_MS=0` is there so restarts under `--watch` are instant; `MCP_LOG_LEVEL=debug` adds log lines.
 
-2. **Create a token.** Writes `token-list.json` (one user, role `dev`, env `test`, valid 30 days; path from `MCP_TOKEN_LIST_FILE`, default `./token-list.json`). The file holds only the token's hash. The raw token is printed once, to stderr; copy it now. An existing file is not overwritten unless you add `--force`.
+2. **Create a token.** Writes `token-list.json` (one user, role `dev`, env `test`, valid 30 days; path from `MCP_TOKEN_LIST_FILE` in `.env.local`, default `./token-list.json`). The file holds only the token's hash. The raw token is printed once, to stderr; copy it now. An existing file is not overwritten unless you add `--force`.
 
    ```sh
    npm run dev:token
@@ -164,15 +164,15 @@ Prerequisites: Node 24+, `npm ci` run once in this checkout, and your TEST crede
 
    Stop the other process (`kill <PID>`) or set `MCP_PORT` / `MCP_METRICS_PORT` in `.env.local`, and use your port wherever the steps say 3000. Stop the dev server with Ctrl-C.
 
-4. **Verify** (replace 3000 if you chose another port). Health, then an authenticated call that needs no MCP client:
+4. **Verify** (replace 3000 if you chose another port; the header is piped to curl with `-H @-` so the token never appears in process arguments). Health, then an authenticated call that needs no MCP client:
 
    ```sh
    curl -s localhost:3000/healthz        # ok
-   curl -s -X POST localhost:3000/mcp \
-     -H "Authorization: Bearer $STRALFORSMCP_TOKEN" \
+   printf 'Authorization: Bearer %s\n' "$STRALFORSMCP_TOKEN" | curl -s -X POST localhost:3000/mcp \
+     -H @- \
      -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
      -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
-   curl -s localhost:9464/metrics | head   # Prometheus metrics
+   curl -s localhost:9464/metrics | head   # Prometheus metrics (use your MCP_METRICS_PORT instead of 9464)
    ```
 
    The second prints an `event: message` / `data: {"result":{"tools":[...` response listing `whoami` and `list_channels`. A `401` means the token is wrong (see below).

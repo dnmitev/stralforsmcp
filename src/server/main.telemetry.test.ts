@@ -241,7 +241,7 @@ describe('metrics listener lifecycle', () => {
     const taken = new Server();
     await new Promise<void>((r) => taken.listen(0, '127.0.0.1', r));
     try {
-      const e = await W.boot(W.mcpEnv({ MCP_PORT: String(portOf(taken)), MCP_METRICS_PORT: String(await freePort()) })).then(() => undefined, (x: unknown) => x);
+      const e = await W.boot(W.mcpEnv({ MCP_PORT: String(portOf(taken)), MCP_METRICS_PORT: '0' })).then(() => undefined, (x: unknown) => x);
       expect(e).toBeInstanceOf(ConfigError);
       expect((e as Error).message).toBe('HTTP listener failed (port in use or not permitted; see MCP_PORT)');
       expect((e as Error).message).not.toMatch(/\d/);

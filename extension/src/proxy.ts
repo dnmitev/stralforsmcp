@@ -1,5 +1,5 @@
 // Claude Desktop extension bridge: stdio (Desktop) <-> Streamable HTTP (hosted server). Messages are forwarded verbatim, never interpreted.
-// stdout carries protocol frames only; stderr carries one of three fixed lines. The token and URL never appear in any output.
+// stdout carries protocol frames only; stderr carries one of four fixed lines. The token and URL never appear in any output.
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 
@@ -30,10 +30,11 @@ const http = new StreamableHTTPClientTransport(url, { requestInit: { headers: { 
 stdio.onmessage = async (msg) => {
   try {
     await http.send(msg);
-  } catch {
+  } catch (e) {
     // Answer the pending request id (if any) with a fixed JSON-RPC error, then fail; nothing from the upstream is echoed.
-    if ('id' in msg && 'method' in msg) await stdio.send({ jsonrpc: '2.0', id: msg.id, error: { code: -32000, message: 'upstream error' } }).catch(() => undefined);
-    die('upstream error');
+    const denied = (e as { status?: unknown } | null)?.status === 401; // SdkHttpError exposes the HTTP status
+    if ('id' in msg && 'method' in msg) await stdio.send({ jsonrpc: '2.0', id: msg.id, error: { code: -32000, message: denied ? 'authorization failed (check your token)' : 'upstream error' } }).catch(() => undefined);
+    die(denied ? 'authorization failed' : 'upstream error');
   }
 };
 http.onmessage = (msg) => void stdio.send(msg).catch(() => die('upstream error'));
