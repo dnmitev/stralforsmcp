@@ -73,6 +73,7 @@ CI publishes coverage, test pass rate and mutation score on every pull request.
 | `STRALFORS_TIMEOUT_MS` | no | `30000` |
 | `STRALFORS_TOKEN_REFRESH_MARGIN_S` | no | `300` |
 | `STRALFORS_MAX_BODY_BYTES` | no | `8388608` |
+| `STRALFORS_CERT_RELOAD_S` | no | `60` (seconds between checks of the cert and key files, positive integer) |
 
 Per profile, with `<ID>` the upper-cased profile id (`-` becomes `_`, so `test-a` gives `TEST_A`):
 
@@ -85,6 +86,8 @@ Per profile, with `<ID>` the upper-cased profile id (`-` becomes `_`, so `test-a
 | `STRALFORS_PROFILE_<ID>_KEY_FILE` | yes | private key (PEM) |
 | `STRALFORS_PROFILE_<ID>_KEY_PASSPHRASE_FILE` | no | file holding the key passphrase |
 | `STRALFORS_PROFILE_<ID>_ACTION_IDS` | no | comma-separated agreement ids, optionally labelled: `label:uuid,uuid` |
+
+Certificate rotation: the cert, key and passphrase files are re-read every `STRALFORS_CERT_RELOAD_S` seconds. When their content changed, the client switches to a new connection pool with the new material and lets in-flight requests finish on the old one; no restart is needed. Bad files (unreadable, empty, not PEM, key not opening) keep the last good material and log one `credentials.reload_failed` warning per kind, without paths or content. The client id and secret files are read at start only; rotating them needs a restart (see ADR 0013).
 
 Smoke check against the live test API (manual, never run in CI): export the variables above, then `npm run live:channels`. It prints the token scopes, the client channel catalogue and the channels of each configured agreement by label (or `#1`, `#2`), never by id.
 

@@ -53,7 +53,8 @@ describe('start', () => {
     const clear = vi.spyOn(globalThis, 'clearInterval');
     const taken = await go({});
     await expect(start({ ...base, MCP_PORT: String(taken.s.port) }, { readFile: route(taken.f), audit: sink().audit, now: () => T, onSignal: () => undefined })).rejects.toThrow();
-    expect(clear).toHaveBeenCalledTimes(1);
+    // the token store's reload timer plus the one cert-reload timer of the single profile's client: both must be cleared, none leaked
+    expect(clear).toHaveBeenCalledTimes(2);
   });
 
   it('index.ts exports start', () => {

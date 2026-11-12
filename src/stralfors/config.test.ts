@@ -153,4 +153,39 @@ describe('R1 configuration loading', () => {
     expect(e.message).toContain('test');
     expect(e.message).toContain('prod');
   });
+  // 02-06 cert hot-swap seams
+  it('certReloadS defaults to 60 and reads STRALFORS_CERT_RELOAD_S', () => {
+    const { env } = two();
+    expect(loadConfig(env).certReloadS).toBe(60);
+    expect(loadConfig({ ...env, STRALFORS_CERT_RELOAD_S: '5' }).certReloadS).toBe(5);
+  });
+
+  it.each(['0', '-1', '1.5', 'abc', '', ' 5', '5s'])('STRALFORS_CERT_RELOAD_S=%j is rejected, naming only the variable', (v) => {
+    const { env } = two();
+    const e = throwsConfig(() => loadConfig({ ...env, STRALFORS_CERT_RELOAD_S: v }));
+    expect(e.message).toBe('STRALFORS_CERT_RELOAD_S must be a positive integer');
+  });
+
+  it('STRALFORS_CERT_RELOAD_S above the timer limit is rejected, the limit itself is accepted', () => {
+    const { env } = two();
+    expect(loadConfig({ ...env, STRALFORS_CERT_RELOAD_S: '2147483' }).certReloadS).toBe(2147483);
+    const e = throwsConfig(() => loadConfig({ ...env, STRALFORS_CERT_RELOAD_S: '2147484' }));
+    expect(e.message).toBe('STRALFORS_CERT_RELOAD_S must be at most 2147483');
+  });
+
+  it('Profile keeps the credential file paths, non-enumerable and hidden from serialisation', () => {
+    const { a, env } = two();
+    const withPass = loadConfig(env).profiles['a']!;
+    expect(withPass.files).toEqual({
+      cert: env['STRALFORS_PROFILE_A_CERT_FILE'], key: env['STRALFORS_PROFILE_A_KEY_FILE'], passphrase: env['STRALFORS_PROFILE_A_KEY_PASSPHRASE_FILE'],
+    });
+    expect(Object.keys(withPass)).not.toContain('files');
+    expect(JSON.stringify(withPass)).not.toContain(a.dir);
+    expect(inspect(withPass, { depth: null })).not.toContain(a.dir);
+    expect(String(withPass)).not.toContain(a.dir);
+    delete env['STRALFORS_PROFILE_A_KEY_PASSPHRASE_FILE'];
+    const without = loadConfig(env).profiles['a']!;
+    expect(without.files).toEqual({ cert: env['STRALFORS_PROFILE_A_CERT_FILE'], key: env['STRALFORS_PROFILE_A_KEY_FILE'] });
+    expect('passphrase' in without.files).toBe(false);
+  });
 });
