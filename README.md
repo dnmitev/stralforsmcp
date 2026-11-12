@@ -139,6 +139,59 @@ Request pipeline (first match answers; refusals 3-7 are not audited, 401s and to
 3. `node src/server/main.ts`, then `curl localhost:3000/healthz`.
 4. Add `{"type":"http","url":"http://localhost:3000/mcp","headers":{"Authorization":"Bearer ${STRALFORSMCP_TOKEN}"}}` to `.mcp.json` and call `whoami`, then `list_channels`.
 
+## Container image
+
+The image is built from the `Dockerfile`: a digest-pinned distroless Node 26 `nonroot` base (uid 65532, no shell, no package manager), the repository's `src/` TypeScript run directly by Node's native type stripping (no compile step), and production dependencies only. It declares no `HEALTHCHECK` (use the Kubernetes probes on `/healthz` and `/readyz`), and no credential or configuration value is baked in: `STRALFORS_*` and `MCP_*` are file paths and names supplied at run time.
+
+Build and smoke-test it locally (the smoke test starts the image with `--read-only`, `--cap-drop ALL`, `--security-opt no-new-privileges` and user `65532:65532` against a generated throwaway fixture, then checks `/healthz`, `/metrics`, the fixed 401 and a clean SIGTERM exit; it needs Docker and `openssl`):
+
+```sh
+docker build -t stralforsmcp:local .
+node scripts/image-smoke.ts stralforsmcp:local
+```
+
+Run it against TEST with your own credential directory mounted read-only. Values are paths inside the container and plain names only; the metrics port 9464 is deliberately not published to the host:
+
+```sh
+docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges --user 65532:65532 \
+  -p 127.0.0.1:3000:3000 -v "$PWD/creds:/run/creds:ro" \
+  -e MCP_TOKEN_LIST_FILE=/run/creds/token-list.json -e MCP_HOSTNAMES=localhost -e STRALFORS_ENV=test \
+  -e STRALFORS_PROFILES=<id> -e STRALFORS_PROFILE_<ID>_COUNTRY=<cc> \
+  -e STRALFORS_PROFILE_<ID>_CLIENT_ID_FILE=/run/creds/client-id -e STRALFORS_PROFILE_<ID>_CLIENT_SECRET_FILE=/run/creds/client-secret \
+  -e STRALFORS_PROFILE_<ID>_CERT_FILE=/run/creds/client.pem -e STRALFORS_PROFILE_<ID>_KEY_FILE=/run/creds/client.key \
+  stralforsmcp:local
+```
+
+Port 9464 (Prometheus text) has no authentication. In a cluster, reach it from the Prometheus namespace only (NetworkPolicy) and never expose it through the ingress; port 3000 is the only MCP endpoint.
+
+### Pipeline and tags
+
+`.github/workflows/image.yml` runs on every pull request and on pushes to `main` and `v*` tags.
+
+- `build-scan` (all events, read-only, no secrets, no registry login, nothing pushed): builds linux/amd64, checks the image content, runs the smoke test, runs a Trivy gate that fails on fixable HIGH/CRITICAL vulnerabilities in the image and on HIGH/CRITICAL misconfigurations in the `Dockerfile`, and uploads a CycloneDX SBOM and a Trivy report as the `image-sbom-and-scan` artifact (14 days). Exceptions go only in `.trivyignore.yaml`; each entry needs a `statement` and an `expired_at` at most 90 days ahead (enforced by a test).
+- `publish` (push events only, never a pull request or a fork, the only job with `packages: write`): rebuilds linux/amd64 and linux/arm64, pushes to `ghcr.io/<owner>/stralforsmcp` with BuildKit SBOM and `provenance: mode=max` attestations. The pushed digest is a rebuild, not byte for byte the scanned image.
+
+Tags: `sha-<40 hex commit>` on every publish, `edge` on `main`, `X.Y.Z`, `X.Y` and `latest` on `v*` release tags only. Deploy by digest, never by `edge` or `latest`.
+
+Find the digest in the workflow run summary or with `docker buildx imagetools inspect ghcr.io/<owner>/stralforsmcp:sha-<commit>`. The SBOM and provenance attestations are read with `docker buildx imagetools inspect <ref> --format '{{json .SBOM}}'` and `--format '{{json .Provenance}}'`; the Trivy SBOM is the workflow artifact. Signing (cosign) is not done yet.
+
+The GHCR package is private after the first push. Making it public is the maintainer's irreversible decision in the GitHub package settings; the workflow never changes it.
+
+Check what the image contains (no tests, scripts, docs, `.paul`, credentials, shell or npm outside `node_modules`):
+
+```sh
+docker create --name content stralforsmcp:local && docker export content | tar -t | grep -v '^app/node_modules/'; docker rm content
+```
+
+### Bumping pins
+
+Every pin is updated by hand in one reviewed pull request; the image workflow is the test. No update bot is configured yet.
+
+- Base images: `docker buildx imagetools inspect gcr.io/distroless/nodejs26-debian13:nonroot` (and `node:26-trixie-slim`), then replace the index digest after `@sha256:` in the matching `FROM`.
+- Trivy: take the new version's `trivy_<version>_checksums.txt` from its GitHub release and update the version and the `Linux-64bit` sha256 in the "Install trivy" step.
+- Actions: resolve `git/ref/tags/<tag>` of the action (dereference annotated tags through `git/tags/<sha>`), then update the full commit SHA and the version comment.
+- The scan reflects the vulnerability database at build time and ignores findings without a fix; there is no scheduled rescan of published images yet.
+
 ## Observability
 
 Manual instrumentation only (no auto-instrumentation, no loader hook). Traces go over OTLP/HTTP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set; metrics are pulled by Prometheus from a second listener (`MCP_METRICS_HOST:MCP_METRICS_PORT`, `GET /metrics`). The MCP port answers 404 for `/metrics`; keep the metrics port off the ingress and reachable from Prometheus only (NetworkPolicy). An incoming `traceparent` is ignored (every request is its own root span) and none is sent to Stralfors. No span or label carries a payload, token, user id, agreement id, path, query or exception message.

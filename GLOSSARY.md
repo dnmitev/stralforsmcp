@@ -329,6 +329,68 @@ _Avoid_: flush timeout (unqualified), drain (that is the HTTP wait)
 The rule that the process has one async-local context manager, registered globally by the first telemetry created and disabled by the last one shut down. The tracer and meter providers are never registered globally.
 _Avoid_: global tracer, global SDK
 
+## Container image
+
+**Image** (`Dockerfile`):
+The OCI image that packages the server: a distroless Node 26 `nonroot` base, the repository's `src/` run through Node's native type stripping, and production dependencies only. It carries no shell, no package manager, no build output and no configuration value.
+_Avoid_: container (a running instance), bundle, dist
+
+**Base image digest** (`@sha256:` in each `FROM`):
+The index digest pinned after `@` in a `FROM` line. The tag beside it is for readability; the digest decides the bytes. Bumped by hand in a reviewed pull request.
+_Avoid_: version, floating tag
+
+**Build stage** (`deps`):
+The throwaway `node:26-trixie-slim` stage that installs production dependencies on the build platform. Only its `node_modules` reaches the final stage.
+_Avoid_: builder image, compile stage (nothing is compiled)
+
+**Final stage**:
+The distroless stage whose contents are the image: `node_modules` from the build stage, `package.json` and `src/`, owned by uid 65532, started by the base image's `node` entrypoint with `src/server/main.ts`.
+_Avoid_: runtime image, production stage
+
+**Type stripping**:
+Node's native execution of TypeScript source with type annotations removed at load time, so the image runs the reviewed `src/` files themselves. Requires Node 24.12 or later (`engines.node`).
+_Avoid_: transpile, compile, build
+
+**Smoke test** (`scripts/image-smoke.ts`):
+The check that starts a built image read-only, non-root and with all capabilities dropped, against a throwaway fixture, and verifies the Node major, liveness, metrics, the fixed 401 and a clean SIGTERM exit from outside the container.
+_Avoid_: integration test, e2e
+
+**Image content check** (`Image content` step):
+The workflow step that lists the image's files and fails when tests, scripts, docs, lock files, credentials, a shell or npm appear outside `node_modules`.
+_Avoid_: content scan, audit
+
+**Gate** (`Gate (fixable HIGH/CRITICAL)`, `Dockerfile config`):
+The Trivy scans that fail the workflow on a fixable HIGH or CRITICAL vulnerability in the image or a HIGH or CRITICAL misconfiguration in the `Dockerfile`. Unfixed vulnerabilities are reported, not gating.
+_Avoid_: audit, compliance check
+
+**Ignore file** (`.trivyignore.yaml`):
+The only place a gate finding can be excepted. Every entry carries a `statement` and an `expired_at` date at most 90 days ahead; a lapsed entry makes the gate fail again.
+_Avoid_: allowlist, suppression
+
+**SBOM** (`sbom.cdx.json`, `sbom: true`):
+The component inventory of the image. Two forms exist: a CycloneDX file Trivy writes as a workflow artifact on every run, and the SPDX attestation BuildKit attaches to the published image index.
+_Avoid_: manifest (the OCI manifest), dependency list
+
+**Provenance** (`provenance: mode=max`):
+The SLSA build attestation BuildKit attaches to the published image index, stating which workflow, commit and inputs produced it. It is not a signature.
+_Avoid_: signature, certificate
+
+**Build-scan job** (`build-scan`):
+The workflow job that runs on every event with read permission only: builds linux/amd64, runs the image content check, the smoke test and the gates, and uploads the `image-sbom-and-scan` artifact. Nothing is pushed.
+_Avoid_: CI build, test job
+
+**Publish job** (`publish`):
+The only workflow job with `packages: write`. Runs after a green build-scan on a push to `main` or a `v*` tag of this repository, never on a pull request or a fork, logs in to GHCR with the workflow token and pushes a fresh linux/amd64 and linux/arm64 build.
+_Avoid_: release job, deploy
+
+**Tag policy**:
+`sha-<40 hex commit>` on every publish, `edge` on `main`, `X.Y.Z`, `X.Y` and `latest` on `v*` release tags only. Deployments reference a digest or an immutable tag.
+_Avoid_: `latest` or `edge` for deployments
+
+**Pin bump**:
+The manual, reviewed pull request that moves a base image digest, the Trivy version and checksum, or an action commit SHA. No update bot does this yet.
+_Avoid_: upgrade, auto-update
+
 ## Quality
 
 **Mutation score**:

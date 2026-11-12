@@ -1,0 +1,5 @@
+# Trivy ignore file, passed with --ignorefile. Empty by design: a fixable HIGH/CRITICAL finding is fixed by a
+# bump, not ignored. Every entry must carry `statement` (reason and tracker reference) and `expired_at`
+# (YYYY-MM-DD, at most 90 days ahead); a lapsed entry makes the gate fail again, which is intended.
+vulnerabilities: []
+misconfigurations: []
