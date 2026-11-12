@@ -82,7 +82,7 @@ const srcText = walk(join(ROOT, 'src')).map((f) => readFileSync(f, 'utf8')).join
 const readme = readFileSync(join(ROOT, 'README.md'), 'utf8');
 const NAME = /\b(?:STRALFORS|MCP|OTEL)_[A-Z0-9_]+\b/g;
 const profileSuffix = /\$\{P\}(_[A-Z0-9_]+)|STRALFORS_PROFILE_<ID>(_[A-Z0-9_]+)/g;
-const serverNames = new Set<string>([...(srcText.match(NAME) ?? []), ...(readme.match(NAME) ?? [])].filter((n) => !n.startsWith('STRALFORS_PROFILE_')));
+const serverNames = new Set<string>((srcText.match(NAME) ?? []).filter((n) => !n.startsWith('STRALFORS_PROFILE_')));
 const profileSuffixes = new Set<string>([...(srcText + readme).matchAll(profileSuffix)].map((m) => (m[1] ?? m[2])!));
 for (const m of (srcText + readme).matchAll(/STRALFORS_PROFILE_<ID>(_[A-Z0-9_]+)/g)) profileSuffixes.add(m[1]!);
 const requiredServer = new Set<string>(
@@ -99,6 +99,7 @@ describe.skipIf(!helmOk)(helmOk ? 'chart' : 'chart (SKIPPED: helm binary not fou
   beforeAll(() => {
     // fixture sanity: the scanner found the server contract, so AC-7 cannot pass vacuously
     expect(serverNames.has('MCP_TOKEN_LIST_FILE')).toBe(true);
+    expect(requiredServer.size).toBeGreaterThan(0);
     expect(requiredProfileSuffixes).toContain('_CERT_FILE');
   });
 
@@ -398,6 +399,42 @@ describe.skipIf(!helmOk)(helmOk ? 'chart' : 'chart (SKIPPED: helm binary not fou
       const v = baseValues();
       delete v.tokenList.secretName;
       expect(helmError(v)).toMatch(/secretName/);
+    });
+  });
+
+  describe('review fixes', () => {
+    it('keeps every resource name within 63 chars for a 50-char release name', () => {
+      const r = 'r'.repeat(50);
+      const v = full();
+      v.networkPolicy.enabled = true;
+      const out = execFileSync(HELM, ['template', r, CHART, '-f', valuesFile(v)], { encoding: 'utf8' });
+      const names = parseAllDocuments(out).map((d) => d.toJS() as Obj).filter((d) => d?.kind).map((d) => d.metadata.name as string);
+      expect(names.length).toBeGreaterThan(5);
+      for (const n of names) expect(n.length, n).toBeLessThanOrEqual(63);
+    });
+    it('ignores empty hostnames when checking for at least one', () => {
+      const v = baseValues();
+      v.ingress = {};
+      v.extraHostnames = [''];
+      expect(helmError(v)).toContain('at least one hostname');
+    });
+    it('rejects profile id token-list', () => {
+      const v = baseValues();
+      v.profiles[0].id = 'token-list';
+      const e = helmError(v);
+      expect(e).toMatch(/profiles/);
+      expect(e).toMatch(/\bid\b/);
+    });
+    it('fails when the grace period does not exceed drainMs', () => {
+      const v = baseValues();
+      v.terminationGracePeriodSeconds = 0;
+      expect(helmError(v)).toContain('terminationGracePeriodSeconds must be longer than drainMs');
+      expect(helmError(baseValues())).toBe('');
+    });
+    it('rejects unknown networkPolicy keys', () => {
+      const v = baseValues();
+      v.networkPolicy = { enabld: true };
+      expect(helmError(v)).toMatch(/enabld/);
     });
   });
 

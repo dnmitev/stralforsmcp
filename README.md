@@ -199,7 +199,7 @@ Every pin is updated by hand in one reviewed pull request; the image workflow is
 
 ## Helm chart
 
-`charts/stralforsmcp` deploys the image to Kubernetes; see [charts/stralforsmcp/README.md](charts/stralforsmcp/README.md) for all values and guards. The chart never creates or holds a Secret: you create these (names are yours, referenced from values) and the chart mounts them as directories so rotation reaches the pod.
+`charts/stralforsmcp` deploys the image to Kubernetes; see [charts/stralforsmcp/README.md](charts/stralforsmcp/README.md) for all values and guards. The chart never creates or holds a Secret: you create these (names are yours, referenced from values) and the chart mounts them as directories so rotation reaches the pod for the files (certificate, key, passphrase hot-swap; token list reload). Client id and secret, `action-ids` and the OTLP headers Secret need a pod restart after rotation (the last two are read once through env `secretKeyRef`).
 
 - `tokenList.secretName`: key `token-list.json`.
 - each `profiles[].secretName`: keys `client-id`, `client-secret`, `client.pem`, `client.key`; optional `key-passphrase`, `action-ids`.

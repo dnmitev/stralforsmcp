@@ -1,6 +1,6 @@
 # stralforsmcp Helm chart
 
-Runs the stralforsmcp image. The chart never creates or contains a Secret: every sensitive value is read from Kubernetes Secrets that you create (by hand, or with an external secret operator) and reference by name. Secrets are mounted as volumes without `subPath`, so rotated Secrets reach the pod (client certificate hot-swap and token-list reload).
+Runs the stralforsmcp image. The chart never creates or contains a Secret: every sensitive value is read from Kubernetes Secrets that you create (by hand, or with an external secret operator) and reference by name. Secrets are mounted as volumes without `subPath`, so rotated Secrets reach the pod for the files: certificate, key and passphrase hot-swap (ADR 0013) and the token list reloads. Not everything rotates live: client id and client secret, the `action-ids` key and the OTLP headers Secret (the last two are read once through env `secretKeyRef`) need a pod restart (for example `kubectl rollout restart`).
 
 ## Secrets to create
 
@@ -44,6 +44,7 @@ helm install stralforsmcp ./charts/stralforsmcp \
 ## Guards
 
 - `stralfors.env` is `test` or `prod`. With `prod`, rendering fails if `stralfors.allowWrite` is true or `ingress.public.enabled` is true.
+- `terminationGracePeriodSeconds` must be longer than `drainMs` (seconds against milliseconds); rendering fails otherwise.
 - Rendering fails when there is no hostname (ingress hosts plus `extraHostnames` feed `MCP_HOSTNAMES`).
 - Ingress backends only target port 3000. Metrics (9464) are served only by the separate `<release>-stralforsmcp-metrics` ClusterIP Service; with `networkPolicy.enabled`, port 9464 accepts traffic only from `networkPolicy.prometheusNamespace`.
 

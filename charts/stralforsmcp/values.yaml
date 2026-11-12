@@ -35,6 +35,7 @@ otlp:
     key: headers
 
 replicas: 1
+# terminationGracePeriodSeconds * 1000 must exceed drainMs, or rendering fails.
 drainMs: 10000
 terminationGracePeriodSeconds: 30
 
