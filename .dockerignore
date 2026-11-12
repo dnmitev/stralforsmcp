@@ -1,0 +1,8 @@
+# Allow-list: everything is excluded unless re-included below.
+*
+!package.json
+!package-lock.json
+!src/**
+# Re-exclude non-runtime files under src.
+src/**/*.test.ts
+src/**/*.md
