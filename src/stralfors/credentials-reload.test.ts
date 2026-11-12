@@ -170,6 +170,8 @@ describe('AC-2 bad files keep the last good agent', () => {
     ['cert that is not PEM', 'pem', (c) => writeFileSync(c.paths.cert, 'this is not a certificate')],
     ['passphrase that does not open the key', 'key', (c) => writeFileSync(c.paths.passphrase, 'wrong-passphrase')],
     ['key that is not PEM', 'key', (c) => writeFileSync(c.paths.key, 'this is not a key')],
+    ['cert with a PEM header but invalid contents', 'pem', (c) => writeFileSync(c.paths.cert, '-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----')],
+    ['cert that does not belong to the key', 'key', (c) => writeFileSync(c.paths.cert, pki.foreignClient.cert)],
   ];
   it.each(cases)('%s', async (_n, kind, damage) => {
     await open();

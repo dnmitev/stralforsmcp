@@ -63,6 +63,12 @@ export function loadConfig(
     if (!/^\d+$/.test(v) || Number(v) < 1) throw new ConfigError(`${name} must be a positive integer`);
     return Number(v);
   };
+  // setInterval turns a delay above 2^31-1 ms into 1 ms, which would make every profile poll its files in a hot loop
+  const certReloadS = () => {
+    const n = num('STRALFORS_CERT_RELOAD_S', 60);
+    if (n > 2_147_483) throw new ConfigError('STRALFORS_CERT_RELOAD_S must be at most 2147483');
+    return n;
+  };
   const bool = (name: string) => {
     const v = vars[name] ?? 'false';
     if (v !== 'true' && v !== 'false') throw new ConfigError(`${name} must be true or false`);
@@ -100,6 +106,6 @@ export function loadConfig(
   return opaque({
     env: mode, baseUrl: BASE[mode], allowWrite, prodValidateEnabled: bool('STRALFORS_PROD_VALIDATE_ENABLED'),
     timeoutMs: num('STRALFORS_TIMEOUT_MS', 30000), tokenRefreshMarginS: num('STRALFORS_TOKEN_REFRESH_MARGIN_S', 300),
-    maxBodyBytes: num('STRALFORS_MAX_BODY_BYTES', 8388608), certReloadS: num('STRALFORS_CERT_RELOAD_S', 60), profiles,
+    maxBodyBytes: num('STRALFORS_MAX_BODY_BYTES', 8388608), certReloadS: certReloadS(), profiles,
   }, `Config(${mode})`);
 }

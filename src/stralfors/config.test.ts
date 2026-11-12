@@ -166,6 +166,13 @@ describe('R1 configuration loading', () => {
     expect(e.message).toBe('STRALFORS_CERT_RELOAD_S must be a positive integer');
   });
 
+  it('STRALFORS_CERT_RELOAD_S above the timer limit is rejected, the limit itself is accepted', () => {
+    const { env } = two();
+    expect(loadConfig({ ...env, STRALFORS_CERT_RELOAD_S: '2147483' }).certReloadS).toBe(2147483);
+    const e = throwsConfig(() => loadConfig({ ...env, STRALFORS_CERT_RELOAD_S: '2147484' }));
+    expect(e.message).toBe('STRALFORS_CERT_RELOAD_S must be at most 2147483');
+  });
+
   it('Profile keeps the credential file paths, non-enumerable and hidden from serialisation', () => {
     const { a, env } = two();
     const withPass = loadConfig(env).profiles['a']!;

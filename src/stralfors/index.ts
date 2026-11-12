@@ -1,4 +1,4 @@
-import { createPrivateKey } from 'node:crypto';
+import { createPrivateKey, X509Certificate } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import type { Dispatcher } from 'undici';
 import { z } from 'zod';
@@ -66,13 +66,20 @@ export function createClient(o: CreateClientOptions) {
       const next = { cert: readFile(cert).trim(), key: readFile(key).trim(), passphrase: passphrase === undefined ? undefined : readFile(passphrase).trim() };
       if (!next.cert || !next.key || next.passphrase === '') kind = 'empty';
       else if (next.cert !== current.cert || next.key !== current.key || next.passphrase !== current.passphrase) {
+        let privateKey;
         try {
-          createPrivateKey({ key: next.key, passphrase: next.passphrase });
+          privateKey = createPrivateKey({ key: next.key, passphrase: next.passphrase });
         } catch {
           kind = 'key';
         }
-        // createAgent checks the key only, so the cert is checked here
-        if (!kind && !next.cert.includes('-----BEGIN CERTIFICATE-----')) kind = 'pem';
+        // createAgent checks the key only, so the cert is parsed here and must belong to the key
+        if (privateKey) {
+          try {
+            if (!new X509Certificate(next.cert).checkPrivateKey(privateKey)) kind = 'key';
+          } catch {
+            kind = 'pem';
+          }
+        }
         if (!kind) {
           const old = agent;
           agent = make({ id: profile!.id, ...next } as Profile, { ca: o.ca });
