@@ -1,0 +1,153 @@
+{{- include "stralforsmcp.guards" . -}}
+{{- $tag := required "image.tag is required" .Values.image.tag -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "stralforsmcp.fullname" . }}
+  labels:
+    {{- include "stralforsmcp.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      {{- include "stralforsmcp.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "stralforsmcp.selector" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "stralforsmcp.fullname" . }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: stralforsmcp
+          image: {{ if .Values.image.digest }}{{ printf "%s@%s" .Values.image.repository .Values.image.digest | quote }}{{ else }}{{ printf "%s:%s" .Values.image.repository $tag | quote }}{{ end }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: mcp
+              containerPort: 3000
+            - name: metrics
+              containerPort: 9464
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: mcp
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: mcp
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          env:
+            - name: STRALFORS_ENV
+              value: {{ .Values.stralfors.env | quote }}
+            - name: STRALFORS_PROFILES
+              value: {{ include "stralforsmcp.profileIds" . | quote }}
+            {{- if .Values.stralfors.allowWrite }}
+            - name: STRALFORS_ALLOW_WRITE
+              value: "true"
+            {{- end }}
+            {{- if kindIs "bool" .Values.stralfors.prodValidateEnabled }}
+            - name: STRALFORS_PROD_VALIDATE_ENABLED
+              value: {{ .Values.stralfors.prodValidateEnabled | quote }}
+            {{- end }}
+            - name: STRALFORS_CERT_RELOAD_S
+              value: {{ .Values.stralfors.certReloadS | quote }}
+            {{- with .Values.stralfors.timeoutMs }}
+            - name: STRALFORS_TIMEOUT_MS
+              value: {{ . | quote }}
+            {{- end }}
+            - name: MCP_TOKEN_LIST_FILE
+              value: {{ printf "/run/creds/token-list/%s" .Values.tokenList.key | quote }}
+            - name: MCP_HOSTNAMES
+              value: {{ include "stralforsmcp.hostnames" . | quote }}
+            {{- if .Values.origins }}
+            - name: MCP_ORIGINS
+              value: {{ join "," .Values.origins | quote }}
+            {{- end }}
+            - name: MCP_DRAIN_MS
+              value: {{ .Values.drainMs | quote }}
+            {{- if .Values.otlp.endpoint }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.otlp.endpoint | quote }}
+            {{- if .Values.otlp.headersSecret.name }}
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.otlp.headersSecret.name | quote }}
+                  key: {{ .Values.otlp.headersSecret.key | quote }}
+            {{- end }}
+            {{- end }}
+            {{- range .Values.profiles }}
+            {{- $p := printf "STRALFORS_PROFILE_%s" (upper (replace "-" "_" .id)) }}
+            {{- $d := printf "/run/creds/%s" .id }}
+            - name: {{ $p }}_COUNTRY
+              value: {{ .country | quote }}
+            - name: {{ $p }}_CLIENT_ID_FILE
+              value: {{ $d }}/client-id
+            - name: {{ $p }}_CLIENT_SECRET_FILE
+              value: {{ $d }}/client-secret
+            - name: {{ $p }}_CERT_FILE
+              value: {{ $d }}/client.pem
+            - name: {{ $p }}_KEY_FILE
+              value: {{ $d }}/client.key
+            {{- if .passphrase }}
+            - name: {{ $p }}_KEY_PASSPHRASE_FILE
+              value: {{ $d }}/key-passphrase
+            {{- end }}
+            - name: {{ $p }}_ACTION_IDS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .secretName | quote }}
+                  key: action-ids
+                  optional: true
+            {{- end }}
+          volumeMounts:
+            {{- range .Values.profiles }}
+            - name: creds-{{ .id }}
+              mountPath: /run/creds/{{ .id }}
+              readOnly: true
+            {{- end }}
+            - name: token-list
+              mountPath: /run/creds/token-list
+              readOnly: true
+      volumes:
+        {{- range .Values.profiles }}
+        - name: creds-{{ .id }}
+          secret:
+            secretName: {{ .secretName | quote }}
+            defaultMode: 288 # octal 0440, in decimal so YAML 1.1 and 1.2 parsers agree
+        {{- end }}
+        - name: token-list
+          secret:
+            secretName: {{ .Values.tokenList.secretName | quote }}
+            defaultMode: 288 # octal 0440, in decimal so YAML 1.1 and 1.2 parsers agree
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

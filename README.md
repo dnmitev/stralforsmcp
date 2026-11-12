@@ -2,7 +2,7 @@
 
 > A hosted [Model Context Protocol](https://modelcontextprotocol.io) server for the Strålfors Output Management API — explore channels, inspect rules, validate invoices before sending and query delivery status from Claude Desktop, Cursor or Claude Code.
 
-**Status:** Phase 2 (MCP server). A typed Stralfors client library and a runnable stateless MCP server (token authentication, policy, audit, graceful shutdown, `whoami` tool) exist; the remaining tools follow in later phases. Not yet packaged for installation.
+**Status:** Phase 2 (MCP server). A typed Stralfors client library and a runnable stateless MCP server (token authentication, policy, audit, graceful shutdown, `whoami` tool) exist; the remaining tools follow in later phases. Packaged as a container image and a Helm chart; the operator installs it.
 
 ## Why
 
@@ -54,7 +54,7 @@ CI publishes coverage, test pass rate and mutation score on every pull request.
 |-------|-------|
 | 0 | Foundation: toolchain, leak guards, CI with reporting |
 | 1 | API client: OAuth client credentials + mTLS, token caching, typed responses, structured logging |
-| 2 | MCP core: Streamable HTTP, per-user auth, policy, audit log, tracing and metrics, container image, first Kubernetes deployment |
+| 2 | MCP core: Streamable HTTP, per-user auth, policy, audit log, tracing and metrics, container image, Helm chart (the EKS deployment itself is done by the operator, outside this repository) |
 | 3 | Validation: rules, example payloads, dry-run validation, channel lookup, tracking |
 | 4 | Knowledge: searchable knowledge base, resources and prompts |
 | 5 | Additional countries and channels; test-environment sending |
@@ -196,6 +196,23 @@ Every pin is updated by hand in one reviewed pull request; the image workflow is
 - Trivy: take the new version's `trivy_<version>_checksums.txt` from its GitHub release and update the version and the `Linux-64bit` sha256 in the "Install trivy" step.
 - Actions: resolve `git/ref/tags/<tag>` of the action (dereference annotated tags through `git/tags/<sha>`), then update the full commit SHA and the version comment.
 - The scan reflects the vulnerability database at build time and ignores findings without a fix; there is no scheduled rescan of published images yet.
+
+## Helm chart
+
+`charts/stralforsmcp` deploys the image to Kubernetes; see [charts/stralforsmcp/README.md](charts/stralforsmcp/README.md) for all values and guards. The chart never creates or holds a Secret: you create these (names are yours, referenced from values) and the chart mounts them as directories so rotation reaches the pod.
+
+- `tokenList.secretName`: key `token-list.json`.
+- each `profiles[].secretName`: keys `client-id`, `client-secret`, `client.pem`, `client.key`; optional `key-passphrase`, `action-ids`.
+- optional `otlp.headersSecret.name`: key `headers`.
+
+```sh
+helm install stralforsmcp ./charts/stralforsmcp --set image.tag=<release-tag> \
+  --set 'profiles[0].id=example-profile' --set 'profiles[0].country=<cc>' \
+  --set 'profiles[0].secretName=example-profile-creds' --set tokenList.secretName=example-token-list \
+  --set 'extraHostnames[0]=<mcp-hostname>'
+```
+
+Helm must be installed to run `test/chart.test.ts` locally (it renders the chart with `helm template`); CI runners have it.
 
 ## Observability
 

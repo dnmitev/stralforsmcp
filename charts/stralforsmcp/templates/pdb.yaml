@@ -1,0 +1,13 @@
+{{- if gt (int .Values.replicas) 1 }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "stralforsmcp.fullname" . }}
+  labels:
+    {{- include "stralforsmcp.labels" . | nindent 4 }}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      {{- include "stralforsmcp.selector" . | nindent 6 }}
+{{- end }}

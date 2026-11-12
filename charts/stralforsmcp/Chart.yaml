@@ -1,0 +1,7 @@
+apiVersion: v2
+name: stralforsmcp
+description: Hosted MCP server for the Stralfors API. Reads every credential from Kubernetes Secrets the cluster owner creates.
+type: application
+version: 0.1.0
+# appVersion is set to the package.json version at release time.
+appVersion: "0.0.0"
