@@ -4,9 +4,17 @@ Vocabulary of this server and of the Stralfors Output Management API as seen thr
 
 ## Environment and credentials
 
-**Environment** (`Config.env`):
-The API deployment a client talks to: `test` or `prod`. Each has a fixed base URL that no configuration can change.
+**Environment** (`Env`, `test` | `prod`):
+One of the two Stralfors API deployments. Each has a fixed base URL that no configuration can change. The word is used on two sides: the deployment environment of a server instance and the permitted environments of a principal; a tool call needs the former to be among the latter.
 _Avoid_: stage, mode, NODE_ENV
+
+**Deployment environment** (`STRALFORS_ENV`, `Config.env`, `deploy`, chart `stralfors.env`):
+The one environment a running server instance and all its clients talk to, fixed at start and reported by `whoami`. Never changed by a request.
+_Avoid_: current env, target, server mode
+
+**Permitted environments** (`Principal.envs`, `users[].envs`):
+The environments a principal may use, taken from the token list. The list may name `prod` for any role, but the decision denies a call in `prod` unless the role is `dev`: only a `dev` may use `prod`.
+_Avoid_: allowed envs, access list
 
 **Credential profile** (`Profile`, env prefix `STRALFORS_PROFILE_<ID>_`):
 One identity against the API: OAuth client id and secret, client certificate and key (optionally passphrase-protected), a country code and zero or more agreement ids. Identified by a free-form profile id; "profile" is the accepted short form.
@@ -16,7 +24,18 @@ _Avoid_: account, tenant, client config
 The caller-chosen name of a credential profile. The only identity that may appear in logs and error messages.
 
 **Secret file** (`*_FILE` variables):
-A file whose content is a secret value. Secrets reach the client only as file paths, never as literal values.
+A file whose content is a secret value. Secrets reach the client only as file paths, never as literal values. The certificate, key and passphrase files are re-read while the server runs (credential hot-swap); the client id and secret files are read once at start.
+
+**Credential hot-swap** (`reloadCredentials`, `STRALFORS_CERT_RELOAD_S`):
+The rule that each client re-reads its certificate, key and passphrase files on a fixed interval and, when the content changed and loads, switches to a new connection agent while requests in flight finish on the old one. Content is compared, not file times, so an identical rewrite is not a change.
+_Avoid_: rotation (the operator's act of replacing the files), reload (ambiguous with the token list), watch
+
+**Reload failure kind** (`credentials.reload_failed`, `kind`):
+The closed reason a hot-swap tick kept the last good agent: `read`, `empty`, `pem` or `key`. Logged once per distinct kind until a tick succeeds, with the profile id and nothing else.
+
+**Last good**:
+The rule shared by the token list and the credential hot-swap: a reload that fails or yields invalid material changes nothing, and the material in use stays until a later reload succeeds. Never a readiness condition.
+_Avoid_: fallback, cache, stale copy
 
 ## Agreements, channels and documents
 
@@ -122,16 +141,16 @@ A connection agent that has received at least one HTTP response. Before that poi
 
 ## Access and audit
 
-**Access token** (`smcp_` prefix, `TOKEN_RE`):
-The per-user bearer secret a client presents to this server: 32 random bytes, base64url, with a detectable prefix. Stored only as its digest.
-_Avoid_: API key, session, password
+**Personal token** (`smcp_` prefix, `TOKEN_RE`, `generateToken`):
+The per-user bearer secret a client presents to this server: 32 random bytes, base64url, with a detectable prefix. Issued to one person, valid at most 90 days. The server side stores only its digest (the token list); the raw value lives with its holder, for example in the Claude Desktop secure store as a sensitive user config value.
+_Avoid_: access token (that is the OAuth token the token source fetches from Stralfors), API key, session, password
 
 **Token digest** (`hashToken`, `tokens[].hash`):
-The SHA-256 hex of an access token; the only form the server stores or compares.
+The SHA-256 hex of a personal token; the only form the server stores or compares.
 _Avoid_: hash (unqualified), token id
 
-**Token list** (`TokenList`):
-The mounted file of users and token digests, re-read on an interval; an invalid file never replaces the last good one.
+**Token list** (`TokenList`, `MCP_TOKEN_LIST_FILE`):
+The mounted file of users and token digests, re-read on an interval under the last-good rule. Written by the operator; never by the server.
 _Avoid_: user database, token store (the store is the in-memory view of the list)
 
 **Token store** (`TokenStore`, `createTokenStore`):
@@ -156,8 +175,8 @@ _Avoid_: permission, verb, method
 The static description of a tool the policy needs: name, access level and an optional required scope.
 
 **Decision** (`decide`, `Decision`):
-The pure result of role, environment and scope checks for one principal and one tool; a denial carries exactly one reason code (`env`, `role`, `write`, `scope`).
-_Avoid_: authorization (ambiguous with the header), check
+The pure result of the policy for one principal and one tool: the environment, role, write and scope rules checked in that fixed order, so a denial carries exactly the first failing reason code (`env`, `role`, `write`, `scope`). A write in `prod` is denied whatever the role or configuration.
+_Avoid_: authorization (ambiguous with the header), check, policy (the module, not its result)
 
 **Tool visibility** (`visibleTools`):
 The rule that a tool a principal may not call is not listed to that principal.
@@ -224,12 +243,16 @@ _Avoid_: version (ambiguous with the server version), mode
 The server issues and accepts no session id; every request carries its own token and any replica can answer it.
 _Avoid_: session, sticky, connection (for a client relationship)
 
-**Drain** (`drainMs`):
-The bounded wait during shutdown for requests already in flight to finish after the listener has closed and readiness has gone to 503.
+**Drain** (`drainMs`, `MCP_DRAIN_MS`):
+The bounded wait during shutdown for requests already in flight to finish after the listener has closed and readiness has gone to 503. A pod's termination grace period must be longer than it.
 _Avoid_: graceful shutdown (the whole sequence), timeout (unqualified)
 
+**Log stream** (`MCP_LOG_LEVEL`, stderr):
+The JSON log lines of the server, written to stderr at or above the configured level. Audit events are a separate stream on stdout that no level setting can silence.
+_Avoid_: output (unqualified), console
+
 **Client per profile** (`clients`, keyed by profile id):
-One Stralfors client (connection agent and token source) per credential profile, created before the server listens and closed after the drain. Tools look a client up by profile id; a tool with one configured profile may default to it.
+One Stralfors client (connection agent, token source and credential hot-swap timer) per credential profile, created before the server listens and closed after the drain. Tools look a client up by profile id; a tool with one configured profile may default to it.
 _Avoid_: connection, session, per-request client
 
 **Principal context** (`withPrincipal`, `currentPrincipal`):
@@ -390,6 +413,60 @@ _Avoid_: `latest` or `edge` for deployments
 **Pin bump**:
 The manual, reviewed pull request that moves a base image digest, the Trivy version and checksum, or an action commit SHA. No update bot does this yet.
 _Avoid_: upgrade, auto-update
+
+## Helm chart
+
+**Chart** (`charts/stralforsmcp`):
+The Helm chart that runs the image in Kubernetes: a Deployment, a Service for the MCP port, a separate Service for the metrics port and optional ingresses, pod disruption budget and network policy. The chart is the deployment shape; the cluster, ingress controller and secret tooling are the operator's.
+_Avoid_: deployment (the Kubernetes object, or the act of deploying), manifest
+
+**Secret by name** (`secretName`, `secretKeyRef`):
+The rule that values carry only the names of Kubernetes Secrets and keys the operator created; the chart has no Secret template and no value that holds a credential.
+_Avoid_: inline secret, secret value
+
+**Whole-directory mount**:
+The rule that the mounted Secrets (the credential files and the token list) are mounted as directories, never through `subPath`, so a rotated Secret reaches the running pod and the last-good reloads can see it. Secrets injected as environment variables through `secretKeyRef` (`action-ids`, the OTLP headers) are not mounted and need a pod restart (see start-only secret).
+_Avoid_: file mount, subPath mount
+
+**Start-only secret** (`action-ids`, OTLP headers, client id and secret):
+A secret the server reads once at start, so rotating it needs a pod restart. Everything else in a mounted Secret is picked up live.
+_Avoid_: static secret, env secret
+
+**Render guard** (`fail` in `_helpers.tpl`, `values.schema.json`):
+A check that makes `helm template` or `helm install` fail before any pod exists: `prod` with writes enabled, `prod` with a public ingress, a grace period not longer than the drain, or no hostname. Only `prod` with writes enabled also has a server-side refusal (the config refuses to start); the public-ingress, grace-period and hostname checks exist in the chart alone, so a deployment that does not use the chart does not get them. Either way a bad value fails at render time, not in a crash loop.
+_Avoid_: write guard (the client's), prod guard (unqualified), validation
+
+**Internal and public ingress** (`ingress.internal`, `ingress.public`):
+Two optional ingresses with the same shape for the MCP port only. The public one is refused with `prod`; the metrics port is never behind either.
+_Avoid_: external ingress, admin ingress
+
+## Desktop extension
+
+**Desktop extension** (`extension/`, `dist/stralforsmcp.mcpb`, `npm run mcpb:build`):
+The Claude Desktop package that carries the bridge as one bundled JavaScript file plus a manifest. Needed because Desktop cannot send a per-user bearer token to a private server on its own; Claude Code and Cursor need none.
+_Avoid_: connector (Desktop's cloud-called custom connector), plugin, app
+
+**Bridge** (`extension/src/proxy.ts`, stderr prefix `stralforsmcp-bridge`):
+The local process the extension starts: stdio towards Desktop, Streamable HTTP towards the hosted server, forwarding MCP messages verbatim and adding only the `Authorization` header. stdout carries protocol frames only; stderr carries a few fixed lines that never contain the token, the URL or upstream text. A 401 ends it with the fixed text `authorization failed (check your token)`.
+_Avoid_: proxy (the file name only), client, server (it is neither to the user)
+
+**User config** (`user_config`, `MCP_URL`, `MCP_TOKEN`):
+The two values Desktop asks for at install: the server URL and the personal token. The token is marked sensitive, kept in the operating system secure store and handed to the bridge by environment variable, never on the command line.
+_Avoid_: settings, credentials (the Stralfors ones)
+
+**Loopback exception** (`localhost`, `127.0.0.1`, `[::1]`):
+The one case in which plain `http://` is accepted where a secret would travel: the bridge's server URL and the OTLP endpoint when headers are set. Any other host must be `https://`.
+_Avoid_: dev mode, insecure flag
+
+## Local development
+
+**Dev env file** (`.env.local`, template `.env.example`):
+The git-ignored file `npm run dev` loads: settings and file paths only, never a secret value or a token.
+_Avoid_: dotenv, config file (unqualified)
+
+**Dev token** (`npm run dev:token`, `scripts/dev-token.ts`):
+A personal token for one local user (`dev`, role `dev`, environment `test`, 30 days) written as a fresh token list with only the digest in the file; the raw token is shown once on stderr. Never used against a hosted server.
+_Avoid_: test token, default token
 
 ## Quality
 
