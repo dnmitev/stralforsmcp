@@ -2,7 +2,7 @@
 
 > A hosted [Model Context Protocol](https://modelcontextprotocol.io) server for the Strålfors Output Management API — explore channels, inspect rules, validate invoices before sending and query delivery status from Claude Desktop, Cursor or Claude Code.
 
-**Status:** Phase 2 (MCP server). A typed Stralfors client library and a runnable stateless MCP server (token authentication, policy, audit, graceful shutdown, `whoami` tool) exist; the remaining tools follow in later phases. Packaged as a container image and a Helm chart; the operator installs it.
+**Status:** Phase 2 (MCP server). A typed Stralfors client library and a runnable stateless MCP server (token authentication, policy, audit, graceful shutdown, `whoami` tool) exist; the remaining tools follow in later phases. Packaged as a container image, a Helm chart and a Claude Desktop extension (`.mcpb`); the operator installs the server.
 
 ## Why
 
@@ -54,11 +54,11 @@ CI publishes coverage, test pass rate and mutation score on every pull request.
 |-------|-------|
 | 0 | Foundation: toolchain, leak guards, CI with reporting |
 | 1 | API client: OAuth client credentials + mTLS, token caching, typed responses, structured logging |
-| 2 | MCP core: Streamable HTTP, per-user auth, policy, audit log, tracing and metrics, container image, Helm chart (the EKS deployment itself is done by the operator, outside this repository) |
+| 2 | MCP core: Streamable HTTP, per-user auth, policy, audit log, tracing and metrics, container image, Helm chart, Claude Desktop extension (the EKS deployment itself is done by the operator, outside this repository) |
 | 3 | Validation: rules, example payloads, dry-run validation, channel lookup, tracking |
 | 4 | Knowledge: searchable knowledge base, resources and prompts |
 | 5 | Additional countries and channels; test-environment sending |
-| 6 | Production: full Helm chart, dashboards and alerts, Claude Desktop extension |
+| 6 | Production: full Helm chart, dashboards and alerts, extension signing and distribution |
 
 ## Stralfors client (library)
 
@@ -104,6 +104,7 @@ Smoke check against the live test API (manual, never run in CI): export the vari
 | `MCP_PORT` | no | `3000` | integer 0-65535 |
 | `MCP_MAX_BODY_BYTES` | no | `1048576` | integer > 0 |
 | `MCP_DRAIN_MS` | no | `10000` | integer >= 0, in-flight drain on SIGTERM/SIGINT |
+| `MCP_LOG_LEVEL` | no | `info` | `trace`, `debug`, `info`, `warn`, `error`, `fatal` or `silent`; logs go to stderr |
 | `STRALFORS_ENV` | yes | none | `test` or `prod` |
 | `STRALFORS_ALLOW_WRITE` | no | `false` | `true` or `false`; `true` is refused with `prod` |
 | `MCP_RATE_PER_MINUTE` | no | `120` | integer >= 1, per-principal refill (per pod) |
@@ -132,15 +133,91 @@ Request pipeline (first match answers; refusals 3-7 are not audited, 401s and to
 
 ### Local run against TEST
 
-1. Create a token list (a user and one token). The raw token is printed once to your terminal; only its hash goes into the file:
+Prerequisites: Node 24+, `npm ci` run once in this checkout, and your TEST credential files (client id, client secret, client certificate and key) readable by you.
+
+1. **Configure.** Copy the template and edit the paths. `.env.local` is git-ignored; it holds file paths only, never secret values.
 
    ```sh
-   node -e "import('./src/auth/index.ts').then(({generateToken,hashToken})=>{const t=generateToken(),n=Date.now(),d=864e5;console.error('token (keep private):',t);console.log(JSON.stringify({users:[{id:'me',name:'Me',role:'dev',envs:['test']}],tokens:[{hash:hashToken(t),userId:'me',created:new Date(n).toISOString(),expires:new Date(n+30*d).toISOString()}]},null,2))})" > token-list.json
+   cp .env.example .env.local
    ```
 
-2. Export `STRALFORSMCP_TOKEN` from the token printed in step 1 (in your shell only, never in a file in this repository), `MCP_TOKEN_LIST_FILE` (that file), `MCP_HOSTNAMES=localhost`, `STRALFORS_ENV=test` and the `STRALFORS_PROFILES` / `STRALFORS_PROFILE_<ID>_*` variables pointing at your credential files (paths only; never put secret values in the environment or on the command line).
-3. `node src/server/main.ts`, then `curl localhost:3000/healthz`.
-4. Add `{"type":"http","url":"http://localhost:3000/mcp","headers":{"Authorization":"Bearer ${STRALFORSMCP_TOKEN}"}}` to `.mcp.json` and call `whoami`, then `list_channels`.
+   Set the `STRALFORS_PROFILE_DEV_*_FILE` paths (the profile id `dev` becomes `DEV` in the names; rename it if you like, upper case, `-` as `_`). `MCP_DRAIN_MS=0` is there so restarts under `--watch` are instant; `MCP_LOG_LEVEL=debug` adds log lines.
+
+2. **Create a token.** Writes `token-list.json` (one user, role `dev`, env `test`, valid 30 days; path from `MCP_TOKEN_LIST_FILE` in `.env.local`, default `./token-list.json`). The file holds only the token's hash. The raw token is printed once, to stderr; copy it now. An existing file is not overwritten unless you add `--force`.
+
+   ```sh
+   npm run dev:token
+   export STRALFORSMCP_TOKEN=<the token printed above>   # this shell only, never in a file in this repository
+   ```
+
+3. **Start the server** (leave it running; use a second terminal, with `STRALFORSMCP_TOKEN` exported there too, for the rest). It restarts when a source file changes (`node --watch`).
+
+   ```sh
+   npm run dev
+   ```
+
+   There is no "listening" line at `info`; at `debug` there is a `listening` line. The first output is a one-line stderr notice (`responseMode: 'json' drops mid-call notifications ...`, harmless). If it prints `refusing to start: ...`, see the table below; `--watch` then waits, so fix the cause and save a file (or restart it). If a port is busy, check it first:
+
+   ```sh
+   lsof -nP -iTCP:3000 -iTCP:9464 -sTCP:LISTEN
+   ```
+
+   Stop the other process (`kill <PID>`) or set `MCP_PORT` / `MCP_METRICS_PORT` in `.env.local`, and use your port wherever the steps say 3000. Stop the dev server with Ctrl-C.
+
+4. **Verify** (replace 3000 if you chose another port; the header is piped to curl with `-H @-` so the token never appears in process arguments). Health, then an authenticated call that needs no MCP client:
+
+   ```sh
+   curl -s localhost:3000/healthz        # ok
+   printf 'Authorization: Bearer %s\n' "$STRALFORSMCP_TOKEN" | curl -s -X POST localhost:3000/mcp \
+     -H @- \
+     -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
+     -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+   curl -s localhost:9464/metrics | head   # Prometheus metrics (use your MCP_METRICS_PORT instead of 9464)
+   ```
+
+   The second prints an `event: message` / `data: {"result":{"tools":[...` response listing `whoami` and `list_channels`. A `401` means the token is wrong (see below).
+
+5. Add `{"type":"http","url":"http://localhost:3000/mcp","headers":{"Authorization":"Bearer ${STRALFORSMCP_TOKEN}"}}` to `.mcp.json` and call `whoami`, then `list_channels`. For Claude Desktop use the extension instead (see "Claude Desktop extension" below).
+
+#### Debugging
+
+`npm run dev:debug` is `npm run dev` with the Node inspector on `127.0.0.1:9229`; `npm run dev:debug:brk` also pauses on the first line until a debugger attaches. After a `--watch` restart the debugger must reattach (the VS Code configuration does so by itself).
+
+- **VS Code:** run the "Attach to dev server" launch configuration (`.vscode/launch.json`) while `dev:debug` runs, or use "Launch dev server" on its own (no watch, no restart on change).
+- **Chrome / Edge:** open `chrome://inspect`, and under Remote Target choose "inspect" for the Node process.
+- **JetBrains:** Run | Attach to Node.js/Chrome, port 9229 (or a "Attach to Node.js/Chrome" run configuration).
+
+Logs: set `MCP_LOG_LEVEL` (`trace`, `debug`, `info`, `warn`, `error`, `fatal`, `silent`; default `info`). Log lines are JSON on **stderr**; audit lines (one per authenticated call) are JSON on **stdout**. Tokens, token hashes and credentials are never logged at any level. To read the logs, split the streams and optionally pretty-print them (a convenience; `pino-pretty` is not a dependency and is fetched by `npx`):
+
+```sh
+npm run dev 2>&1 >/dev/null | npx pino-pretty      # logs only
+npm run dev 2>/dev/null                              # audit only
+```
+
+#### Troubleshooting
+
+`healthz` answering `ok` on the wrong port, or a `401` for a token you just created, usually means an old server is still running on that port with an old token list: run the `lsof` check in step 3, stop it, and start again. After stopping a server wait a few seconds (the drain), or set `MCP_DRAIN_MS=0`, before starting the next one.
+
+| Message or symptom | Cause | Fix |
+|---|---|---|
+| `refusing to start: metrics listener failed (port in use or not permitted; see MCP_METRICS_PORT)` | port 9464 (or `MCP_METRICS_PORT`) is taken, e.g. by an earlier server, or not allowed | `lsof -nP -iTCP:3000 -iTCP:9464 -sTCP:LISTEN`; stop the other process (wait a few seconds after stopping a server, or set `MCP_DRAIN_MS=0`) or set `MCP_METRICS_PORT` |
+| `refusing to start: HTTP listener failed (port in use or not permitted; see MCP_PORT)` | same for port 3000 / `MCP_PORT` | same check; stop the other process or set `MCP_PORT` |
+| `node: .env.local: not found` | `npm run dev` without the env file | `cp .env.example .env.local` (step 1) |
+| `refusing to start: unexpected error` | a failure that is not a configuration error | rerun with the same environment and check the stderr lines above it |
+| `missing MCP_TOKEN_LIST_FILE` / `missing MCP_HOSTNAMES` | variable missing from `.env.local` (or not exported, if you run `node` directly) | step 1 |
+| `<name> is invalid` (`MCP_HOSTNAMES`, `MCP_ORIGINS`, `MCP_PORT`, `MCP_METRICS_PORT`, `MCP_METRICS_HOST`, `MCP_MAX_BODY_BYTES`, `MCP_DRAIN_MS`, `MCP_LOG_LEVEL`, `MCP_RATE_PER_MINUTE`, `MCP_RATE_BURST`, `MCP_TOKEN_STALE_MS`, `MCP_TRACE_SAMPLE_RATIO`, `STRALFORS_ALLOW_WRITE`, `STRALFORS_ENV`, which must be `test` here) | value is not a valid host list, whole number in range, ratio or `true`/`false` | correct it; ports are 0-65535, hostnames carry no scheme or port |
+| `OTEL_EXPORTER_OTLP_ENDPOINT is invalid` / `... must be https when OTLP headers are set` | bad collector URL, or headers would travel in cleartext off the host | fix the URL or unset the OTLP variables |
+| `write is never allowed in prod (STRALFORS_ALLOW_WRITE)` | prod with write enabled | unset `STRALFORS_ALLOW_WRITE` |
+| `<name> must be true or false` (`STRALFORS_ALLOW_WRITE`, `STRALFORS_PROD_VALIDATE_ENABLED`) | other value | use `true` or `false` |
+| `STRALFORS_PROFILES is empty` / `missing STRALFORS_PROFILES` | no profile id listed | step 1 |
+| `missing STRALFORS_PROFILE_<ID>_...` | a profile variable is missing from `.env.local`, or `<ID>` is mis-spelt (upper case, `-` becomes `_`) | step 1 |
+| `cannot read file of <name>` / `file of <name> is empty` | path wrong, not readable by you, or empty | fix the path and permissions |
+| `STRALFORS_CERT_RELOAD_S must be a positive integer` / `... at most 2147483` | bad reload interval | correct or unset it |
+| `STRALFORS_PROFILE_<ID>_ACTION_IDS: invalid agreement id (...)` | an entry is not a UUID | fix the entry |
+| `token list: cannot read` | `MCP_TOKEN_LIST_FILE` missing or unreadable | step 2 |
+| `token list: <field> <rule>` | the file is not a valid token list | recreate it with step 2 (`npm run dev:token -- --force`) |
+| `401` on `/mcp` | missing, wrong, expired or revoked token; the body is identical for every cause | recreate the token (step 2, `-- --force` to replace the file), export it again, restart if it still fails |
+| `403` / `404` / `405` on `/mcp` | host not in `MCP_HOSTNAMES`, wrong path, or not `POST` | use `localhost` and `POST /mcp` |
 
 ## Container image
 
@@ -213,6 +290,18 @@ helm install stralforsmcp ./charts/stralforsmcp --set image.tag=<release-tag> \
 ```
 
 Helm must be installed to run `test/chart.test.ts` locally (it renders the chart with `helm template`); CI runners have it.
+
+## Claude Desktop extension
+
+Claude Desktop cannot send a per-user bearer token to a private server on its own, so `extension/` is a small stdio-to-HTTP proxy packaged as a Desktop extension. Claude Code and Cursor need no extension: they send the header themselves (see the `.mcp.json` example under "Running").
+
+1. `npm run mcpb:build` writes `dist/stralforsmcp.mcpb` (unsigned; signing and distribution come in Phase 6).
+2. Open the file in Claude Desktop (Settings > Extensions) and fill in two fields:
+   - **Server URL**: the `https://` address of the server, for example `https://<mcp-hostname>/mcp`. Plain `http://` is accepted only for localhost.
+   - **Personal token**: your `smcp_` token. Desktop keeps it in the operating system secure store and passes it to the proxy by environment variable.
+3. A 401 or authorization error means the token is wrong, revoked or expired: ask the server operator for a new one.
+
+The bridge forwards MCP messages unchanged; see [extension/README.md](extension/README.md) and ADR 0015.
 
 ## Observability
 

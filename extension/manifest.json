@@ -1,0 +1,45 @@
+{
+  "manifest_version": "0.3",
+  "name": "stralforsmcp",
+  "display_name": "Stralfors MCP",
+  "version": "0.0.0",
+  "description": "Connects Claude Desktop to a hosted Stralfors MCP server using your personal token.",
+  "author": { "name": "stralforsmcp contributors" },
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.js"],
+      "env": {
+        "MCP_URL": "${user_config.server_url}",
+        "MCP_TOKEN": "${user_config.token}"
+      }
+    }
+  },
+  "user_config": {
+    "server_url": {
+      "type": "string",
+      "title": "Server URL",
+      "description": "Address of the hosted server, for example https://mcp.example.com/mcp",
+      "required": true,
+      "sensitive": false
+    },
+    "token": {
+      "type": "string",
+      "title": "Personal token",
+      "description": "Your personal token (starts with smcp_). Stored in the operating system secure store.",
+      "required": true,
+      "sensitive": true
+    }
+  },
+  "tools": [
+    { "name": "whoami", "description": "Show who the token belongs to." },
+    { "name": "list_channels", "description": "List the channels available to you." }
+  ],
+  "privacy_policies": ["https://github.com/dnmitev/stralforsmcp#readme"],
+  "compatibility": {
+    "platforms": ["darwin", "win32"],
+    "runtimes": { "node": ">=20" }
+  }
+}

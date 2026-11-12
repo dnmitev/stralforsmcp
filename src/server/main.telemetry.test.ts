@@ -220,7 +220,8 @@ describe('metrics listener lifecycle', () => {
       const calls = spyListen();
       const e = await W.boot(W.mcpEnv({ MCP_METRICS_PORT: String(port) }), { clientFactory: (o) => clients[o.profileId as 'a' | 'b'], telemetry: m.t }).then(() => undefined, (x: unknown) => x);
       expect(e).toBeInstanceOf(ConfigError);
-      expect((e as Error).message).toBe('metrics listener failed');
+      expect((e as Error).message).toBe('metrics listener failed (port in use or not permitted; see MCP_METRICS_PORT)');
+      expect((e as Error).message).not.toMatch(/\d/); // no port, address or errno
       expect((e as Error).message).not.toContain(String(port));
       expect(JSON.stringify(e)).not.toContain(String(port));
       expect(clients.a.close).toHaveBeenCalledTimes(1);
@@ -231,6 +232,20 @@ describe('metrics listener lifecycle', () => {
       expect(calls[0]!.port).toBe(port);
       const again = await W.boot(W.mcpEnv()); // nothing leaked: a fresh start works
       expect(again.s.metricsPort).toBeGreaterThan(0);
+    } finally {
+      await new Promise<void>((r) => taken.close(() => r()));
+    }
+  });
+
+  it('an HTTP bind failure refuses to start with fixed text that carries no port or address', async () => {
+    const taken = new Server();
+    await new Promise<void>((r) => taken.listen(0, '127.0.0.1', r));
+    try {
+      const e = await W.boot(W.mcpEnv({ MCP_PORT: String(portOf(taken)), MCP_METRICS_PORT: '0' })).then(() => undefined, (x: unknown) => x);
+      expect(e).toBeInstanceOf(ConfigError);
+      expect((e as Error).message).toBe('HTTP listener failed (port in use or not permitted; see MCP_PORT)');
+      expect((e as Error).message).not.toMatch(/\d/);
+      expect(JSON.stringify(e)).not.toContain(String(portOf(taken)));
     } finally {
       await new Promise<void>((r) => taken.close(() => r()));
     }

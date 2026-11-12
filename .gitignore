@@ -28,4 +28,6 @@ tokenomics/
 # OS / editor
 .DS_Store
 .idea/
-.vscode/
+!.vscode/
+.vscode/*
+!.vscode/launch.json
