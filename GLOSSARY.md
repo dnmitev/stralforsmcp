@@ -13,7 +13,7 @@ The one environment a running server instance and all its clients talk to, fixed
 _Avoid_: current env, target, server mode
 
 **Permitted environments** (`Principal.envs`, `users[].envs`):
-The environments a principal may use, taken from the token list. Only a `dev` may hold `prod`.
+The environments a principal may use, taken from the token list. The list may name `prod` for any role, but the decision denies a call in `prod` unless the role is `dev`: only a `dev` may use `prod`.
 _Avoid_: allowed envs, access list
 
 **Credential profile** (`Profile`, env prefix `STRALFORS_PROFILE_<ID>_`):
@@ -142,7 +142,7 @@ A connection agent that has received at least one HTTP response. Before that poi
 ## Access and audit
 
 **Personal token** (`smcp_` prefix, `TOKEN_RE`, `generateToken`):
-The per-user bearer secret a client presents to this server: 32 random bytes, base64url, with a detectable prefix. Issued to one person, stored only as its digest, valid at most 90 days.
+The per-user bearer secret a client presents to this server: 32 random bytes, base64url, with a detectable prefix. Issued to one person, valid at most 90 days. The server side stores only its digest (the token list); the raw value lives with its holder, for example in the Claude Desktop secure store as a sensitive user config value.
 _Avoid_: access token (that is the OAuth token the token source fetches from Stralfors), API key, session, password
 
 **Token digest** (`hashToken`, `tokens[].hash`):
@@ -425,7 +425,7 @@ The rule that values carry only the names of Kubernetes Secrets and keys the ope
 _Avoid_: inline secret, secret value
 
 **Whole-directory mount**:
-The rule that every Secret is mounted as a directory, never through `subPath`, so a rotated Secret reaches the running pod and the last-good reloads can see it.
+The rule that the mounted Secrets (the credential files and the token list) are mounted as directories, never through `subPath`, so a rotated Secret reaches the running pod and the last-good reloads can see it. Secrets injected as environment variables through `secretKeyRef` (`action-ids`, the OTLP headers) are not mounted and need a pod restart (see start-only secret).
 _Avoid_: file mount, subPath mount
 
 **Start-only secret** (`action-ids`, OTLP headers, client id and secret):
@@ -433,7 +433,7 @@ A secret the server reads once at start, so rotating it needs a pod restart. Eve
 _Avoid_: static secret, env secret
 
 **Render guard** (`fail` in `_helpers.tpl`, `values.schema.json`):
-A check that makes `helm template` or `helm install` fail before any pod exists: `prod` with writes enabled, `prod` with a public ingress, a grace period not longer than the drain, or no hostname. Duplicates a server-side refusal so a bad value fails at render time, not in a crash loop.
+A check that makes `helm template` or `helm install` fail before any pod exists: `prod` with writes enabled, `prod` with a public ingress, a grace period not longer than the drain, or no hostname. Only `prod` with writes enabled also has a server-side refusal (the config refuses to start); the public-ingress, grace-period and hostname checks exist in the chart alone, so a deployment that does not use the chart does not get them. Either way a bad value fails at render time, not in a crash loop.
 _Avoid_: write guard (the client's), prod guard (unqualified), validation
 
 **Internal and public ingress** (`ingress.internal`, `ingress.public`):
