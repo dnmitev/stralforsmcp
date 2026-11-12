@@ -104,8 +104,12 @@ describe('AC-2 token handling', () => {
 describe('AC-3 URL policy', () => {
   // Accepted URLs must pass the policy and then reach the transport: the test listener destroys the connection, so the run ends with the fixed upstream line.
   it.each([['localhost', '127.0.0.1', 'localhost'], ['127.0.0.1', '127.0.0.1', '127.0.0.1'], ['[::1]', '::1', '[::1]']])('http://%s starts and reaches the transport', async (_n, bind, host) => {
-    const l = await destroyingListener(bind).catch(() => undefined);
-    if (!l) return void console.warn(`SKIPPED: no listener on ${bind} (IPv6 loopback unavailable)`);
+    // only a recognised "this address family is unavailable" error skips the case; anything else fails it
+    const l = await destroyingListener(bind).catch((e: NodeJS.ErrnoException) => {
+      if (bind === '::1' && (e.code === 'EADDRNOTAVAIN' || e.code === 'EAFNOSUPPORT')) return undefined;
+      throw e;
+    });
+    if (!l) return void console.warn(`SKIPPED: IPv6 loopback unavailable on this machine`);
     const r = await runBridge({ MCP_URL: `http://${host}:${l.port}/mcp`, MCP_TOKEN: generateToken() }, [initialize()], 1);
     await l.close();
     expect(r.code).toBe(1);
@@ -113,10 +117,13 @@ describe('AC-3 URL policy', () => {
     expect(l.connections()).toBeGreaterThan(0);
   });
 
-  it('https://mcp.example.test starts and reaches the transport (name does not resolve)', async () => {
-    const r = await runBridge({ MCP_URL: 'https://mcp.example.test:1/mcp', MCP_TOKEN: generateToken() }, [initialize()], 1);
+  it('an https URL starts and reaches the transport (test-owned listener, TLS handshake fails)', async () => {
+    const l = await destroyingListener();
+    const r = await runBridge({ MCP_URL: `https://127.0.0.1:${l.port}/mcp`, MCP_TOKEN: generateToken() }, [initialize()], 1);
+    await l.close();
     expect(r.code).toBe(1);
     expect(r.stderr).toBe(`${LINES.upstream}\n`);
+    expect(l.connections()).toBeGreaterThan(0);
   });
 
   it.each([
