@@ -162,13 +162,15 @@ docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges --us
   stralforsmcp:local
 ```
 
+The container user is uid 65532, so host-owned `0600` files in the mounted directory are unreadable and start-up fails with `cannot read file of ...`. Give the files to a group with GID 65532 instead: on a dedicated directory, `chgrp -R 65532 creds && chmod 750 creds && chmod 440 creds/*` (the owner keeps read access; `chgrp` to a GID you are not a member of may need `sudo`). Alternatively keep the files' existing group with mode `0440` and add `--group-add <that gid>` to `docker run`. Never use `0644` (world-readable) for real secrets; the smoke test uses it on purpose because its fixture is generated per run and deleted afterwards.
+
 Port 9464 (Prometheus text) has no authentication. In a cluster, reach it from the Prometheus namespace only (NetworkPolicy) and never expose it through the ingress; port 3000 is the only MCP endpoint.
 
 ### Pipeline and tags
 
 `.github/workflows/image.yml` runs on every pull request and on pushes to `main` and `v*` tags.
 
-- `build-scan` (all events, read-only, no secrets, no registry login, nothing pushed): builds linux/amd64, checks the image content, runs the smoke test, runs a Trivy gate that fails on fixable HIGH/CRITICAL vulnerabilities in the image and on HIGH/CRITICAL misconfigurations in the `Dockerfile`, and uploads a CycloneDX SBOM and a Trivy report as the `image-sbom-and-scan` artifact (14 days). Exceptions go only in `.trivyignore.yaml`; each entry needs a `statement` and an `expired_at` at most 90 days ahead (enforced by a test).
+- `build-scan` (all events, read-only, no secrets, no registry login, nothing pushed): builds linux/amd64 (loaded, smoke-tested) and linux/arm64 (exported as an archive, scanned but never started), checks the image content, runs the smoke test on amd64 only, runs the same Trivy gate that fails on fixable HIGH/CRITICAL vulnerabilities on both images and on HIGH/CRITICAL misconfigurations in the `Dockerfile`, and uploads a CycloneDX SBOM and a Trivy report as the `image-sbom-and-scan` artifact (14 days; both are generated before the gates, so a failing gate still uploads them). Exceptions go only in `.trivyignore.yaml`; each entry needs a `statement` and an `expired_at` at most 90 days ahead (enforced by a test).
 - `publish` (push events only, never a pull request or a fork, the only job with `packages: write`): rebuilds linux/amd64 and linux/arm64, pushes to `ghcr.io/<owner>/stralforsmcp` with BuildKit SBOM and `provenance: mode=max` attestations. The pushed digest is a rebuild, not byte for byte the scanned image.
 
 Tags: `sha-<40 hex commit>` on every publish, `edge` on `main`, `X.Y.Z`, `X.Y` and `latest` on `v*` release tags only. Deploy by digest, never by `edge` or `latest`.
@@ -180,7 +182,7 @@ The GHCR package is private after the first push. Making it public is the mainta
 Check what the image contains (no tests, scripts, docs, `.paul`, credentials, shell or npm outside `node_modules`):
 
 ```sh
-docker create --name content stralforsmcp:local && docker export content | tar -t | grep -v '^app/node_modules/'; docker rm content
+cid=$(docker create stralforsmcp:local) && { docker export "$cid" | tar -t | grep -v '^app/node_modules/'; docker rm "$cid"; }
 ```
 
 ### Bumping pins

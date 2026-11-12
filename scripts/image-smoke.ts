@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 export interface Runner {
-  exec(args: string[]): Promise<{ code: number; stdout: string; stderr: string }>;
+  exec(args: string[], timeoutMs?: number): Promise<{ code: number; stdout: string; stderr: string }>;
 }
 export interface Deps {
   runner?: Runner;
@@ -122,9 +122,9 @@ export function redact(s: string): string {
 
 const execFileP = promisify(execFile);
 const dockerRunner: Runner = {
-  async exec(args) {
+  async exec(args, timeoutMs) {
     try {
-      const r = await execFileP('docker', args, { maxBuffer: 16 * 1024 * 1024 });
+      const r = await execFileP('docker', args, { maxBuffer: 16 * 1024 * 1024, timeout: timeoutMs });
       return { code: 0, stdout: r.stdout, stderr: r.stderr };
     } catch (e) {
       const x = e as { code?: unknown; stdout?: string; stderr?: string };
@@ -154,8 +154,9 @@ export async function smoke(opts: Options, deps: Deps = {}): Promise<number> {
     const r = redact(s);
     return secret ? r.split(secret).join('***') : r;
   };
-  const docker = async (args: string[], what: string): Promise<string> => {
-    const r = await runner.exec(args);
+  const DOCKER_MS = 60000;
+  const docker = async (args: string[], what: string, ms = DOCKER_MS): Promise<string> => {
+    const r = await runner.exec(args, ms);
     if (r.code !== 0) throw new Fail(`docker ${r.code}`, `${what}: ${r.stderr}`);
     return r.stdout;
   };
@@ -222,7 +223,7 @@ export async function smoke(opts: Options, deps: Deps = {}): Promise<number> {
       return 'mcp 401';
     });
     await step('logs clean', async () => {
-      const r = await runner.exec(['logs', name]);
+      const r = await runner.exec(['logs', name], DOCKER_MS);
       if (r.code !== 0) throw new Fail(`docker ${r.code}`, r.stderr);
       const bad = `${r.stdout}\n${r.stderr}`
         .split('\n')
@@ -231,7 +232,7 @@ export async function smoke(opts: Options, deps: Deps = {}): Promise<number> {
       return 'logs clean';
     });
     await step('sigterm exit 0', async () => {
-      await docker(['stop', '-t', String(opts.stopTimeoutS), name], 'stop');
+      await docker(['stop', '-t', String(opts.stopTimeoutS), name], 'stop', DOCKER_MS + opts.stopTimeoutS * 1000);
       const code = (await docker(['inspect', '--format', '{{.State.ExitCode}}', name], 'inspect')).trim();
       if (code !== '0') throw new Fail(`exit code ${code}`);
       return 'sigterm exit 0';
@@ -246,7 +247,7 @@ export async function smoke(opts: Options, deps: Deps = {}): Promise<number> {
     return 1;
   } finally {
     try {
-      await runner.exec(['rm', '-f', name]);
+      await runner.exec(['rm', '-f', name], DOCKER_MS);
     } catch {
       // best effort
     }

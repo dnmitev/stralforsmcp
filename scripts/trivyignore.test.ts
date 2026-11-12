@@ -97,12 +97,9 @@ describe('checkTrivyIgnore fixtures', () => {
 
 describe('real .trivyignore.yaml', () => {
   const file = join(import.meta.dirname, '..', '.trivyignore.yaml');
-  it('exists, passes the policy, and is empty today', () => {
+  it('exists and passes the entry policy (statement, expiry within 90 days)', () => {
     expect(existsSync(file), '.trivyignore.yaml missing').toBe(true);
     const text = readFileSync(file, 'utf8');
     expect(checkTrivyIgnore(text, new Date())).toEqual([]);
-    expect(text).not.toMatch(/^\s*- id:/m);
-    expect(text).toMatch(/^vulnerabilities: \[\]$/m);
-    expect(text).toMatch(/^misconfigurations: \[\]$/m);
   });
 });

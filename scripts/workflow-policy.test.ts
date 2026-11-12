@@ -87,7 +87,7 @@ function checkImageRules(lines: string[], out: string[]): void {
     const end = starts[k + 1] ?? lines.length;
     const job = lines.slice(s, end);
     const text = job.join('\n');
-    const gated = /^\s*if:.*github\.event_name == 'push'/m.test(text);
+    const gated = /^ {4}if:.*github\.event_name == 'push'/m.test(text);
     const writesPkg = /\bpackages:\s*write\b/.test(text);
     const name = (lines[s] ?? '').trim();
     if (writesPkg && !gated) msg(s, `job ${name} has packages: write without push gate`);
@@ -296,6 +296,13 @@ describe('checkWorkflow: image rules (fixtures)', () => {
     expect(
       checkWorkflow(mut("    if: github.event_name == 'push' && !github.event.repository.fork\n", '')).join(),
     ).toMatch(/push gate/);
+  });
+  it('a step-level if: does not satisfy the job push gate', () => {
+    const t = mut(
+      '      - uses: docker/login-action@' + SHA + ' # v4.8.0\n',
+      '      - uses: docker/login-action@' + SHA + " # v4.8.0\n        if: github.event_name == 'push'\n",
+    ).replace("    if: github.event_name == 'push' && !github.event.repository.fork\n", '');
+    expect(checkWorkflow(t).join()).toMatch(/packages: write without push gate/);
   });
   it('a push gate on a different job does not count', () => {
     const t = mut(

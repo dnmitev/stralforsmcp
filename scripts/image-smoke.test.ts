@@ -163,6 +163,7 @@ const ok = (stdout = ''): Res => ({ code: 0, stdout, stderr: '' });
 
 interface Rig {
   calls: string[][];
+  timeouts: (number | undefined)[];
   out: string;
   err: string;
   fixtureDirs: string[];
@@ -188,6 +189,7 @@ const goodFetch = (url: string): Response => {
 function rig(): Rig {
   const r: Rig = {
     calls: [],
+    timeouts: [],
     out: '',
     err: '',
     fixtureDirs: [],
@@ -205,8 +207,9 @@ function rig(): Rig {
             return (over.fetch ?? goodFetch)(String(u), i);
           }) as typeof fetch,
           runner: {
-            async exec(a) {
+            async exec(a, timeoutMs) {
               r.calls.push(a);
+              r.timeouts.push(timeoutMs);
               if (a[1] === '-d') {
                 const v = a[a.indexOf('-v') + 1] ?? '';
                 r.fixtureDirs.push(v.slice(0, v.indexOf(':/run/smoke')));
@@ -229,6 +232,18 @@ function rig(): Rig {
 }
 
 const verb = (r: Rig, v: string) => r.calls.findIndex((c) => c[0] === v || (c[0] === 'rm' && v === 'rm'));
+
+describe('smoke: docker command timeouts', () => {
+  it('bounds every docker call; stop outlasts the stop period', async () => {
+    if (!hasOpenssl) return;
+    const r = rig();
+    await r.run();
+    expect(r.calls.length).toBeGreaterThan(5);
+    r.timeouts.forEach((t) => expect(t).toBeGreaterThan(0));
+    const stop = r.calls.findIndex((c) => c[0] === 'stop');
+    expect(r.timeouts[stop]).toBeGreaterThan(15000);
+  });
+});
 
 describe('smoke: happy path', () => {
   it('seven ok lines, PASS, exit 0, stop before rm -f, fixture removed', async () => {
