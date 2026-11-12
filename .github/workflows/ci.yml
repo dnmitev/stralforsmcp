@@ -50,7 +50,8 @@ jobs:
 
   mutation:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
+    # Full --force run on main took 19m40s at Phase 2 close (green) and 20m+ afterwards (cancelled): leave headroom.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
