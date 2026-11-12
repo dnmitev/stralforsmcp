@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 const SHA = 'a'.repeat(40);
 const UNTRUSTED =
   /\$\{\{[^}]*(github\.event\.pull_request\.(title|body|head\.ref)|github\.head_ref|github\.base_ref|github\.event\.comment\.|github\.event\.issue\.)[^}]*\}\}/;
-const REF_FIELDS = /\$\{\{[^}]*(github\.ref_name|github\.ref\b)[^}]*\}\}/;
+const REF_FIELDS = /\$\{\{[^}]*(github\.ref_name|github\.ref\b|github\.event\.ref\b)[^}]*\}\}/;
 const PINNED = /^[\w.-]+\/[\w.-]+(\/[\w./-]+)?@[0-9a-f]{40}$/;
 
 const indentOf = (l: string): number => l.length - l.trimStart().length;
@@ -87,7 +87,9 @@ function checkImageRules(lines: string[], out: string[]): void {
     const end = starts[k + 1] ?? lines.length;
     const job = lines.slice(s, end);
     const text = job.join('\n');
-    const gated = /^ {4}if:.*github\.event_name == 'push'/m.test(text);
+    // ponytail: any `||` in the job-level if: counts as ungated; no boolean parsing.
+    const gateLine = /^ {4}if:.*github\.event_name == 'push'.*$/m.exec(text)?.[0] ?? '';
+    const gated = gateLine !== '' && !gateLine.includes('||');
     const writesPkg = /\bpackages:\s*write\b/.test(text);
     const name = (lines[s] ?? '').trim();
     if (writesPkg && !gated) msg(s, `job ${name} has packages: write without push gate`);
@@ -332,7 +334,14 @@ describe('checkWorkflow: image rules (fixtures)', () => {
       ).toEqual([]);
     },
   );
-  it.each(['github.ref_name', 'github.ref'])('flags %s in run: of a tag-triggered workflow', (e) => {
+  it('a job-level if: that also admits pull requests (||) is not a push gate', () => {
+    const t = mut(
+      "if: github.event_name == 'push' && !github.event.repository.fork",
+      "if: github.event_name == 'push' || github.event_name == 'pull_request'",
+    );
+    expect(checkWorkflow(t).join()).toMatch(/push gate/);
+  });
+  it.each(['github.ref_name', 'github.ref', 'github.event.ref'])('flags %s in run: of a tag-triggered workflow', (e) => {
     expect(checkWorkflow(mut('run: echo "$DIGEST"', `run: echo "\${{ ${e} }}"`)).join()).toMatch(/run:/);
   });
   it('allows github.ref in with:/concurrency of a tag-triggered workflow', () => {
