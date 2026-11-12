@@ -14,7 +14,7 @@ const setup = (over: Partial<Parameters<typeof callTool>[3]> = {}) => {
   const s = sink();
   let t = T;
   const clock = { advance: (ms: number) => void (t += ms) };
-  return { s, clock, deps: { env: 'test' as const, allowWrite: false, audit: s.audit, now: () => t, ...over } };
+  return { s, clock, deps: { env: 'test' as const, allowWrite: false, prodValidateEnabled: false, audit: s.audit, now: () => t, ...over } };
 };
 const pm = principal('pm', ['test']);
 
@@ -41,7 +41,7 @@ describe('callTool', () => {
     const { deps } = setup();
     let seen: unknown[] = [];
     const def = mkDef('probe', 'read', async (a, c) => (seen = [a, c], { v: 1 }));
-    await callTool(def, { n: 1 }, pm, { ...deps, allowWrite: false });
+    await callTool(def, { n: 1 }, pm, { ...deps, allowWrite: false, prodValidateEnabled: false });
     expect(seen[0]).toEqual({ n: 1 });
     expect(seen[1]).toMatchObject({ principal: pm, env: 'test', allowWrite: false, visible: [def.spec] });
   });
@@ -144,7 +144,7 @@ describe('registerAll', () => {
   it('hides write tools for pm with allowWrite false', async () => {
     const { deps } = setup();
     const server = new McpServer({ name: 'x', version: '1' });
-    expect(registerAll(server, pm, [okTool, writeTool], deps)).toEqual([okTool.spec]);
+    expect(registerAll(server, pm, [okTool, writeTool], { ...deps, claims: { hasScope: () => false } })).toEqual([okTool.spec]);
     expect((await (await listed(server)).listTools()).tools).toHaveLength(1);
   });
 

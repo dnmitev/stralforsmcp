@@ -22,7 +22,7 @@ afterEach(async () => {
   api = undefined;
 });
 
-const ctx = (): ToolContext => ({ principal: principal('dev', ['test']), env: 'test', allowWrite: false, visible: [] });
+const ctx = (): ToolContext => ({ principal: principal('dev', ['test']), env: 'test', allowWrite: false, prodValidateEnabled: false, visible: [] });
 const rejection = (p: Promise<unknown>) => p.then(() => undefined, (e: unknown) => e);
 async function world(opts: Parameters<typeof startChannelsApi>[1] = {}, extra: Record<string, string | undefined> = {}) {
   api = await startChannelsApi(pki, opts);
@@ -168,7 +168,7 @@ describe('list_channels policy matrix over the SDK', () => {
     let unlisted = 0;
     for (const [role, env, envs, allowWrite] of rows) {
       const s = sink();
-      const { fetch } = handlerFetch(buildMcp({ env, allowWrite: allowWrite && env === 'test', audit: s.audit, tools: [whoami, tool] }), toAuth(principal(role, [...envs])));
+      const { fetch } = handlerFetch(buildMcp({ env, allowWrite: allowWrite && env === 'test', prodValidateEnabled: false, audit: s.audit, tools: [whoami, tool] }), toAuth(principal(role, [...envs])));
       const c = await connect('modern', fetch);
       const names = (await c.listTools()).tools.map((t) => t.name);
       expect(names.includes('list_channels'), `${role} ${env} ${envs} ${allowWrite}`).toBe(names.includes('whoami'));
@@ -186,7 +186,7 @@ describe('list_channels policy matrix over the SDK', () => {
 
   it.each(ERAS)('is callable end to end through the SDK (%s era) and audited allowed', async (era) => {
     const s = sink();
-    const { fetch } = handlerFetch(buildMcp({ env: 'test', allowWrite: false, audit: s.audit, tools: [tool] }), toAuth(principal('qa', ['test'])));
+    const { fetch } = handlerFetch(buildMcp({ env: 'test', allowWrite: false, prodValidateEnabled: false, audit: s.audit, tools: [tool] }), toAuth(principal('qa', ['test'])));
     const c = await connect(era, fetch);
     const r = await c.callTool({ name: 'list_channels', arguments: {} });
     expect(r.structuredContent).toEqual({ profile: 'a', channels: ['x'] });

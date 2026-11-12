@@ -15,7 +15,7 @@ import { T } from '../../test/helpers/token-list.ts';
 
 const setup = (over: Partial<Parameters<typeof callTool>[3]> = {}) => {
   const s = sink();
-  return { s, deps: { env: 'test' as const, allowWrite: false, audit: s.audit, now: () => T, ...over } };
+  return { s, deps: { env: 'test' as const, allowWrite: false, prodValidateEnabled: false, audit: s.audit, now: () => T, ...over } };
 };
 const pm = principal('pm', ['test']);
 const thrower = (e: unknown) => mkDef('probe', 'read', async () => { throw e; });

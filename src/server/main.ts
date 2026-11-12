@@ -156,7 +156,7 @@ export async function start(env: Record<string, string | undefined>, deps: Start
       metrics.once('error', () => reject(new ConfigError('metrics listener failed (port in use or not permitted; see MCP_METRICS_PORT)'))); // the OS error carries the address: not forwarded
       metrics.listen(metricsPort, metricsHost, () => resolve((metrics.address() as { port: number }).port));
     });
-    srv = createHttpServer({ store, audit, telemetry, monotonic: deps.monotonic, env: deploy, hosts, origins, maxBodyBytes, drainMs, now, limiter, factory: buildMcp({ env: deploy, allowWrite, audit, tools, now, telemetry }) });
+    srv = createHttpServer({ store, audit, telemetry, monotonic: deps.monotonic, env: deploy, hosts, origins, maxBodyBytes, drainMs, now, limiter, factory: buildMcp({ env: deploy, allowWrite, prodValidateEnabled: config.prodValidateEnabled, audit, tools, now, telemetry }) });
     listening = await srv.listen(port, env.MCP_LISTEN_HOST ?? '0.0.0.0').catch(() => { // the OS error carries the address: not forwarded
       throw new ConfigError('HTTP listener failed (port in use or not permitted; see MCP_PORT)');
     });

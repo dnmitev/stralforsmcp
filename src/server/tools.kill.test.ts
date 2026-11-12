@@ -6,7 +6,7 @@ import { mkDef, okTool, principal, sink } from '../../test/helpers/server.ts';
 const run = async (ticks: number[], def = okTool, over: object = {}) => {
   const s = sink();
   const q = [...ticks];
-  const r = await callTool(def, {}, principal('pm', ['test']), { env: 'test', allowWrite: false, audit: s.audit, now: () => q.shift() ?? 0, ...over });
+  const r = await callTool(def, {}, principal('pm', ['test']), { env: 'test', allowWrite: false, prodValidateEnabled: false, audit: s.audit, now: () => q.shift() ?? 0, ...over });
   return { s, r };
 };
 

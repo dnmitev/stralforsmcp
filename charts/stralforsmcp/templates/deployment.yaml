@@ -7,7 +7,7 @@ metadata:
   labels:
     {{- include "stralforsmcp.labels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.replicas }}
+  replicas: {{ .Values.replicas | int64 }}
   selector:
     matchLabels:
       {{- include "stralforsmcp.selector" . | nindent 6 }}
@@ -22,7 +22,7 @@ spec:
     spec:
       serviceAccountName: {{ include "stralforsmcp.fullname" . }}
       automountServiceAccountToken: false
-      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds | int64 }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -69,10 +69,10 @@ spec:
               value: {{ .Values.stralfors.prodValidateEnabled | quote }}
             {{- end }}
             - name: STRALFORS_CERT_RELOAD_S
-              value: {{ .Values.stralfors.certReloadS | quote }}
+              value: {{ .Values.stralfors.certReloadS | int64 | quote }}
             {{- with .Values.stralfors.timeoutMs }}
             - name: STRALFORS_TIMEOUT_MS
-              value: {{ . | quote }}
+              value: {{ . | int64 | quote }}
             {{- end }}
             - name: MCP_TOKEN_LIST_FILE
               value: {{ printf "/run/creds/token-list/%s" .Values.tokenList.key | quote }}
@@ -83,7 +83,7 @@ spec:
               value: {{ join "," .Values.origins | quote }}
             {{- end }}
             - name: MCP_DRAIN_MS
-              value: {{ .Values.drainMs | quote }}
+              value: {{ .Values.drainMs | int64 | quote }}
             {{- if .Values.otlp.endpoint }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ .Values.otlp.endpoint | quote }}

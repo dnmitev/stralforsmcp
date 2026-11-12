@@ -114,6 +114,8 @@ Smoke check against the live test API (manual, never run in CI): export the vari
 | `MCP_METRICS_HOST` | no | `0.0.0.0` | metrics listen address, non-empty |
 | `MCP_TRACE_SAMPLE_RATIO` | no | `0.1` | decimal 0 to 1 (`0`, `.5`, `0.25`, `1.0`; no sign, exponent or percent): fraction of requests whose trace is exported |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | no | unset | `http(s)` base URL of an OTLP/HTTP collector; unset or empty = spans are created but not exported |
+| `OTEL_EXPORTER_OTLP_HEADERS` | no | unset | OTLP request headers, read by the OpenTelemetry exporter. Carries credentials: put it in a secret, never in a values file or log. Read at start only (a change needs a restart). With any OTLP headers set, a non-loopback `http` endpoint is refused: the endpoint must be `https` |
+| `OTEL_EXPORTER_OTLP_TRACES_HEADERS` | no | unset | Same as `OTEL_EXPORTER_OTLP_HEADERS`, for the trace exporter only; same credential, start-only and https-only rules |
 | `STRALFORS_PROFILES`, `STRALFORS_PROFILE_<ID>_*` | yes | none | profile variables as read by the Stralfors client library (see above); secrets by file path only |
 
 Request pipeline (first match answers; refusals 3-7 are not audited, 401s and tool calls are):

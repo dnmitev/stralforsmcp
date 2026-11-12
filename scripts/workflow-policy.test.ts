@@ -236,6 +236,17 @@ describe('real workflows', () => {
   it.each(files)('%s satisfies the policy', (f) => {
     expect(checkWorkflow(readFileSync(join(dir, f), 'utf8'))).toEqual([]);
   });
+
+  // M2: a cancelled push run on main leaves no green CI and no Stryker baseline. Only pull_request runs may be cancelled.
+  it.each(files)('%s cancels in-progress runs only for pull_request events', (f) => {
+    const m = /^\s*cancel-in-progress:\s*(.+?)\s*$/m.exec(readFileSync(join(dir, f), 'utf8'));
+    if (!m) return;
+    expect(m[1]).toMatch(/^(false|\$\{\{\s*github\.event_name == 'pull_request'\s*\}\})$/);
+  });
+
+  it('ci.yml uses exactly the pull_request expression', () => {
+    expect(readFileSync(join(dir, 'ci.yml'), 'utf8')).toContain("cancel-in-progress: ${{ github.event_name == 'pull_request' }}");
+  });
 });
 
 

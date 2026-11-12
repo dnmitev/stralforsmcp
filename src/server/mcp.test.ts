@@ -26,7 +26,7 @@ describe('tools/list matrix (24 rows x 2 eras)', () => {
   describe.each(ERAS)('%s era', (era) => {
     it.each(ROWS)('$role envs=$envs env=$env allowWrite=$aw', async ({ role, env, envs, aw }) => {
       const s = sink();
-      const { fetch } = handlerFetch(buildMcp({ env, allowWrite: aw, audit: s.audit, tools: catalogue }), toAuth(principal(role, envs)));
+      const { fetch } = handlerFetch(buildMcp({ env, allowWrite: aw, prodValidateEnabled: false, claims: { hasScope: () => false }, audit: s.audit, tools: catalogue }), toAuth(principal(role, envs)));
       expect(await names(era, fetch)).toEqual(oracle(role, envs, env));
       expect(s.lines()).toEqual([]);
     });
@@ -34,13 +34,13 @@ describe('tools/list matrix (24 rows x 2 eras)', () => {
 
   it('whoami is listed first for every row where something is listed', async () => {
     for (const r of ROWS.filter((x) => oracle(x.role, x.envs, x.env).length > 0)) {
-      const { fetch } = handlerFetch(buildMcp({ env: r.env, allowWrite: r.aw, audit: sink().audit, tools: catalogue }), toAuth(principal(r.role, r.envs)));
+      const { fetch } = handlerFetch(buildMcp({ env: r.env, allowWrite: r.aw, prodValidateEnabled: false, claims: { hasScope: () => false }, audit: sink().audit, tools: catalogue }), toAuth(principal(r.role, r.envs)));
       expect((await names('modern', fetch))[0]).toBe('whoami');
     }
   });
 
   it('catalogue order is preserved', async () => {
-    const { fetch } = handlerFetch(buildMcp({ env: 'test', allowWrite: false, audit: sink().audit, tools: [okTool, whoami] }), toAuth(principal('qa', ['test'])));
+    const { fetch } = handlerFetch(buildMcp({ env: 'test', allowWrite: false, prodValidateEnabled: false, claims: { hasScope: () => false }, audit: sink().audit, tools: [okTool, whoami] }), toAuth(principal('qa', ['test'])));
     expect(await names('modern', fetch)).toEqual(['okTool', 'whoami']);
   });
 });
@@ -48,7 +48,7 @@ describe('tools/list matrix (24 rows x 2 eras)', () => {
 describe.each(ERAS)('unlisted tool (%s era)', (era) => {
   it('is unknown (JSON-RPC error) and never reaches the registry', async () => {
     const s = sink();
-    const { fetch } = handlerFetch(buildMcp({ env: 'test', allowWrite: false, audit: s.audit, tools: catalogue }), toAuth(principal('pm', ['test'])));
+    const { fetch } = handlerFetch(buildMcp({ env: 'test', allowWrite: false, prodValidateEnabled: false, claims: { hasScope: () => false }, audit: s.audit, tools: catalogue }), toAuth(principal('pm', ['test'])));
     const c = await connect(era, fetch);
     await expect(c.callTool({ name: 'devOnly', arguments: {} })).rejects.toThrow(/not found/);
     expect(s.lines()).toEqual([]);
@@ -56,7 +56,7 @@ describe.each(ERAS)('unlisted tool (%s era)', (era) => {
 
   it('outside the deployment env even whoami is unknown, list is empty, nothing audited', async () => {
     const s = sink();
-    const { fetch } = handlerFetch(buildMcp({ env: 'prod', allowWrite: false, audit: s.audit, tools: catalogue }), toAuth(principal('pm', ['test'])));
+    const { fetch } = handlerFetch(buildMcp({ env: 'prod', allowWrite: false, prodValidateEnabled: false, claims: { hasScope: () => false }, audit: s.audit, tools: catalogue }), toAuth(principal('pm', ['test'])));
     const c = await connect(era, fetch);
     expect((await c.listTools()).tools).toEqual([]);
     await expect(c.callTool({ name: 'whoami', arguments: {} })).rejects.toThrow(/not found/);
@@ -67,18 +67,18 @@ describe.each(ERAS)('unlisted tool (%s era)', (era) => {
 describe('factory properties', () => {
   it('without a principal registers nothing and audits nothing', async () => {
     const s = sink();
-    const { fetch } = handlerFetch(buildMcp({ env: 'test', allowWrite: false, audit: s.audit, tools: catalogue }), undefined);
+    const { fetch } = handlerFetch(buildMcp({ env: 'test', allowWrite: false, prodValidateEnabled: false, claims: { hasScope: () => false }, audit: s.audit, tools: catalogue }), undefined);
     expect(await names('modern', fetch)).toEqual([]);
     expect(s.lines()).toEqual([]);
   });
 
   it('with authInfo lacking a principal registers nothing (fail closed)', async () => {
-    const { fetch } = handlerFetch(buildMcp({ env: 'test', allowWrite: false, audit: sink().audit, tools: catalogue }), { token: '', clientId: 'x', scopes: [] });
+    const { fetch } = handlerFetch(buildMcp({ env: 'test', allowWrite: false, prodValidateEnabled: false, claims: { hasScope: () => false }, audit: sink().audit, tools: catalogue }), { token: '', clientId: 'x', scopes: [] });
     expect(await names('legacy', fetch)).toEqual([]);
   });
 
   it('builds a new McpServer for every request and is synchronous', async () => {
-    const factory = buildMcp({ env: 'test', allowWrite: false, audit: sink().audit, tools: catalogue });
+    const factory = buildMcp({ env: 'test', allowWrite: false, prodValidateEnabled: false, claims: { hasScope: () => false }, audit: sink().audit, tools: catalogue });
     const made: unknown[] = [];
     const spy: typeof factory = (ctx) => {
       const r = factory(ctx);
@@ -97,7 +97,7 @@ describe('factory properties', () => {
   });
 
   it('concurrent callers with different principals see their own tools (no shared server)', async () => {
-    const factory = buildMcp({ env: 'test', allowWrite: false, audit: sink().audit, tools: catalogue });
+    const factory = buildMcp({ env: 'test', allowWrite: false, prodValidateEnabled: false, claims: { hasScope: () => false }, audit: sink().audit, tools: catalogue });
     const a = handlerFetch(factory, toAuth(principal('qa', ['test'])));
     const b = handlerFetch(factory, toAuth(principal('qa', ['prod'])));
     const results = await Promise.all(Array.from({ length: 8 }, (_, i) => names('modern', (i % 2 ? a : b).fetch)));
@@ -105,7 +105,7 @@ describe('factory properties', () => {
   });
 
   it.each(ERAS)('server identity (%s era)', async (era) => {
-    const { fetch } = handlerFetch(buildMcp({ env: 'test', allowWrite: false, audit: sink().audit, tools: catalogue }), toAuth(principal('qa', ['test'])));
+    const { fetch } = handlerFetch(buildMcp({ env: 'test', allowWrite: false, prodValidateEnabled: false, claims: { hasScope: () => false }, audit: sink().audit, tools: catalogue }), toAuth(principal('qa', ['test'])));
     const c = await connect(era, fetch);
     const info = { name: 'stralforsmcp', version: pkg.version };
     if (era === 'legacy') expect(c.getServerVersion()).toMatchObject(info);
@@ -113,7 +113,7 @@ describe('factory properties', () => {
   });
 
   it('serverInfo can be overridden', async () => {
-    const { fetch } = handlerFetch(buildMcp({ env: 'test', allowWrite: false, audit: sink().audit, tools: catalogue, serverInfo: { name: 'other', version: '9.9.9' } }), toAuth(principal('qa', ['test'])));
+    const { fetch } = handlerFetch(buildMcp({ env: 'test', allowWrite: false, prodValidateEnabled: false, claims: { hasScope: () => false }, audit: sink().audit, tools: catalogue, serverInfo: { name: 'other', version: '9.9.9' } }), toAuth(principal('qa', ['test'])));
     expect((await connect('legacy', fetch)).getServerVersion()).toMatchObject({ name: 'other', version: '9.9.9' });
   });
 });
