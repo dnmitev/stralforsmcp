@@ -83,10 +83,25 @@ describe('env validation', () => {
     await W.boot(W.mcpEnv({ OTEL_EXPORTER_OTLP_ENDPOINT: '' }));
     expect(createTelemetry.mock.calls[0]![0].otlpEndpoint || undefined).toBeUndefined();
     createTelemetry.mockClear();
-    await W.boot(W.mcpEnv({ OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector.example.test:4318' }));
+    await withOtlpHeaders({}, async () => {
+      await W.boot(W.mcpEnv({ OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector.example.test:4318' }));
+    });
     expect(createTelemetry.mock.calls[0]![0].otlpEndpoint).toBe('http://collector.example.test:4318');
   });
 });
+
+const OTLP_HEADERS = ['OTEL_EXPORTER_OTLP_HEADERS', 'OTEL_EXPORTER_OTLP_TRACES_HEADERS'];
+// run fn with both OTLP header variables cleared from process.env (plus `set`), restoring them after, pass or fail
+const withOtlpHeaders = async (set: Record<string, string>, fn: () => Promise<void>): Promise<void> => {
+  const prev = OTLP_HEADERS.map((k) => process.env[k]);
+  for (const k of OTLP_HEADERS) delete process.env[k];
+  Object.assign(process.env, set);
+  try {
+    await fn();
+  } finally {
+    OTLP_HEADERS.forEach((k, i) => (prev[i] === undefined ? delete process.env[k] : (process.env[k] = prev[i])));
+  }
+};
 
 describe('OTLP credentials stay off cleartext links', () => {
   it.each(['OTEL_EXPORTER_OTLP_HEADERS', 'OTEL_EXPORTER_OTLP_TRACES_HEADERS'])('%s with a non-loopback http endpoint: ConfigError, nothing started', async (h) => {
@@ -103,9 +118,21 @@ describe('OTLP credentials stay off cleartext links', () => {
     expect(createTelemetry.mock.calls[0]![0].otlpEndpoint).toBe(url);
   });
 
+  it.each(['OTEL_EXPORTER_OTLP_HEADERS', 'OTEL_EXPORTER_OTLP_TRACES_HEADERS'])('%s set only on process.env (the exporter reads it there): ConfigError, nothing started', async (h) => {
+    createTelemetry.mockClear();
+    await withOtlpHeaders({ [h]: 'authorization=Bearer CANARY-SECRET' }, async () => {
+      const e = await W.boot(W.mcpEnv({ OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector.example.test:4318' })).then(() => undefined, (x: unknown) => x);
+      expect(e).toBeInstanceOf(ConfigError);
+      expect((e as Error).message).toBe('OTEL_EXPORTER_OTLP_ENDPOINT must be https when OTLP headers are set');
+      expect(createTelemetry).not.toHaveBeenCalled();
+    });
+  });
+
   it('http without headers is still accepted', async () => {
     createTelemetry.mockClear();
-    await W.boot(W.mcpEnv({ OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector.example.test:4318' }));
+    await withOtlpHeaders({}, async () => {
+      await W.boot(W.mcpEnv({ OTEL_EXPORTER_OTLP_ENDPOINT: 'http://collector.example.test:4318' }));
+    });
     expect(createTelemetry).toHaveBeenCalledTimes(1);
   });
 });
