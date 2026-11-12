@@ -101,16 +101,27 @@ describe('AC-2 token handling', () => {
   });
 });
 
+// IPv6 loopback availability is probed once; only a recognised "address family unavailable" error counts as unavailable, anything else fails the file
+const ipv6 = await destroyingListener('::1').then(async (l) => { await l.close(); return true; }, (e: NodeJS.ErrnoException) => {
+  if (e.code === 'EADDRNOTAVAIL' || e.code === 'EAFNOSUPPORT') return false;
+  throw e;
+});
+
 describe('AC-3 URL policy', () => {
   // Accepted URLs must pass the policy and then reach the transport: the test listener destroys the connection, so the run ends with the fixed upstream line.
-  it.each([['localhost', '127.0.0.1', 'localhost'], ['127.0.0.1', '127.0.0.1', '127.0.0.1'], ['[::1]', '::1', '[::1]']])('http://%s starts and reaches the transport', async (_n, bind, host) => {
-    // only a recognised "this address family is unavailable" error skips the case; anything else fails it
-    const l = await destroyingListener(bind).catch((e: NodeJS.ErrnoException) => {
-      if (bind === '::1' && (e.code === 'EADDRNOTAVAIL' || e.code === 'EAFNOSUPPORT')) return undefined;
-      throw e;
-    });
-    if (!l) return void console.warn(`SKIPPED: IPv6 loopback unavailable on this machine`);
+  it.each([['localhost', '127.0.0.1', 'localhost'], ['127.0.0.1', '127.0.0.1', '127.0.0.1']])('http://%s starts and reaches the transport', async (_n, bind, host) => {
+    const l = await destroyingListener(bind);
     const r = await runBridge({ MCP_URL: `http://${host}:${l.port}/mcp`, MCP_TOKEN: generateToken() }, [initialize()], 1);
+    await l.close();
+    expect(r.code).toBe(1);
+    expect(r.stderr).toBe(`${LINES.upstream}\n`);
+    expect(l.connections()).toBeGreaterThan(0);
+  });
+
+  // reported as skipped (not passed) when the machine has no IPv6 loopback
+  it.skipIf(!ipv6)('http://[::1] starts and reaches the transport', async () => {
+    const l = await destroyingListener('::1');
+    const r = await runBridge({ MCP_URL: `http://[::1]:${l.port}/mcp`, MCP_TOKEN: generateToken() }, [initialize()], 1);
     await l.close();
     expect(r.code).toBe(1);
     expect(r.stderr).toBe(`${LINES.upstream}\n`);
