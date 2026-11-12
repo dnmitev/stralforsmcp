@@ -5,7 +5,7 @@ import { ToolInputError, type ToolContext } from './tools.ts';
 import type { StralforsClient } from '../stralfors/index.ts';
 import { principal } from '../../test/helpers/server.ts';
 
-const ctx = (): ToolContext => ({ principal: principal('dev', ['test']), env: 'test', allowWrite: false, visible: [] });
+const ctx = (): ToolContext => ({ principal: principal('dev', ['test']), env: 'test', allowWrite: false, prodValidateEnabled: false, visible: [] });
 const mk = () => {
   const a = vi.fn(async (_id?: string) => ['A']);
   const b = vi.fn(async (_id?: string) => ['B']);

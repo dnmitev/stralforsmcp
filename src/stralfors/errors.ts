@@ -7,10 +7,12 @@ export interface Violation {
   criteria: string[];
   serverError?: true;
 }
-export type StralforsErrorKind =
-  | 'config' | 'tls' | 'auth' | 'forbidden' | 'agreement_not_found' | 'route_not_found' | 'bad_request'
-  | 'validation_failed' | 'conflict' | 'rate_limited' | 'upstream' | 'timeout' | 'too_large' | 'schema'
-  | 'write_blocked' | 'token_format' | 'request_invalid';
+export const STRALFORS_ERROR_KINDS = [
+  'config', 'tls', 'auth', 'forbidden', 'agreement_not_found', 'route_not_found', 'bad_request',
+  'validation_failed', 'conflict', 'rate_limited', 'upstream', 'timeout', 'too_large', 'schema',
+  'write_blocked', 'token_format', 'request_invalid',
+] as const;
+export type StralforsErrorKind = (typeof STRALFORS_ERROR_KINDS)[number];
 interface Base {
   status?: number;
   traceId?: string;

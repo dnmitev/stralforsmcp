@@ -43,5 +43,9 @@ const end = () => process.exit(0);
 stdio.onclose = () => void http.close().then(end, end);
 http.onclose = () => void stdio.close().then(end, end);
 
-await http.start();
-await stdio.start();
+try {
+  await http.start();
+  await stdio.start();
+} catch {
+  die('upstream error'); // fixed line: the raw error can carry the URL
+}

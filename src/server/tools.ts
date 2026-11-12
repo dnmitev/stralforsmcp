@@ -4,11 +4,11 @@ import type * as z from 'zod/v4';
 import type { Audit, AuditInput } from '../audit/index.ts';
 import type { Env, Principal } from '../auth/index.ts';
 import { withPrincipal } from './context.ts';
-import { StralforsError, type StralforsErrorKind } from '../stralfors/errors.ts';
+import { ConfigError, StralforsError, type StralforsErrorKind } from '../stralfors/errors.ts';
 import { setSafe, withSpan, type Telemetry } from '../telemetry/index.ts';
 import { decide, visibleTools, type DenyReason, type ScopeHolder, type ToolSpec } from '../policy/index.ts';
 
-export interface ToolContext { principal: Principal; env: Env; allowWrite: boolean; visible: ToolSpec[] }
+export interface ToolContext { principal: Principal; env: Env; allowWrite: boolean; prodValidateEnabled: boolean; visible: ToolSpec[] }
 
 export interface ToolDef<I extends z.ZodObject = z.ZodObject, O extends z.ZodObject = z.ZodObject> {
   spec: ToolSpec;
@@ -20,7 +20,7 @@ export interface ToolDef<I extends z.ZodObject = z.ZodObject, O extends z.ZodObj
   run(args: z.infer<I>, ctx: ToolContext): Promise<z.infer<O>>;
 }
 
-export interface RegistryDeps { env: Env; allowWrite: boolean; audit: Audit; now?: () => number; claims?: ScopeHolder; telemetry?: Telemetry }
+export interface RegistryDeps { env: Env; allowWrite: boolean; prodValidateEnabled: boolean; audit: Audit; now?: () => number; claims?: ScopeHolder; telemetry?: Telemetry }
 
 export const DENIED_TEXT = (reason: DenyReason) => `not allowed: ${reason}`;
 export const ERROR_TEXT = 'tool failed';
@@ -42,7 +42,7 @@ export async function callTool(def: ToolDef, args: unknown, principal: Principal
 async function run(def: ToolDef, args: unknown, principal: Principal, deps: RegistryDeps, visible?: ToolSpec[], span?: Span): Promise<CallToolResult> {
   const now = deps.now ?? Date.now;
   const start = now();
-  const ctx = { principal, env: deps.env, allowWrite: deps.allowWrite, claims: deps.claims };
+  const ctx = { principal, env: deps.env, allowWrite: deps.allowWrite, prodValidateEnabled: deps.prodValidateEnabled, claims: deps.claims };
   const record = (r: Pick<AuditInput, 'outcome' | 'reason' | 'traceId'>) => {
     const ms = now() - start;
     deps.audit.record({ principal, tool: def.spec.name, env: deps.env, durationMs: Math.max(0, Math.round(ms)), ...r });
@@ -76,9 +76,15 @@ async function run(def: ToolDef, args: unknown, principal: Principal, deps: Regi
   }
 }
 
+/** A scoped or write tool without claims would be denied on every call; fail at construction instead. Names only in the message. */
+export function assertClaimsWired(tools: ToolDef[], claims?: ScopeHolder): void {
+  for (const { spec } of tools) if (!claims && (spec.requiredScope !== undefined || spec.access === 'write')) throw new ConfigError(`tool ${spec.name} needs a scope but claims are not wired`);
+}
+
 /** Registers every tool visibleTools() allows, each wrapped by callTool. */
 export function registerAll(server: McpServer, principal: Principal, tools: ToolDef[], deps: RegistryDeps): ToolSpec[] {
-  const visible = visibleTools({ principal, env: deps.env, allowWrite: deps.allowWrite, claims: deps.claims }, tools.map((t) => t.spec));
+  assertClaimsWired(tools, deps.claims);
+  const visible = visibleTools({ principal, env: deps.env, allowWrite: deps.allowWrite, prodValidateEnabled: deps.prodValidateEnabled, claims: deps.claims }, tools.map((t) => t.spec));
   const shown = tools.filter((t) => visible.includes(t.spec));
   for (const def of shown) {
     server.registerTool(def.spec.name, { title: def.title, description: def.description, inputSchema: def.inputSchema, outputSchema: def.outputSchema, annotations: def.annotations }, (args) => callTool(def, args, principal, deps, visible));

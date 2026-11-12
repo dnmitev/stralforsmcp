@@ -35,7 +35,7 @@ const combos = () => {
   for (const role of roles) for (const env of envs) for (const access of accesses) for (const allowWrite of [true, false])
     for (const member of [true, false]) for (const rs of reqs) for (const claims of claimSets) {
       const other: Env = env === 'test' ? 'prod' : 'test';
-      out.push({ principal: who(role, member ? [env] : [other]), env, allowWrite, tool: tool(access, rs), claims });
+      out.push({ principal: who(role, member ? [env] : [other]), env, allowWrite, prodValidateEnabled: true, tool: tool(access, rs), claims });
     }
   return out;
 };
@@ -62,37 +62,37 @@ describe('R5 policy matrix', () => {
     ['dev', ['test'], 'prod', false, 'read', [], 'env'],
     ['qa', ['prod'], 'test', false, 'read', [], 'env'],
   ] as [Role, Env[], Env, boolean, Access, string[], string][])('%s %j in %s allowWrite=%s %s -> %s', (role, e, env, aw, access, sc, result) => {
-    const d = decide({ principal: who(role, e), env, allowWrite: aw, tool: tool(access), claims: scopes(...sc) });
+    const d = decide({ principal: who(role, e), env, allowWrite: aw, prodValidateEnabled: true, tool: tool(access), claims: scopes(...sc) });
     expect(d).toEqual(result === 'allow' ? { allow: true } : { allow: false, reason: result });
   });
 
   it('prod write denial does not depend on allowWrite or scope', () => {
-    expect(decide({ principal: who('dev', ['test', 'prod']), env: 'prod', allowWrite: true, tool: tool('write'), claims: scopes(WRITE_SCOPE) })).toEqual({ allow: false, reason: 'write' });
+    expect(decide({ principal: who('dev', ['test', 'prod']), env: 'prod', allowWrite: true, prodValidateEnabled: true, tool: tool('write'), claims: scopes(WRITE_SCOPE) })).toEqual({ allow: false, reason: 'write' });
   });
 
   it('reason precedence env > role > write > scope', () => {
     const t = tool('write');
-    expect(decide({ principal: who('pm', ['test']), env: 'prod', allowWrite: false, tool: t })).toEqual({ allow: false, reason: 'env' });
-    expect(decide({ principal: who('pm', ['test', 'prod']), env: 'prod', allowWrite: false, tool: t })).toEqual({ allow: false, reason: 'role' });
-    expect(decide({ principal: who('dev', ['test', 'prod']), env: 'prod', allowWrite: false, tool: t })).toEqual({ allow: false, reason: 'write' });
-    expect(decide({ principal: who('dev', ['test']), env: 'test', allowWrite: false, tool: t })).toEqual({ allow: false, reason: 'write' });
+    expect(decide({ principal: who('pm', ['test']), env: 'prod', allowWrite: false, prodValidateEnabled: true, tool: t })).toEqual({ allow: false, reason: 'env' });
+    expect(decide({ principal: who('pm', ['test', 'prod']), env: 'prod', allowWrite: false, prodValidateEnabled: true, tool: t })).toEqual({ allow: false, reason: 'role' });
+    expect(decide({ principal: who('dev', ['test', 'prod']), env: 'prod', allowWrite: false, prodValidateEnabled: true, tool: t })).toEqual({ allow: false, reason: 'write' });
+    expect(decide({ principal: who('dev', ['test']), env: 'test', allowWrite: false, prodValidateEnabled: true, tool: t })).toEqual({ allow: false, reason: 'write' });
   });
 });
 
 describe('R5 scope and visibility', () => {
   const dev = who('dev', ['test', 'prod']);
   it('explicit requiredScope is checked in every env', () => {
-    for (const env of envs) expect(decide({ principal: dev, env, allowWrite: false, tool: tool('validate', WRITE_SCOPE), claims: scopes('apiomni.read') })).toEqual({ allow: false, reason: 'scope' });
+    for (const env of envs) expect(decide({ principal: dev, env, allowWrite: false, prodValidateEnabled: true, tool: tool('validate', WRITE_SCOPE), claims: scopes('apiomni.read') })).toEqual({ allow: false, reason: 'scope' });
   });
   it('write tool needs apiomni.write even in test', () => {
-    expect(decide({ principal: dev, env: 'test', allowWrite: true, tool: tool('write'), claims: scopes('apiomni.read') })).toEqual({ allow: false, reason: 'scope' });
+    expect(decide({ principal: dev, env: 'test', allowWrite: true, prodValidateEnabled: true, tool: tool('write'), claims: scopes('apiomni.read') })).toEqual({ allow: false, reason: 'scope' });
   });
   it('explicit requiredScope replaces the implicit write scope', () => {
-    expect(decide({ principal: dev, env: 'test', allowWrite: true, tool: tool('write', 'custom.send'), claims: scopes('custom.send') })).toEqual({ allow: true });
+    expect(decide({ principal: dev, env: 'test', allowWrite: true, prodValidateEnabled: true, tool: tool('write', 'custom.send'), claims: scopes('custom.send') })).toEqual({ allow: true });
   });
   it('no claims fails closed only when a scope is required', () => {
-    expect(decide({ principal: dev, env: 'test', allowWrite: false, tool: tool('read') })).toEqual({ allow: true });
-    expect(decide({ principal: dev, env: 'test', allowWrite: false, tool: tool('read', 'apiomni.read') })).toEqual({ allow: false, reason: 'scope' });
+    expect(decide({ principal: dev, env: 'test', allowWrite: false, prodValidateEnabled: true, tool: tool('read') })).toEqual({ allow: true });
+    expect(decide({ principal: dev, env: 'test', allowWrite: false, prodValidateEnabled: true, tool: tool('read', 'apiomni.read') })).toEqual({ allow: false, reason: 'scope' });
   });
 
   const tools: ToolSpec[] = [{ name: 'r', access: 'read' }, { name: 'v', access: 'validate', requiredScope: 'apiomni.read' }, { name: 'w', access: 'write' }, { name: 'x', access: 'read', requiredScope: 'other' }];
@@ -100,15 +100,15 @@ describe('R5 scope and visibility', () => {
   const claims = scopes('apiomni.read', 'apiomni.write');
   it('visibleTools filters and keeps order', () => {
     const before = structuredClone(tools);
-    expect(names({ principal: dev, env: 'test', allowWrite: true, claims })).toEqual(['r', 'v', 'w']);
-    expect(names({ principal: dev, env: 'test', allowWrite: false, claims })).toEqual(['r', 'v']);
-    expect(names({ principal: dev, env: 'prod', allowWrite: false, claims })).toEqual(['r', 'v']);
-    expect(names({ principal: who('pm', ['test', 'prod']), env: 'prod', allowWrite: false, claims })).toEqual([]);
+    expect(names({ principal: dev, env: 'test', allowWrite: true, prodValidateEnabled: true, claims })).toEqual(['r', 'v', 'w']);
+    expect(names({ principal: dev, env: 'test', allowWrite: false, prodValidateEnabled: true, claims })).toEqual(['r', 'v']);
+    expect(names({ principal: dev, env: 'prod', allowWrite: false, prodValidateEnabled: true, claims })).toEqual(['r', 'v']);
+    expect(names({ principal: who('pm', ['test', 'prod']), env: 'prod', allowWrite: false, prodValidateEnabled: true, claims })).toEqual([]);
     expect(tools).toEqual(before);
   });
 
   it('Claims satisfies ScopeHolder (no new Claims API)', () => {
     expectTypeOf<Claims>().toExtend<ScopeHolder>();
-    expect(visibleTools({ principal: dev, env: 'test', allowWrite: false, claims: new Claims({ scope: 'apiomni.read' }) }, tools).map((t) => t.name)).toEqual(['r', 'v']);
+    expect(visibleTools({ principal: dev, env: 'test', allowWrite: false, prodValidateEnabled: true, claims: new Claims({ scope: 'apiomni.read' }) }, tools).map((t) => t.name)).toEqual(['r', 'v']);
   });
 });

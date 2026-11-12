@@ -175,7 +175,7 @@ _Avoid_: permission, verb, method
 The static description of a tool the policy needs: name, access level and an optional required scope.
 
 **Decision** (`decide`, `Decision`):
-The pure result of the policy for one principal and one tool: the environment, role, write and scope rules checked in that fixed order, so a denial carries exactly the first failing reason code (`env`, `role`, `write`, `scope`). A write in `prod` is denied whatever the role or configuration.
+The pure result of the policy for one principal and one tool: the environment, role, write, validate and scope rules checked in that fixed order, so a denial carries exactly the first failing reason code (`env`, `role`, `write`, `validate`, `scope`). The validate rule denies a validate-level tool in `prod` unless the prod-validate setting is on. A write in `prod` is denied whatever the role or configuration.
 _Avoid_: authorization (ambiguous with the header), check, policy (the module, not its result)
 
 **Tool visibility** (`visibleTools`):

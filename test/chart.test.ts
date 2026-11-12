@@ -82,7 +82,9 @@ const srcText = walk(join(ROOT, 'src')).map((f) => readFileSync(f, 'utf8')).join
 const readme = readFileSync(join(ROOT, 'README.md'), 'utf8');
 const NAME = /\b(?:STRALFORS|MCP|OTEL)_[A-Z0-9_]+\b/g;
 const profileSuffix = /\$\{P\}(_[A-Z0-9_]+)|STRALFORS_PROFILE_<ID>(_[A-Z0-9_]+)/g;
-const serverNames = new Set<string>((srcText.match(NAME) ?? []).filter((n) => !n.startsWith('STRALFORS_PROFILE_')));
+// constants in src that match the naming pattern but are not environment variables
+const NOT_ENV = new Set(['STRALFORS_ERROR_KINDS']);
+const serverNames = new Set<string>((srcText.match(NAME) ?? []).filter((n) => !n.startsWith('STRALFORS_PROFILE_') && !NOT_ENV.has(n)));
 const profileSuffixes = new Set<string>([...(srcText + readme).matchAll(profileSuffix)].map((m) => (m[1] ?? m[2])!));
 for (const m of (srcText + readme).matchAll(/STRALFORS_PROFILE_<ID>(_[A-Z0-9_]+)/g)) profileSuffixes.add(m[1]!);
 const requiredServer = new Set<string>(
@@ -435,6 +437,25 @@ describe.skipIf(!helmOk)(helmOk ? 'chart' : 'chart (SKIPPED: helm binary not fou
       const v = baseValues();
       v.networkPolicy = { enabld: true };
       expect(helmError(v)).toMatch(/enabld/);
+    });
+  });
+
+  describe('L5 certReloadS bound', () => {
+    const withReload = (n: number) => ({ ...baseValues(), stralfors: { certReloadS: n } });
+    it('rejects 2147484 naming the key', () => {
+      expect(helmError(withReload(2147484))).toMatch(/certReloadS/);
+    });
+    it('renders 2147483', () => {
+      expect(helmError(withReload(2147483))).toBe('');
+      expect(envVal(render(withReload(2147483)), 'STRALFORS_CERT_RELOAD_S')).toBe('2147483');
+    });
+  });
+
+  describe('README documents every variable the server reads', () => {
+    it('every OTEL_/MCP_/STRALFORS_ variable read in src is in a README table row', () => {
+      const documented = new Set([...readme.matchAll(/^\|[^\n]*$/gm)].flatMap((m) => m[0].match(NAME) ?? []));
+      const missing = [...serverNames].filter((n) => !documented.has(n)).sort();
+      expect(missing, `undocumented in README tables: ${missing.join(', ')}`).toEqual([]);
     });
   });
 

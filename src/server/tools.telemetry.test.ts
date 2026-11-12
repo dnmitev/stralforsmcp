@@ -19,7 +19,7 @@ const setup = () => {
   const m = memTelemetry();
   const s = sink();
   let t = T;
-  return { m, s, advance: (ms: number) => void (t += ms), deps: { env: 'test' as const, allowWrite: false, audit: s.audit, now: () => t, telemetry: m.t } };
+  return { m, s, advance: (ms: number) => void (t += ms), deps: { env: 'test' as const, allowWrite: false, prodValidateEnabled: false, audit: s.audit, now: () => t, telemetry: m.t } };
 };
 const c = canaries();
 const inputErr = mkDef('inputTool', 'read', async () => { throw new ToolInputError('fixed text'); });
@@ -133,7 +133,7 @@ describe('no telemetry', () => {
   it('callTool without it creates nothing anywhere', async () => {
     const bystander = memTelemetry();
     const s = sink();
-    const r = await callTool(okTool, {}, dev, { env: 'test', allowWrite: false, audit: s.audit, now: () => T });
+    const r = await callTool(okTool, {}, dev, { env: 'test', allowWrite: false, prodValidateEnabled: false, audit: s.audit, now: () => T });
     expect(r.structuredContent).toEqual({ v: 1 });
     expect(bystander.spans()).toHaveLength(0);
     expect(await bystander.series('mcp.tool.calls')).toEqual([]);

@@ -19,7 +19,7 @@
         "env": { "enum": ["test", "prod"] },
         "allowWrite": { "type": "boolean" },
         "prodValidateEnabled": { "type": ["boolean", "null"] },
-        "certReloadS": { "type": "integer", "minimum": 1 },
+        "certReloadS": { "type": "integer", "minimum": 1, "maximum": 2147483 },
         "timeoutMs": { "type": ["integer", "null"], "minimum": 1 }
       }
     },

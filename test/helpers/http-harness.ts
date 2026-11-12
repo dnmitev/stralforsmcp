@@ -32,7 +32,7 @@ export async function startHttp(over: Partial<HttpServerOptions> & { tools?: Too
   const calls: McpRequestContext[] = [];
   const errors: Error[] = [];
   const env = over.env ?? 'test';
-  const inner = buildMcp({ env, allowWrite: over.allowWrite ?? false, audit: over.audit ?? s.audit, tools: over.tools ?? [whoami, okTool], now: () => T, ...(over.telemetry ? { telemetry: over.telemetry } : {}) });
+  const inner = buildMcp({ env, allowWrite: over.allowWrite ?? false, prodValidateEnabled: false, audit: over.audit ?? s.audit, tools: over.tools ?? [whoami, okTool], now: () => T, ...(over.telemetry ? { telemetry: over.telemetry } : {}) });
   const factory: McpServerFactory = over.factory ?? ((ctx) => (calls.push(ctx), inner(ctx)));
   const { tools: _t, allowWrite: _a, world: _w, ...rest } = over;
   const srv = createHttpServer({
