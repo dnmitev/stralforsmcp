@@ -53,6 +53,13 @@ const int = (name: string, v: string | undefined, def: number, min: number, max 
   return n;
 };
 
+const LEVELS = new Set(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent']);
+const level = (v: string | undefined): string => {
+  if (v === undefined) return 'info';
+  if (!LEVELS.has(v)) throw new ConfigError('MCP_LOG_LEVEL is invalid');
+  return v;
+};
+
 const RATIO = /^(0|1|0?\.\d+|1\.0+)$/;
 const ratio = (v: string | undefined): number => {
   if (v === undefined) return 0.1;
@@ -92,6 +99,7 @@ export async function start(env: Record<string, string | undefined>, deps: Start
   if (!metricsHost.trim()) throw new ConfigError('MCP_METRICS_HOST is invalid');
   const sampleRatio = ratio(env.MCP_TRACE_SAMPLE_RATIO);
   const otlpEndpoint = endpoint(env.OTEL_EXPORTER_OTLP_ENDPOINT, env);
+  const logLevel = level(env.MCP_LOG_LEVEL);
   const perMinute = int('MCP_RATE_PER_MINUTE', env.MCP_RATE_PER_MINUTE, 120, 1);
   const burst = int('MCP_RATE_BURST', env.MCP_RATE_BURST, 30, 1);
   const staleAfterMs = int('MCP_TOKEN_STALE_MS', env.MCP_TOKEN_STALE_MS, 900_000, 1);
@@ -109,7 +117,7 @@ export async function start(env: Record<string, string | undefined>, deps: Start
   const audit = deps.audit ?? createAudit({ destination: process.stdout, now, otelTraceId: () => activeIds()?.trace_id });
   const clients = new Map<string, StralforsClient>();
   const closeClients = () => Promise.allSettled([...clients.values()].map((c) => c.close()));
-  const logger = createLogger({ level: 'info', destination: stderr, mixin: logMixin });
+  const logger = createLogger({ level: logLevel, destination: stderr, mixin: logMixin });
   const make = deps.clientFactory ?? createClient;
   const timer = deps.timer ?? setTimeout;
   const shutdownTelemetry = async () => {
@@ -145,11 +153,14 @@ export async function start(env: Record<string, string | undefined>, deps: Start
     const tools = [createWhoami(profiles), createListChannels({ clients, config })];
     const limiter = createRateLimiter({ perMinute, burst, now: deps.monotonic ?? (() => performance.now()) });
     metricsListening = await new Promise<number>((resolve, reject) => {
-      metrics.once('error', () => reject(new ConfigError('metrics listener failed'))); // the OS error carries the address: not forwarded
+      metrics.once('error', () => reject(new ConfigError('metrics listener failed (port in use or not permitted; see MCP_METRICS_PORT)'))); // the OS error carries the address: not forwarded
       metrics.listen(metricsPort, metricsHost, () => resolve((metrics.address() as { port: number }).port));
     });
     srv = createHttpServer({ store, audit, telemetry, monotonic: deps.monotonic, env: deploy, hosts, origins, maxBodyBytes, drainMs, now, limiter, factory: buildMcp({ env: deploy, allowWrite, audit, tools, now, telemetry }) });
-    listening = await srv.listen(port, env.MCP_LISTEN_HOST ?? '0.0.0.0');
+    listening = await srv.listen(port, env.MCP_LISTEN_HOST ?? '0.0.0.0').catch(() => { // the OS error carries the address: not forwarded
+      throw new ConfigError('HTTP listener failed (port in use or not permitted; see MCP_PORT)');
+    });
+    logger.debug({}, 'listening'); // the one line at debug: proves the level took effect; ports are not logged
   } catch (e) {
     await closeClients();
     await closeMetrics();
