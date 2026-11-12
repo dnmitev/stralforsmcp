@@ -106,7 +106,7 @@ describe('AC-3 URL policy', () => {
   it.each([['localhost', '127.0.0.1', 'localhost'], ['127.0.0.1', '127.0.0.1', '127.0.0.1'], ['[::1]', '::1', '[::1]']])('http://%s starts and reaches the transport', async (_n, bind, host) => {
     // only a recognised "this address family is unavailable" error skips the case; anything else fails it
     const l = await destroyingListener(bind).catch((e: NodeJS.ErrnoException) => {
-      if (bind === '::1' && (e.code === 'EADDRNOTAVAIN' || e.code === 'EAFNOSUPPORT')) return undefined;
+      if (bind === '::1' && (e.code === 'EADDRNOTAVAIL' || e.code === 'EAFNOSUPPORT')) return undefined;
       throw e;
     });
     if (!l) return void console.warn(`SKIPPED: IPv6 loopback unavailable on this machine`);
