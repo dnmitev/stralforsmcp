@@ -1,0 +1,71 @@
+# Nothing in this file is a credential. Secrets are referenced by name only.
+image:
+  repository: ghcr.io/dnmitev/stralforsmcp
+  # tag has no default and is required.
+  pullPolicy: IfNotPresent
+  # optional "sha256:..." digest; when set it replaces the tag in the image reference
+  digest: ""
+
+stralfors:
+  env: test            # test | prod
+  allowWrite: false    # refused with env=prod
+  prodValidateEnabled: null   # emitted only when set to true or false
+  certReloadS: 60
+  timeoutMs: null
+
+# One entry per profile; secretName is a Secret holding client-id, client-secret,
+# client.pem, client.key and optionally key-passphrase and action-ids.
+profiles: []
+# - id: example-profile
+#   country: XX
+#   secretName: example-profile-creds
+#   passphrase: false
+
+tokenList:
+  secretName: ""
+  key: token-list.json
+
+extraHostnames: []
+origins: []
+
+otlp:
+  endpoint: ""
+  headersSecret:
+    name: ""
+    key: headers
+
+replicas: 1
+# terminationGracePeriodSeconds * 1000 must exceed drainMs, or rendering fails.
+drainMs: 10000
+terminationGracePeriodSeconds: 30
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+serviceAccount:
+  annotations: {}
+
+ingress:
+  internal: &ingress
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts: []
+    tls: []
+  public:
+    <<: *ingress
+
+networkPolicy:
+  enabled: false
+  prometheusNamespace: monitoring
+  ingressControllerNamespace: ingress
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

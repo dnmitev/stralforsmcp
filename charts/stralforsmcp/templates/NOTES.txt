@@ -1,0 +1,11 @@
+The chart creates no Secrets. Create these in namespace {{ .Release.Namespace }} before the pods can start:
+
+  {{ .Values.tokenList.secretName }}   key: {{ .Values.tokenList.key }}
+{{- range .Values.profiles }}
+  {{ .secretName }}   keys: client-id, client-secret, client.pem, client.key{{ if .passphrase }}, key-passphrase{{ end }}; optional: action-ids
+{{- end }}
+{{- if and .Values.otlp.endpoint .Values.otlp.headersSecret.name }}
+  {{ .Values.otlp.headersSecret.name }}   key: {{ .Values.otlp.headersSecret.key }}
+{{- end }}
+
+Secrets are mounted as volumes (no subPath), so rotated Secrets reach the running pods.

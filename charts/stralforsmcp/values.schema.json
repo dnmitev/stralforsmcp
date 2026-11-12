@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["image", "profiles", "tokenList"],
+  "properties": {
+    "image": {
+      "type": "object",
+      "required": ["tag"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string", "minLength": 1 },
+        "pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] },
+        "digest": { "type": "string", "pattern": "^(sha256:[a-f0-9]{64})?$" }
+      }
+    },
+    "stralfors": {
+      "type": "object",
+      "properties": {
+        "env": { "enum": ["test", "prod"] },
+        "allowWrite": { "type": "boolean" },
+        "prodValidateEnabled": { "type": ["boolean", "null"] },
+        "certReloadS": { "type": "integer", "minimum": 1 },
+        "timeoutMs": { "type": ["integer", "null"], "minimum": 1 }
+      }
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "country", "secretName"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "not": { "const": "token-list" } },
+          "country": { "type": "string", "minLength": 1 },
+          "secretName": { "type": "string", "minLength": 1 },
+          "passphrase": { "type": "boolean" }
+        }
+      }
+    },
+    "tokenList": {
+      "type": "object",
+      "required": ["secretName"],
+      "properties": {
+        "secretName": { "type": "string", "minLength": 1 },
+        "key": { "type": "string", "minLength": 1 }
+      }
+    },
+    "extraHostnames": { "type": "array", "items": { "type": "string" } },
+    "origins": { "type": "array", "items": { "type": "string" } },
+    "replicas": { "type": "integer", "minimum": 1 },
+    "drainMs": { "type": "integer", "minimum": 0 },
+    "terminationGracePeriodSeconds": { "type": "integer", "minimum": 0 },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "prometheusNamespace": { "type": "string" },
+        "ingressControllerNamespace": { "type": "string" }
+      }
+    }
+  }
+}
