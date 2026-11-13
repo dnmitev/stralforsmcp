@@ -29,12 +29,30 @@ describe('size bound', () => {
     const cache = createRulesCache({ ttlMs: 10, now: () => t, maxEntries: 2 });
     let calls = 0;
     const f = () => (calls++, Promise.resolve('v'));
-    await cache.get('p', 'a', 0, f);
-    await cache.get('p', 'b', 0, f);
+    await cache.get('p', 'a', 0, f); // expires at 10
+    t = 5;
+    await cache.get('p', 'b', 0, f); // expires at 15
     t = 10;
-    await cache.get('p', 'a', 0, f); // a expired, replaced in place
+    await cache.get('p', 'a', 0, f); // a is stale: replaced in place, b must stay
+    expect(calls).toBe(3);
     t = 11;
-    await cache.get('p', 'b', 0, f);
+    await cache.get('p', 'b', 0, f); // b is still fresh and still cached
+    expect(calls).toBe(3);
+  });
+  it('never evicts an in-flight fetch: sharing survives a full cache', async () => {
+    const cache = createRulesCache({ ttlMs: 3_600_000, maxEntries: 2 });
+    let calls = 0;
+    const gates: Array<(v: string) => void> = [];
+    const slow = () => new Promise<string>((r) => (calls++, gates.push(r)));
+    const a1 = cache.get('p', 'a', 0, slow);
+    const b1 = cache.get('p', 'b', 0, slow);
+    const c1 = cache.get('p', 'c', 0, slow); // full of in-flight entries: runs uncached
+    const a2 = cache.get('p', 'a', 0, slow); // shares a1
+    const b2 = cache.get('p', 'b', 0, slow); // shares b1
+    expect(calls).toBe(3);
+    gates.forEach((g, i) => g(`v${i}`));
+    expect(await Promise.all([a1, b1, c1, a2, b2])).toEqual(['v0', 'v1', 'v2', 'v0', 'v1']);
+    await cache.get('p', 'c', 0, () => (calls++, Promise.resolve('again'))); // c ran uncached, so it fetches again
     expect(calls).toBe(4);
   });
   it('defaults to 256 entries', async () => {
