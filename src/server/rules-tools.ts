@@ -85,7 +85,7 @@ export const EXAMPLE_NOTES: readonly string[] = [
 
 export const getExampleInput = z.object({
   profile: z.string().min(1).optional(),
-  channels: z.array(z.string().min(1)).min(1).max(5),
+  channels: z.array(z.string().min(1).regex(/^[^,]+$/, 'a channel name cannot contain a comma')).min(1).max(5), // joined with commas upstream: a comma inside a name would add channels
   defaultChannel: z.string().min(1).optional(),
   templateStandardId: z.number().int().min(0).optional(),
 });

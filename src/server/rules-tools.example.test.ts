@@ -90,8 +90,11 @@ describe('get_example_invoice [fake-api]', () => {
 });
 
 describe('input schema', () => {
-  it.each([[{ channels: [] }], [{ channels: ['A', 'B', 'C', 'D', 'E', 'F'] }], [{ channels: [''] }], [{ channels: ['A', ''] }], [{}], [{ channels: ['A'], defaultChannel: '' }], [{ channels: ['A'], templateStandardId: -1 }], [{ channels: 'A' }]])('refuses %j', (input) => {
+  it.each([[{ channels: [] }], [{ channels: ['A', 'B', 'C', 'D', 'E', 'F'] }], [{ channels: [''] }], [{ channels: ['A', ''] }], [{}], [{ channels: ['A'], defaultChannel: '' }], [{ channels: ['A'], templateStandardId: -1 }], [{ channels: 'A' }], [{ channels: ['A,B,C,D,E,F'] }], [{ channels: [',A'] }], [{ channels: ['A,'] }], [{ channels: ['A', 'B,C'] }]])('refuses %j', (input) => {
     expect(getExampleInput.safeParse(input).success).toBe(false);
+  });
+  it('a name with other punctuation is still a name', () => {
+    expect(getExampleInput.safeParse({ channels: ['eBrev/WeMail', 'e-Invoice B2C', 'A_b.c'] }).success).toBe(true);
   });
   it('accepts 1 and 5 channels', () => {
     expect(getExampleInput.safeParse({ channels: ['A'] }).success).toBe(true);
