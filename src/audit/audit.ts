@@ -5,7 +5,7 @@ import type { DenyReason } from '../policy/index.ts';
 
 export type Outcome = 'allowed' | 'denied' | 'blocked' | 'error';
 /** A fixed code: a deny reason, a verify code, a StralforsError kind, 'write_guard' or 'error'. Never free text. */
-export type AuditReason = DenyReason | VerifyCode | StralforsErrorKind | 'write_guard' | 'error' | 'bad_input';
+export type AuditReason = DenyReason | VerifyCode | StralforsErrorKind | 'write_guard' | 'error' | 'bad_input' | 'too_large';
 
 export interface AuditInput {
   principal?: Principal;

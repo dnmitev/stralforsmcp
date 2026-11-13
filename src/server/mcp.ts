@@ -16,6 +16,7 @@ export interface McpDeps {
   serverInfo?: { name: string; version: string };
   now?: () => number;
   telemetry?: Telemetry;
+  maxOutputBytes?: number;
 }
 
 /** The per-request factory: cheap, no I/O, a fresh McpServer per call, only the caller's visible tools. No principal, no tools (fail closed). */
@@ -24,7 +25,7 @@ export function buildMcp(deps: McpDeps): McpServerFactory {
   return (ctx) => {
     const principal = ctx.authInfo?.extra?.principal as Principal | undefined;
     const server = new McpServer(deps.serverInfo ?? defaultInfo);
-    if (principal) registerAll(server, principal, deps.tools, { env: deps.env, allowWrite: deps.allowWrite, prodValidateEnabled: deps.prodValidateEnabled, claims: deps.claims, audit: deps.audit, now: deps.now, telemetry: deps.telemetry });
+    if (principal) registerAll(server, principal, deps.tools, { env: deps.env, allowWrite: deps.allowWrite, prodValidateEnabled: deps.prodValidateEnabled, claims: deps.claims, audit: deps.audit, now: deps.now, telemetry: deps.telemetry, maxOutputBytes: deps.maxOutputBytes });
     return server;
   };
 }
