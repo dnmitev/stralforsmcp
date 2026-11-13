@@ -24,36 +24,62 @@ describe('size bound', () => {
     await cache.get('p', 'a', 0, f('a2')); // refetch: a was evicted
     expect(calls).toBe(4);
   });
-  it('re-requesting a stale key does not evict another entry', async () => {
+  it('refreshing a stale key in a full cache evicts nothing', async () => {
     let t = 0;
     const cache = createRulesCache({ ttlMs: 10, now: () => t, maxEntries: 2 });
     let calls = 0;
     const f = () => (calls++, Promise.resolve('v'));
-    await cache.get('p', 'a', 0, f); // expires at 10
-    t = 5;
-    await cache.get('p', 'b', 0, f); // expires at 15
+    await cache.get('p', 'a', 0, f); // exp 10
+    t = 1;
+    await cache.get('p', 'b', 0, f); // exp 11
     t = 10;
-    await cache.get('p', 'a', 0, f); // a is stale: replaced in place, b must stay
-    expect(calls).toBe(3);
+    await cache.get('p', 'a', 0, f); // a stale: replaced in place, exp 20
     t = 11;
-    await cache.get('p', 'b', 0, f); // b is still fresh and still cached
-    expect(calls).toBe(3);
+    await cache.get('p', 'b', 0, f); // b stale and the cache is full: replaced in place, must not evict fresh a
+    expect(calls).toBe(4);
+    t = 12;
+    await cache.get('p', 'a', 0, f);
+    expect(calls).toBe(4); // a still cached
   });
-  it('never evicts an in-flight fetch: sharing survives a full cache', async () => {
+  it('a stale key refreshed in place keeps its insertion slot, so it is still the oldest', async () => {
+    let t = 0;
+    const cache = createRulesCache({ ttlMs: 10, now: () => t, maxEntries: 2 });
+    let calls = 0;
+    const f = () => (calls++, Promise.resolve('v'));
+    await cache.get('p', 'a', 0, f);
+    t = 1;
+    await cache.get('p', 'b', 0, f);
+    t = 10;
+    await cache.get('p', 'a', 0, f); // refreshed in place: still first in order
+    await cache.get('p', 'c', 0, f); // full: evicts the oldest slot, which is a
+    expect(calls).toBe(4);
+    await cache.get('p', 'b', 0, f);
+    expect(calls).toBe(4); // b kept
+    await cache.get('p', 'a', 0, f);
+    expect(calls).toBe(5); // a was the one evicted
+  });
+  it('never evicts or duplicates a pending fetch when full', async () => {
     const cache = createRulesCache({ ttlMs: 3_600_000, maxEntries: 2 });
     let calls = 0;
     const gates: Array<(v: string) => void> = [];
     const slow = () => new Promise<string>((r) => (calls++, gates.push(r)));
-    const a1 = cache.get('p', 'a', 0, slow);
-    const b1 = cache.get('p', 'b', 0, slow);
-    const c1 = cache.get('p', 'c', 0, slow); // full of in-flight entries: runs uncached
-    const a2 = cache.get('p', 'a', 0, slow); // shares a1
-    const b2 = cache.get('p', 'b', 0, slow); // shares b1
-    expect(calls).toBe(3);
+    const ps = [cache.get('p', 'a', 0, slow), cache.get('p', 'b', 0, slow), cache.get('p', 'c', 0, slow), cache.get('p', 'a', 0, slow), cache.get('p', 'c', 0, slow), cache.get('p', 'c', 0, slow)];
+    expect(calls).toBe(3); // a, b, c each fetched once, over the cap while pending
     gates.forEach((g, i) => g(`v${i}`));
-    expect(await Promise.all([a1, b1, c1, a2, b2])).toEqual(['v0', 'v1', 'v2', 'v0', 'v1']);
-    await cache.get('p', 'c', 0, () => (calls++, Promise.resolve('again'))); // c ran uncached, so it fetches again
-    expect(calls).toBe(4);
+    expect(await Promise.all(ps)).toEqual(['v0', 'v1', 'v2', 'v0', 'v2', 'v2']);
+  });
+  it('settled entries are evicted back down to the bound by later inserts', async () => {
+    const cache = createRulesCache({ ttlMs: 3_600_000, maxEntries: 2 });
+    let calls = 0;
+    const f = () => (calls++, Promise.resolve('v'));
+    await Promise.all(['a', 'b', 'c', 'd'].map((c) => cache.get('p', c, 0, f))); // 4 pending, all over the cap
+    await cache.get('p', 'e', 0, f); // evicts oldest settled entries down to the bound, leaving d and e
+    expect(calls).toBe(5);
+    await cache.get('p', 'd', 0, f);
+    await cache.get('p', 'e', 0, f);
+    expect(calls).toBe(5); // d and e kept
+    await cache.get('p', 'a', 0, f);
+    expect(calls).toBe(6); // a was evicted
   });
   it('defaults to 256 entries', async () => {
     const { MAX_ENTRIES } = await import('./rules-cache.ts');
@@ -102,17 +128,28 @@ describe('rules cache', () => {
     expect(await s.cache.get('p', 'c', 0, s.fetcher('ok'))).toBe('ok');
     expect(await s.cache.get('p', 'c', 0, s.fetcher('later'))).toBe('ok');
   });
-  it('a stale failure does not evict a newer entry', async () => {
+  it('a pending fetch is shared even past the TTL', async () => {
     const s = setup(1000);
-    let fail!: (e: Error) => void;
-    const slow = s.cache.get('p', 'c', 0, () => new Promise<string>((_r, rej) => (fail = rej)));
-    s.advance(1000);
-    const fresh = await s.cache.get('p', 'c', 0, s.fetcher('new'));
-    fail(new Error('late'));
-    await expect(slow).rejects.toThrow('late');
-    await Promise.resolve();
-    expect(fresh).toBe('new');
-    expect(await s.cache.get('p', 'c', 0, s.fetcher('other'))).toBe('new');
+    let done!: (v: string) => void;
+    const first = s.cache.get('p', 'c', 0, () => new Promise<string>((r) => (done = r)));
+    s.advance(5000);
+    const second = s.cache.get('p', 'c', 0, s.fetcher('other'));
+    done('slow');
+    expect([await first, await second, s.calls()]).toEqual(['slow', 'slow', 0]);
+  });
+  it('the TTL starts when the fetch settles', async () => {
+    const s = setup(1000);
+    let done!: (v: string) => void;
+    const first = s.cache.get('p', 'c', 0, () => new Promise<string>((r) => (done = r)));
+    s.advance(900);
+    done('v');
+    await first;
+    s.advance(999);
+    await s.cache.get('p', 'c', 0, s.fetcher('again'));
+    expect(s.calls()).toBe(0);
+    s.advance(1);
+    await s.cache.get('p', 'c', 0, s.fetcher('again'));
+    expect(s.calls()).toBe(1);
   });
   it('concurrent misses share one fetch', async () => {
     const s = setup();

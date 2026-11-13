@@ -5,26 +5,32 @@ export interface RulesCache {
 
 export const MAX_ENTRIES = 256; // a caller-chosen templateStandardId is part of the key: bound the map regardless of TTL
 
+/**
+ * A pending fetch is never evicted or expired, so concurrent callers always share it; the TTL starts when it settles.
+ * Only settled entries are evicted (oldest inserted first), so the map holds at most maxEntries settled entries plus the fetches in flight.
+ */
 export function createRulesCache(o: { ttlMs: number; now?: () => number; maxEntries?: number }): RulesCache {
-  const max = o.maxEntries ?? MAX_ENTRIES;
   const now = o.now ?? Date.now;
-  // ponytail: evicts the oldest-inserted settled entry when full, no LRU and no timers; in-flight entries are never evicted
-  const map = new Map<string, { value: Promise<unknown>; expiresAt: number; settled: boolean }>();
+  const max = o.maxEntries ?? MAX_ENTRIES;
+  // ponytail: no LRU and no timers; oldest-inserted eviction is enough for a few dozen keys
+  const map = new Map<string, { value: Promise<unknown>; expiresAt: number }>();
   return {
     get<T>(profile: string, channel: string, templateStandardId: number, fetch: () => Promise<T>): Promise<T> {
       if (o.ttlMs === 0) return fetch();
       const key = JSON.stringify([profile, channel, templateStandardId]);
       const hit = map.get(key);
       if (hit && now() < hit.expiresAt) return hit.value as Promise<T>;
-      if (!hit && map.size >= max) { // a replaced stale key keeps its slot
-        const victim = [...map].find(([, e]) => e.settled)?.[0];
-        if (victim === undefined) return fetch(); // every slot is an in-flight fetch: run this one uncached rather than break sharing
-        map.delete(victim);
+      const entry = { value: undefined as unknown as Promise<unknown>, expiresAt: Infinity }; // Infinity while pending
+      if (!hit) { // a stale key being replaced keeps its slot
+        for (const [k, e] of map) {
+          if (map.size < max) break;
+          if (e.expiresAt !== Infinity) map.delete(k);
+        }
       }
-      const value = fetch(); // in flight: concurrent misses share it
-      const entry = { value, expiresAt: now() + o.ttlMs, settled: false };
+      const value = fetch();
+      entry.value = value;
       map.set(key, entry);
-      value.then(() => void (entry.settled = true), () => void (map.get(key) === entry && map.delete(key))); // a failed fetch is not cached
+      value.then(() => void (entry.expiresAt = now() + o.ttlMs), () => void map.delete(key)); // a failed fetch is not cached
       return value;
     },
   };
