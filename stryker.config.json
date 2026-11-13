@@ -18,6 +18,8 @@
     "src/server/tools.ts",
     "src/server/guards.ts",
     "src/server/channels.ts",
+    "src/server/profile.ts",
+    "src/server/rules-tools.ts",
     "src/server/rules-cache.ts",
     "src/stralfors/rules.ts",
     "src/server/main.ts",

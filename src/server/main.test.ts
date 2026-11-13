@@ -44,7 +44,7 @@ describe('start', () => {
     expect((await send(s.port, { method: 'GET', path: '/healthz', headers: { host: '127.0.0.1' } })).text).toBe('ok');
     const fetchWith: typeof fetch = (url, init) => fetch(`http://127.0.0.1:${s.port}/mcp`, { ...init, headers: { ...Object.fromEntries(new Headers(init?.headers)), authorization: `Bearer ${f.raw.tA}` } });
     const c = await connect('modern', fetchWith);
-    expect((await c.listTools()).tools.map((t) => t.name)).toEqual(['whoami', 'list_channels']);
+    expect((await c.listTools()).tools.map((t) => t.name)).toEqual(['whoami', 'list_channels', 'get_rules', 'get_example_invoice']);
     const r = await send(s.port, { headers: { ...MCP_HEADERS, host: '127.0.0.1' }, body: LIST });
     expect(r.status).toBe(401);
   });
