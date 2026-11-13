@@ -12,6 +12,7 @@ export const listChannelsOutput = z.object({
 });
 export const PROFILE_REQUIRED = 'profile is required';
 export const UNKNOWN_PROFILE = 'unknown profile';
+export const AGREEMENT_REQUIRED = 'agreement is required';
 export const UNKNOWN_AGREEMENT = 'unknown agreement';
 
 export interface ChannelsDeps {

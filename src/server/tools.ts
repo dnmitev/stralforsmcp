@@ -20,10 +20,12 @@ export interface ToolDef<I extends z.ZodObject = z.ZodObject, O extends z.ZodObj
   run(args: z.infer<I>, ctx: ToolContext): Promise<z.infer<O>>;
 }
 
-export interface RegistryDeps { env: Env; allowWrite: boolean; prodValidateEnabled: boolean; audit: Audit; now?: () => number; claims?: ScopeHolder; telemetry?: Telemetry }
+export interface RegistryDeps { env: Env; allowWrite: boolean; prodValidateEnabled: boolean; audit: Audit; now?: () => number; claims?: ScopeHolder; telemetry?: Telemetry; maxOutputBytes?: number }
 
 export const DENIED_TEXT = (reason: DenyReason) => `not allowed: ${reason}`;
 export const ERROR_TEXT = 'tool failed';
+export const TOO_LARGE_TEXT = 'tool output too large; narrow the request';
+export const DEFAULT_MAX_OUTPUT_BYTES = 262_144;
 
 export const KIND_TEXT = (kind: StralforsErrorKind) => `tool failed: ${kind}`;
 
@@ -60,8 +62,13 @@ async function run(def: ToolDef, args: unknown, principal: Principal, deps: Regi
   }
   try {
     const out = await withPrincipal(principal, () => def.run(args as never, { ...ctx, visible: visible ?? visibleTools(ctx, [def.spec]) }));
+    const body = JSON.stringify(out);
+    if (Buffer.byteLength(body) > (deps.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES)) { // refuse, never truncate: a half answer misleads
+      record({ outcome: 'error', reason: 'too_large' });
+      return fail(TOO_LARGE_TEXT);
+    }
     record({ outcome: 'allowed' });
-    return { content: [{ type: 'text', text: JSON.stringify(out) }], structuredContent: out };
+    return { content: [{ type: 'text', text: body }], structuredContent: out };
   } catch (e) {
     if (e instanceof ToolInputError) {
       record({ outcome: 'error', reason: 'bad_input' });

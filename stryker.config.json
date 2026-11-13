@@ -18,6 +18,8 @@
     "src/server/tools.ts",
     "src/server/guards.ts",
     "src/server/channels.ts",
+    "src/server/rules-cache.ts",
+    "src/stralfors/rules.ts",
     "src/server/main.ts",
     "src/server/rate-limit.ts",
     "src/server/context.ts",

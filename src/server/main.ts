@@ -13,6 +13,8 @@ import { currentPrincipal } from './context.ts';
 import { text } from './guards.ts';
 import { createHttpServer } from './http.ts';
 import { buildMcp } from './mcp.ts';
+import { createRulesCache } from './rules-cache.ts';
+import { DEFAULT_MAX_OUTPUT_BYTES } from './tools.ts';
 import { createRateLimiter } from './rate-limit.ts';
 import { createWhoami } from './whoami.ts';
 
@@ -102,6 +104,8 @@ export async function start(env: Record<string, string | undefined>, deps: Start
   const logLevel = level(env.MCP_LOG_LEVEL);
   const perMinute = int('MCP_RATE_PER_MINUTE', env.MCP_RATE_PER_MINUTE, 120, 1);
   const burst = int('MCP_RATE_BURST', env.MCP_RATE_BURST, 30, 1);
+  const maxOutputBytes = int('MCP_TOOL_OUTPUT_MAX_BYTES', env.MCP_TOOL_OUTPUT_MAX_BYTES, DEFAULT_MAX_OUTPUT_BYTES, 1);
+  const rulesCacheS = int('MCP_RULES_CACHE_S', env.MCP_RULES_CACHE_S, 3600, 0, 86_400);
   const staleAfterMs = int('MCP_TOKEN_STALE_MS', env.MCP_TOKEN_STALE_MS, 900_000, 1);
 
   const now = deps.now ?? Date.now;
@@ -151,12 +155,13 @@ export async function start(env: Record<string, string | undefined>, deps: Start
     }
     const profiles = Object.values(config.profiles).map((p) => ({ id: p.id, country: p.country }));
     const tools = [createWhoami(profiles), createListChannels({ clients, config })];
+    void createRulesCache({ ttlMs: rulesCacheS * 1000, now }); // handed to get_rules in 03-01b
     const limiter = createRateLimiter({ perMinute, burst, now: deps.monotonic ?? (() => performance.now()) });
     metricsListening = await new Promise<number>((resolve, reject) => {
       metrics.once('error', () => reject(new ConfigError('metrics listener failed (port in use or not permitted; see MCP_METRICS_PORT)'))); // the OS error carries the address: not forwarded
       metrics.listen(metricsPort, metricsHost, () => resolve((metrics.address() as { port: number }).port));
     });
-    srv = createHttpServer({ store, audit, telemetry, monotonic: deps.monotonic, env: deploy, hosts, origins, maxBodyBytes, drainMs, now, limiter, factory: buildMcp({ env: deploy, allowWrite, prodValidateEnabled: config.prodValidateEnabled, audit, tools, now, telemetry }) });
+    srv = createHttpServer({ store, audit, telemetry, monotonic: deps.monotonic, env: deploy, hosts, origins, maxBodyBytes, drainMs, now, limiter, factory: buildMcp({ env: deploy, allowWrite, prodValidateEnabled: config.prodValidateEnabled, audit, tools, now, telemetry, maxOutputBytes }) });
     listening = await srv.listen(port, env.MCP_LISTEN_HOST ?? '0.0.0.0').catch(() => { // the OS error carries the address: not forwarded
       throw new ConfigError('HTTP listener failed (port in use or not permitted; see MCP_PORT)');
     });

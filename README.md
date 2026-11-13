@@ -108,6 +108,8 @@ Smoke check against the live test API (manual, never run in CI): export the vari
 | `STRALFORS_ENV` | yes | none | `test` or `prod` |
 | `STRALFORS_ALLOW_WRITE` | no | `false` | `true` or `false`; `true` is refused with `prod` |
 | `MCP_RATE_PER_MINUTE` | no | `120` | integer >= 1, per-principal refill (per pod) |
+| `MCP_TOOL_OUTPUT_MAX_BYTES` | no | `262144` | integer >= 1; a tool result larger than this is refused (`tool output too large`), never truncated |
+| `MCP_RULES_CACHE_S` | no | `3600` | integer 0-86400; per-pod TTL of cached Stralfors rules, `0` disables the cache |
 | `MCP_RATE_BURST` | no | `30` | integer >= 1, per-principal bucket size |
 | `MCP_TOKEN_STALE_MS` | no | `900000` | integer >= 1, a failing token list reload this long logs one `token_list.stale` line |
 | `MCP_METRICS_PORT` | no | `9464` | integer 0-65535 (`0` = random), the separate `/metrics` listener |
@@ -207,7 +209,7 @@ npm run dev 2>/dev/null                              # audit only
 | `node: .env.local: not found` | `npm run dev` without the env file | `cp .env.example .env.local` (step 1) |
 | `refusing to start: unexpected error` | a failure that is not a configuration error | rerun with the same environment and check the stderr lines above it |
 | `missing MCP_TOKEN_LIST_FILE` / `missing MCP_HOSTNAMES` | variable missing from `.env.local` (or not exported, if you run `node` directly) | step 1 |
-| `<name> is invalid` (`MCP_HOSTNAMES`, `MCP_ORIGINS`, `MCP_PORT`, `MCP_METRICS_PORT`, `MCP_METRICS_HOST`, `MCP_MAX_BODY_BYTES`, `MCP_DRAIN_MS`, `MCP_LOG_LEVEL`, `MCP_RATE_PER_MINUTE`, `MCP_RATE_BURST`, `MCP_TOKEN_STALE_MS`, `MCP_TRACE_SAMPLE_RATIO`, `STRALFORS_ALLOW_WRITE`, `STRALFORS_ENV`, which must be `test` here) | value is not a valid host list, whole number in range, ratio or `true`/`false` | correct it; ports are 0-65535, hostnames carry no scheme or port |
+| `<name> is invalid` (`MCP_HOSTNAMES`, `MCP_ORIGINS`, `MCP_PORT`, `MCP_METRICS_PORT`, `MCP_METRICS_HOST`, `MCP_MAX_BODY_BYTES`, `MCP_DRAIN_MS`, `MCP_LOG_LEVEL`, `MCP_RATE_PER_MINUTE`, `MCP_RATE_BURST`, `MCP_TOOL_OUTPUT_MAX_BYTES`, `MCP_RULES_CACHE_S`, `MCP_TOKEN_STALE_MS`, `MCP_TRACE_SAMPLE_RATIO`, `STRALFORS_ALLOW_WRITE`, `STRALFORS_ENV`, which must be `test` here) | value is not a valid host list, whole number in range, ratio or `true`/`false` | correct it; ports are 0-65535, hostnames carry no scheme or port |
 | `OTEL_EXPORTER_OTLP_ENDPOINT is invalid` / `... must be https when OTLP headers are set` | bad collector URL, or headers would travel in cleartext off the host | fix the URL or unset the OTLP variables |
 | `write is never allowed in prod (STRALFORS_ALLOW_WRITE)` | prod with write enabled | unset `STRALFORS_ALLOW_WRITE` |
 | `<name> must be true or false` (`STRALFORS_ALLOW_WRITE`, `STRALFORS_PROD_VALIDATE_ENABLED`) | other value | use `true` or `false` |
