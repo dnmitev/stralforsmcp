@@ -58,6 +58,21 @@ describe('size bound', () => {
     await cache.get('p', 'a', 0, f);
     expect(calls).toBe(5); // a was the one evicted
   });
+  it('settlement trims the map back to the bound after a burst of pending keys', async () => {
+    const cache = createRulesCache({ ttlMs: 3_600_000, maxEntries: 2 });
+    let calls = 0;
+    const gates: Array<(v: string) => void> = [];
+    const slow = () => new Promise<string>((r) => (calls++, gates.push(r)));
+    const ps = ['a', 'b', 'c'].map((c) => cache.get('p', c, 0, slow)); // 3 pending over a cap of 2
+    gates.forEach((g) => g('v'));
+    await Promise.all(ps);
+    const f = () => (calls++, Promise.resolve('v'));
+    await cache.get('p', 'b', 0, f);
+    await cache.get('p', 'c', 0, f);
+    expect(calls).toBe(3); // b and c kept
+    await cache.get('p', 'a', 0, f);
+    expect(calls).toBe(4); // a was trimmed at settlement, no later insert needed
+  });
   it('never evicts or duplicates a pending fetch when full', async () => {
     const cache = createRulesCache({ ttlMs: 3_600_000, maxEntries: 2 });
     let calls = 0;
