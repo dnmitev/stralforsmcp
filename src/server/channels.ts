@@ -1,6 +1,9 @@
 import * as z from 'zod/v4';
 import type { Config, StralforsClient } from '../stralfors/index.ts';
+import { PROFILE_REQUIRED, UNKNOWN_PROFILE, resolveProfile } from './profile.ts';
 import { ToolInputError, type ToolDef } from './tools.ts';
+
+export { PROFILE_REQUIRED, UNKNOWN_PROFILE };
 
 export const listChannelsInput = z.object({
   profile: z.string().min(1).optional(),
@@ -10,8 +13,6 @@ export const listChannelsOutput = z.object({
   profile: z.string(),
   channels: z.array(z.string()),
 });
-export const PROFILE_REQUIRED = 'profile is required';
-export const UNKNOWN_PROFILE = 'unknown profile';
 export const AGREEMENT_REQUIRED = 'agreement is required';
 export const UNKNOWN_AGREEMENT = 'unknown agreement';
 
@@ -29,11 +30,7 @@ export function createListChannels(deps: ChannelsDeps): ToolDef<typeof listChann
     outputSchema: listChannelsOutput,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async run(args) {
-      const ids = [...deps.clients.keys()];
-      const profile = args.profile ?? (ids.length === 1 ? ids[0]! : undefined);
-      if (profile === undefined) throw new ToolInputError(PROFILE_REQUIRED);
-      const client = deps.clients.get(profile);
-      if (!client) throw new ToolInputError(UNKNOWN_PROFILE);
+      const { profile, client } = resolveProfile(deps.clients, args.profile);
       const actionId = args.agreement === undefined ? undefined : deps.config.profiles[profile]?.agreements.find((a) => a.label === args.agreement)?.id;
       if (args.agreement !== undefined && actionId === undefined) throw new ToolInputError(UNKNOWN_AGREEMENT);
       return { profile, channels: await client.channels(actionId) };

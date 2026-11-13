@@ -19,6 +19,14 @@ export async function startChannelsApi(pki: Pki, o: { serverCert?: 'trusted' | '
   return { fake, reply, channelRequests: () => fake.apiRequests.filter((r) => r.url.split('?')[0] === CHANNELS_PATH) };
 }
 
+export const INVOICES = '/rest/outputmanagement/apiomni/v2/invoices';
+/** Fake with switchable routes by path (no query); unknown paths answer the gateway 404 text. */
+export async function startRoutesApi(pki: Pki, routes: Record<string, Reply> = {}) {
+  const r: Record<string, Reply> = { ...routes };
+  const fake = await startFakeApi({ pki, api: (req, res) => (r[req.url!.split('?')[0]!] ?? ((_q, s) => json(s, 404, 'No Mapping Rule matched', 'text/plain')))(req, res) });
+  return { fake, routes: r, requests: (path: string) => fake.apiRequests.filter((x) => x.url.split('?')[0] === path) };
+}
+
 export interface TwoProfiles {
   env: Record<string, string>;
   files: { a: ProfileFiles; b: ProfileFiles };

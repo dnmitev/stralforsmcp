@@ -64,6 +64,21 @@ A layout the API applies to a document, identified by a numeric standard id. Rul
 **Rule** (`rules()`, `Rule`):
 One validation requirement the API publishes for a channel: a parameter path, criteria text, optional pattern and example, and optional dependent rules.
 
+**Criterion** (`ruleCriterias[]`, `parseCriterion()`):
+One requirement text of a rule, such as "required", "one of these values" or "must match a pattern". Parsed into a criterion kind and parameters; text the parser does not know becomes the `unknown` kind.
+
+**Criterion kind** (`Criterion.kind`):
+The fixed token for a criterion (`required`, `valid_items`, `pattern`, ...). Each kind has one fixed sentence template, so callers read the same wording whatever the vendor text says.
+
+**Hint** (`ReadableRule.hints`, `hintFor()`):
+The plain-language sentence a criterion kind produces for a path. Hints are fixed templates filled with parsed parameters; vendor messages and exception text never appear in one (ADR 0016).
+
+**Flattened rule** (`flattenRules()`, `ReadableRule`):
+A rule with its JSON path in camelCase (`[]` kept), a required flag, hints and an optional `dependsOn`. Child rules of a dependency become entries of their own, so the rule count includes them.
+
+**Rules cache** (`createRulesCache`, `MCP_RULES_CACHE_S`):
+Per-pod cache of a channel's flattened rules, keyed by profile, channel and template. A pending fetch is shared by every caller; the TTL starts when it settles; the oldest settled entries are evicted at 256.
+
 **Document example** (`documentExample()`):
 A reference payload the API generates for a set of channels, used as a starting point for a valid document.
 

@@ -14,6 +14,7 @@ import { text } from './guards.ts';
 import { createHttpServer } from './http.ts';
 import { buildMcp } from './mcp.ts';
 import { createRulesCache } from './rules-cache.ts';
+import { createGetExampleInvoice, createGetRules } from './rules-tools.ts';
 import { DEFAULT_MAX_OUTPUT_BYTES } from './tools.ts';
 import { createRateLimiter } from './rate-limit.ts';
 import { createWhoami } from './whoami.ts';
@@ -154,8 +155,8 @@ export async function start(env: Record<string, string | undefined>, deps: Start
       clients.set(id, make({ config, profileId: id, logger, now, instrument: upstreamInstrument(telemetry), onBlocked: (e) => void audit.record({ ...fromBlocked(e), principal: currentPrincipal(), env: deploy }) }));
     }
     const profiles = Object.values(config.profiles).map((p) => ({ id: p.id, country: p.country }));
-    const tools = [createWhoami(profiles), createListChannels({ clients, config })];
-    void createRulesCache({ ttlMs: rulesCacheS * 1000, now }); // handed to get_rules in 03-01b
+    const cache = createRulesCache({ ttlMs: rulesCacheS * 1000, now });
+    const tools = [createWhoami(profiles), createListChannels({ clients, config }), createGetRules({ clients, cache }), createGetExampleInvoice({ clients })];
     const limiter = createRateLimiter({ perMinute, burst, now: deps.monotonic ?? (() => performance.now()) });
     metricsListening = await new Promise<number>((resolve, reject) => {
       metrics.once('error', () => reject(new ConfigError('metrics listener failed (port in use or not permitted; see MCP_METRICS_PORT)'))); // the OS error carries the address: not forwarded
