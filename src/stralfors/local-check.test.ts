@@ -141,8 +141,9 @@ describe('localCheck output shape', () => {
     expect(localCheck(doc, rules)).toHaveLength(2);
     expect(JSON.stringify(doc)).toBe(before);
   });
-  it('stops collecting after 200 findings on a 100k element array', () => {
-    const line = Array.from({ length: 300 }, (_, i) => (i >= 200 ? { get id(): never { throw new Error('read past 201st element'); } } : {}));
+  it('stops collecting after 200 findings without reading further elements', () => {
+    const line: object[] = Array.from({ length: 300 }, () => ({}));
+    for (let i = 200; i < line.length; i++) Object.defineProperty(line, i, { get(): never { throw new Error('read past index 199'); } }); // traversal must stop before touching the 201st element
     const doc = { invoice: { line } };
     const f = localCheck(doc, [L('1', 'document.invoice.line[].id', ['Required'])]);
     expect(f).toHaveLength(200);
