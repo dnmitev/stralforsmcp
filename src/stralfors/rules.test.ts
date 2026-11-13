@@ -1,6 +1,6 @@
 // Synthetic criteria in the documented grammar (ADR 0004): one case per row of the criterion table.
 import { describe, expect, it } from 'vitest';
-import { criteriaOf, flattenRules, hintFor, hintsFor, parseCriterion, toJsonPath, type RuleNode } from './rules.ts';
+import { criteriaOf, flattenRules, flattenRulesWithCriteria, hintFor, hintsFor, parseCriterion, toJsonPath, type RuleNode } from './rules.ts';
 
 const P = 'document.a.b';
 const rule = (over: Partial<RuleNode> = {}): RuleNode => ({ id: '7', parameter: 'Document.A.B', ...over });
@@ -207,4 +207,21 @@ describe('inherited object keys are not criteria', () => {
     expect(parseCriterion(raw)).toEqual({ kind: 'unknown' });
     expect(hintFor(parseCriterion(raw), P, '9')).toBe(`${P} has a rule of a kind this server does not know (rule 9).`);
   });
+});
+
+describe('flattenRulesWithCriteria', () => {
+  const tree: RuleNode[] = [
+    rule({ id: '1', parameter: 'Document.P', tag: 'Template0', ruleCriterias: ['Required', 'ExampleValue: x'], expectedPattern: '^x$', dependencyOperator: 'AllRequired',
+      dependencies: [rule({ id: '2', parameter: 'Document.Q[].R', ruleCriterias: ['NumericExpected'] })] }),
+  ];
+  it('returns readable (same as flattenRules) and local rules with parsed criteria, same walk order', () => {
+    const { readable, local } = flattenRulesWithCriteria(tree);
+    expect(readable).toEqual(flattenRules(tree));
+    expect(local).toEqual([
+      { id: '1', path: 'document.p', tag: 'Template0', criteria: [{ kind: 'required' }, { kind: 'example', text: 'x' }, { kind: 'pattern', pattern: '^x$' }] },
+      { id: '2', path: 'document.q[].r', criteria: [{ kind: 'numeric' }] },
+    ]);
+    expect('tag' in local[1]!).toBe(false);
+  });
+  it('an empty tree is empty on both sides', () => expect(flattenRulesWithCriteria([])).toEqual({ readable: [], local: [] }));
 });

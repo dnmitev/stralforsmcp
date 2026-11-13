@@ -79,6 +79,18 @@ A rule with its JSON path in camelCase (`[]` kept), a required flag, hints and a
 **Rules cache** (`createRulesCache`, `MCP_RULES_CACHE_S`):
 Per-pod cache of a channel's flattened rules, keyed by profile, channel and template. A pending fetch is shared by every caller; the TTL starts when it settles; the oldest settled entries are evicted at 256.
 
+**Finding** (`Finding`, `findings.ts`):
+One reported problem in a validation result: source (local or Stralfors), rule id, JSON path, criterion kind, a fixed sentence and, where published, the expected pattern and an example value. Vendor message text is never part of a finding.
+
+**Local check** (`localCheck()`):
+The second validation stage: the cached rules are interpreted against the document without calling the API. It reports only what it is certain of; a rule whose ancestor is absent, or that is conditional, is left to the dry run.
+
+**Dry run** (`validateInvoice()`, `PUT .../validate?test=true`):
+The API's own validation of a document. It creates nothing and is the authority: a document is valid only when the dry run accepts it.
+
+**Validation stage** (`input`, `local`, `dry_run`, `passed`):
+The step that produced a validation result's findings. Stages run in that order and stop at the first one with findings.
+
 **Document example** (`documentExample()`):
 A reference payload the API generates for a set of channels, used as a starting point for a valid document.
 

@@ -16,9 +16,7 @@ Integrating with the Strålfors Output Management API means working out channels
 | `list_channels` | Lists delivery channels enabled for an agreement |
 | `get_rules` | Lists the validation rules of one channel in readable form (JSON path, required, plain-language hints, pattern, example, dependencies); paginated (`limit` up to 200, `hasMore`), `requiredOnly` and `pathPrefix` filter locally; cached per pod (`MCP_RULES_CACHE_S`); allowed in PROD |
 | `get_example_invoice` | Returns the example invoice payload for 1-5 channels without the agreement id, plus fixed usage notes; allowed in PROD |
-| `get_rules` | Shows the validation rules for a channel, in readable form |
-| `get_example_invoice` | Returns a reference payload for one or more channels |
-| `validate_invoice` | Validates a payload locally and with the API's own dry-run validation — nothing is sent |
+| `validate_invoice` | Validates an invoice document in three stages and stops at the first stage with findings: input shape, a local check against the cached rules, then the API's own dry run. Findings are fixed plain-language sentences keyed by JSON path and rule id; `valid: true` only after the dry run accepts the document; `moreMayFollow` is true whenever it is false. The dry run creates nothing. Choose the agreement by label (optional when the profile has one). Hidden and denied in PROD unless `STRALFORS_PROD_VALIDATE_ENABLED=true` |
 | `channel_lookup` | Checks which channels a recipient can receive |
 | `track_document` | Shows delivery status for a document |
 | `send_invoice` | Sends to the **test** environment only |
@@ -95,7 +93,7 @@ Smoke check against the live test API (manual, never run in CI): export the vari
 
 ## Running
 
-`node src/server/main.ts` starts the stateless Streamable HTTP MCP server (SDK v2). It creates one Stralfors client per credential profile at start and serves `whoami`, `list_channels`, `get_rules` and `get_example_invoice` to authenticated callers. Configuration is read from the environment; an invalid value refuses to start (exit 1, `refusing to start: <fixed text>`).
+`node src/server/main.ts` starts the stateless Streamable HTTP MCP server (SDK v2). It creates one Stralfors client per credential profile at start and serves `whoami`, `list_channels`, `get_rules`, `get_example_invoice` and `validate_invoice` to authenticated callers. Configuration is read from the environment; an invalid value refuses to start (exit 1, `refusing to start: <fixed text>`).
 
 | Variable | Required | Default | Rule |
 |---|---|---|---|
