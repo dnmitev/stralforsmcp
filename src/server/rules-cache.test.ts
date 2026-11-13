@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createRulesCache } from './rules-cache.ts';
 
 const setup = (ttlMs = 3_600_000) => {
@@ -68,10 +68,19 @@ describe('rules cache', () => {
     expect(s.calls()).toBe(2);
   });
   it('defaults to the wall clock', async () => {
-    const cache = createRulesCache({ ttlMs: 60_000 });
-    let n = 0;
-    await cache.get('p', 'c', 0, async () => ++n);
-    await cache.get('p', 'c', 0, async () => ++n);
-    expect(n).toBe(1);
+    const spy = vi.spyOn(Date, 'now').mockReturnValue(1_000); // controlled clock: no real-time dependence
+    try {
+      const cache = createRulesCache({ ttlMs: 60_000 });
+      let n = 0;
+      await cache.get('p', 'c', 0, async () => ++n);
+      spy.mockReturnValue(60_999);
+      await cache.get('p', 'c', 0, async () => ++n);
+      expect(n).toBe(1);
+      spy.mockReturnValue(61_000);
+      await cache.get('p', 'c', 0, async () => ++n);
+      expect(n).toBe(2);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

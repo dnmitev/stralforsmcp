@@ -46,6 +46,7 @@ const SIMPLE: Readonly<Record<string, Criterion['kind']>> = {
 };
 const LISTS: Readonly<Record<string, 'valid_items' | 'valid_templates' | 'valid_channels'>> = { ValidItems: 'valid_items', ValidTemplates: 'valid_templates', ValidChannels: 'valid_channels' };
 const WHEN: Readonly<Record<string, 'optional_when' | 'required_when' | 'invalid_when'>> = { OptionalWhen: 'optional_when', RequiredWhen: 'required_when', InvalidWhen: 'invalid_when' };
+const own = <T>(table: Readonly<Record<string, T>>, key: string): T | undefined => (Object.hasOwn(table, key) ? table[key] : undefined); // no inherited keys such as "constructor"
 const NUMBER = /^-?\d+(\.\d+)?$/;
 const DEPENDENCIES = /^HasDependencies\s*\((AnyRequired|AllRequired)\)\s*:?\s*(.*)$/s;
 
@@ -55,18 +56,18 @@ export function parseCriterion(raw: string): Criterion {
   const i = raw.indexOf(':');
   const head = (i < 0 ? raw : raw.slice(0, i)).trim();
   const rest = i < 0 ? '' : raw.slice(i + 1).trim();
-  const simple = SIMPLE[head];
+  const simple = own(SIMPLE, head);
   if (simple) return { kind: simple } as Criterion;
-  const list = LISTS[head];
+  const list = own(LISTS, head);
   if (list) return { kind: list, values: rest.split(',').map((v) => v.trim()).filter(Boolean) };
-  const when = WHEN[head];
+  const when = own(WHEN, head);
   if (when) return { kind: when, expr: rest };
   switch (head) {
     case 'ExpectedPattern': return { kind: 'pattern', pattern: rest };
     case 'ExampleValue': return { kind: 'example', text: rest };
     case 'MinValue': return NUMBER.test(rest) ? { kind: 'min_value', n: rest } : { kind: 'unknown' };
     case 'MaxValue': return NUMBER.test(rest) ? { kind: 'max_value', n: rest } : { kind: 'unknown' };
-    case 'MaxCount': { const n = /(\d+)\.?\s*$/.exec(rest); return n ? { kind: 'max_count', n: n[1]! } : { kind: 'unknown' }; }
+    case 'MaxCount': { const n = /\sis\s(\d+)\.?\s*$/.exec(rest); return n ? { kind: 'max_count', n: n[1]! } : { kind: 'unknown' }; }
     case 'StartDateNotPastEndDateExpected': return { kind: 'period_order', part: 'date' };
     case 'StartTimeNotPastEndTimeExpected': return { kind: 'period_order', part: 'time' };
     case 'CanNotBeCombinedWith': return rest ? { kind: 'exclusive', field: rest } : { kind: 'unknown' };
@@ -77,7 +78,8 @@ export function parseCriterion(raw: string): Criterion {
 
 const LIST_CAP = 20;
 const list = (values: string[]): string => values.slice(0, LIST_CAP).join(', ') + (values.length > LIST_CAP ? `, … (${values.length - LIST_CAP} more)` : '');
-const DECIMAL_BOUND = /^-?79228162514264337593543950335(\.0+)?$/; // C# decimal limits: "no bound"
+const DECIMAL_MIN = /^-79228162514264337593543950335(\.0+)?$/; // C# decimal limits: "no bound", by direction
+const DECIMAL_MAX = /^79228162514264337593543950335(\.0+)?$/;
 const GLOSS: ReadonlyArray<readonly [string, string]> = [
   ['(O1E)', 'one of the keyed fields must exist'], ['(VPDF)', 'must be a PDF meeting the print criteria'], ['(CT)', 'credit notes only'],
   ['(VAB)', 'must differ from the buyer'], ['(VAS)', 'must differ from the seller'],
@@ -98,8 +100,8 @@ export function hintFor(c: Criterion, path: string, id: string, paths: ReadonlyM
     case 'example': return undefined;
     case 'numeric': return `${path} must contain digits only.`;
     case 'decimal': return `${path} must be a decimal number.`;
-    case 'min_value': return DECIMAL_BOUND.test(c.n) ? undefined : `${path} must be at least ${c.n}.`;
-    case 'max_value': return DECIMAL_BOUND.test(c.n) ? undefined : `${path} must be at most ${c.n}.`;
+    case 'min_value': return DECIMAL_MIN.test(c.n) ? undefined : `${path} must be at least ${c.n}.`;
+    case 'max_value': return DECIMAL_MAX.test(c.n) ? undefined : `${path} must be at most ${c.n}.`;
     case 'max_count': return `${path} may contain at most ${c.n} items.`;
     case 'unique': return `Values of ${path} must be unique within the array.`;
     case 'exact_casing': return `${path} is case-sensitive; use the exact spelling from the allowed values.`;

@@ -19,7 +19,8 @@
     "mcpb:build": "node scripts/build-mcpb.ts",
     "live:channels": "node scripts/live-channels.ts",
     "check": "npm run lint && npm run typecheck && vitest run --coverage",
-    "mutation": "stryker run"
+    "mutation": "stryker run",
+    "bench:factory": "node scripts/bench-factory.ts"
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "2.4.0",

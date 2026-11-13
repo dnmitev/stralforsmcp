@@ -60,7 +60,10 @@ describe('parseCriterion + hintFor, one row per kind', () => {
     expect(hintFor(c, P, '7')).toBe(hint);
   });
   it('no hint repeats a raw criterion, except the pass-through kinds', () => {
-    for (const [raw, kind, , hint] of CASES) if (hint && !['optional_when', 'required_when', 'invalid_when', 'criteria', 'pattern'].includes(kind)) expect(hint).not.toContain(raw);
+    for (const [raw, kind, , hint] of CASES) {
+      const actual = hintFor(parseCriterion(raw), P, '7'); // the implementation's output, not the fixture
+      if (hint && !['optional_when', 'required_when', 'invalid_when', 'criteria', 'pattern'].includes(kind)) expect(actual).not.toContain(raw);
+    }
   });
   it('does not pass vendor text after the colon of dropped-text kinds', () => {
     expect(hintFor(parseCriterion('ValidDefaultChannel: SECRET'), P, '1')).not.toContain('SECRET');
@@ -165,12 +168,14 @@ describe('anchors and omitted keys (mutation)', () => {
     expect(hintFor({ kind: 'max_value', n: `${BIG}1` }, P, '1')).toBeDefined();
     expect(hintFor({ kind: 'max_value', n: `${BIG}.5` }, P, '1')).toBeDefined();
     expect(hintFor({ kind: 'min_value', n: `-${BIG}` }, P, '1')).toBeUndefined();
+    expect(hintFor({ kind: 'min_value', n: BIG }, P, '1')).toBe(`${P} must be at least ${BIG}.`); // opposite sign keeps its hint
+    expect(hintFor({ kind: 'max_value', n: `-${BIG}` }, P, '1')).toBe(`${P} must be at most -${BIG}.`);
   });
   it('MaxCount takes the trailing integer only', () => {
     expect(parseCriterion('MaxCount: Maximum 3 lines is 25')).toEqual({ kind: 'max_count', n: '25' });
     expect(parseCriterion('MaxCount: Maximum lines is 25.  ')).toEqual({ kind: 'max_count', n: '25' });
     expect(parseCriterion('MaxCount: Maximum lines is 25 x')).toEqual({ kind: 'unknown' });
-    expect(parseCriterion('MaxCount: Maximum lines is 2.5.')).toEqual({ kind: 'max_count', n: '5' });
+    for (const raw of ['MaxCount: Maximum lines is 2.5.', 'MaxCount: Maximum lines is -5.', 'MaxCount: Maximum lines is 5x']) expect(parseCriterion(raw)).toEqual({ kind: 'unknown' });
   });
   it('HasDependencies is anchored and the operator is exact', () => {
     expect(parseCriterion('x HasDependencies (AnyRequired): #1').kind).toBe('unknown');
@@ -194,5 +199,12 @@ describe('anchors and omitted keys (mutation)', () => {
   });
   it('a pattern criterion in the list wins over none and sets pattern once', () => {
     expect(flattenRules([rule({ ruleCriterias: ['Required'] })])[0]).not.toHaveProperty('pattern');
+  });
+});
+
+describe('inherited object keys are not criteria', () => {
+  it.each(['constructor', 'toString', '__proto__', 'hasOwnProperty', 'constructor: x'])('%s is unknown', (raw) => {
+    expect(parseCriterion(raw)).toEqual({ kind: 'unknown' });
+    expect(hintFor(parseCriterion(raw), P, '9')).toBe(`${P} has a rule of a kind this server does not know (rule 9).`);
   });
 });
