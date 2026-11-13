@@ -1,8 +1,9 @@
 import * as z from 'zod/v4';
 import type { StralforsClient } from '../stralfors/index.ts';
-import { flattenRules, type ReadableRule } from '../stralfors/rules.ts';
+import type { ReadableRule } from '../stralfors/rules.ts';
 import { resolveProfile } from './profile.ts';
 import type { RulesCache } from './rules-cache.ts';
+import { loadRules } from './rules-load.ts';
 import type { ToolDef } from './tools.ts';
 
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true } as const;
@@ -67,7 +68,7 @@ export function createGetRules(deps: RulesToolDeps): ToolDef<typeof getRulesInpu
       const templateStandardId = args.templateStandardId ?? 0;
       const offset = args.offset ?? 0;
       const limit = args.limit ?? DEFAULT_LIMIT;
-      const all = await deps.cache.get(profile, args.channel, templateStandardId, () => client.rules(args.channel, { templateStandardId }).then((r) => flattenRules(r.rules)));
+      const all = (await loadRules(deps.cache, client, profile, args.channel, templateStandardId)).readable;
       const { pathPrefix } = args;
       const filtered = all.filter((r) => (!args.requiredOnly || r.required) && (pathPrefix === undefined || under(r.path, pathPrefix)));
       const page = filtered.slice(offset, offset + limit).map(copy);

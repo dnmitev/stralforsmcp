@@ -130,27 +130,38 @@ export const hintsFor = (rule: RuleNode, paths?: ReadonlyMap<string, string>): s
   return [...new Set(criteriaOf(rule).map((c) => hintFor(c, path, rule.id, paths)).filter((h): h is string => h !== undefined))];
 };
 
-/** Depth-first flat list; children become entries of their own and the parent keeps a dependsOn. */
-export function flattenRules(tree: readonly RuleNode[]): ReadableRule[] {
+export interface LocalRule {
+  id: string;
+  path: string;
+  tag?: string;
+  criteria: Criterion[];
+  /** child of an AnyRequired parent: any one of the group suffices, so the local required check does not apply */
+  anyGroup?: true;
+}
+
+/** Depth-first flat list; children become entries of their own and the parent keeps a dependsOn. The same walk also yields the parsed criteria per rule. */
+export function flattenRulesWithCriteria(tree: readonly RuleNode[]): { readable: ReadableRule[]; local: LocalRule[] } {
   const all: RuleNode[] = [];
   const walk = (rs: readonly RuleNode[]) => { for (const r of rs) { all.push(r); walk(r.dependencies ?? []); } };
   walk(tree);
+  const anyKids = new Set(all.filter((r) => r.dependencyOperator === 'AnyRequired').flatMap((r) => (r.dependencies ?? []).map((k) => k.id)));
   const paths = new Map(all.map((r) => [r.id, toJsonPath(r.parameter)]));
-  const out: ReadableRule[] = [];
-  const emit = (rs: readonly RuleNode[]) => {
-    for (const r of rs) {
-      const kids = r.dependencies ?? [];
-      const op = r.dependencyOperator === 'AllRequired' ? 'all' : r.dependencyOperator === 'AnyRequired' ? 'any' : undefined;
-      const rule: ReadableRule = { id: r.id, path: paths.get(r.id)!, required: r.isRequired === true, hints: hintsFor(r, paths) };
-      if (r.tag) rule.tag = r.tag;
-      const pattern = criteriaOf(r).find((c) => c.kind === 'pattern');
-      if (pattern) rule.pattern = pattern.pattern;
-      if (r.exampleValue) rule.example = r.exampleValue;
-      if (op && kids.length > 0) rule.dependsOn = { operator: op, rules: kids.map((k) => ({ id: k.id, path: paths.get(k.id)! })) };
-      out.push(rule);
-      emit(kids);
-    }
-  };
-  emit(tree);
-  return out;
+  const readable: ReadableRule[] = [];
+  const local: LocalRule[] = [];
+  for (const r of all) {
+    const kids = r.dependencies ?? [];
+    const op = r.dependencyOperator === 'AllRequired' ? 'all' : r.dependencyOperator === 'AnyRequired' ? 'any' : undefined;
+    const criteria = criteriaOf(r);
+    const rule: ReadableRule = { id: r.id, path: paths.get(r.id)!, required: r.isRequired === true, hints: hintsFor(r, paths) };
+    if (r.tag) rule.tag = r.tag;
+    const pattern = criteria.find((c) => c.kind === 'pattern');
+    if (pattern) rule.pattern = pattern.pattern;
+    if (r.exampleValue) rule.example = r.exampleValue;
+    if (op && kids.length > 0) rule.dependsOn = { operator: op, rules: kids.map((k) => ({ id: k.id, path: paths.get(k.id)! })) };
+    readable.push(rule);
+    local.push({ id: r.id, path: rule.path, ...(r.tag ? { tag: r.tag } : {}), criteria, ...(anyKids.has(r.id) ? { anyGroup: true as const } : {}) });
+  }
+  return { readable, local };
 }
+
+export const flattenRules = (tree: readonly RuleNode[]): ReadableRule[] => flattenRulesWithCriteria(tree).readable;

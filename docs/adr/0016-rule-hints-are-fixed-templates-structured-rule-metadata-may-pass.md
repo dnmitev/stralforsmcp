@@ -3,7 +3,7 @@ status: accepted
 ---
 # Rule hints are fixed templates; structured rule metadata may pass through, vendor messages never do
 
-`get_rules` turns the rules a channel publishes into readable hints, and `validate_invoice` (the next plan) will report findings in the same words. The rules arrive as free-text criteria and error values written by the vendor. Error messages from the API already carry identity data, so ADR 0002 keeps all upstream message text away from callers. Rules are different: they describe the contract, not a request, and they are what a caller needs to read.
+`get_rules` turns the rules a channel publishes into readable hints, and `validate_invoice` reports findings in the same words. The rules arrive as free-text criteria and error values written by the vendor. Error messages from the API already carry identity data, so ADR 0002 keeps all upstream message text away from callers. Rules are different: they describe the contract, not a request, and they are what a caller needs to read.
 
 ## Decision
 
