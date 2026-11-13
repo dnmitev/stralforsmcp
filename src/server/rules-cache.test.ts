@@ -9,6 +9,46 @@ const setup = (ttlMs = 3_600_000) => {
   return { cache, fetcher, calls: () => calls, advance: (ms: number) => void (t += ms) };
 };
 
+describe('size bound', () => {
+  it('evicts the oldest entry when full and never exceeds the bound', async () => {
+    const cache = createRulesCache({ ttlMs: 3_600_000, maxEntries: 2 });
+    let calls = 0;
+    const f = (v: string) => () => (calls++, Promise.resolve(v));
+    await cache.get('p', 'a', 0, f('a'));
+    await cache.get('p', 'b', 0, f('b'));
+    await cache.get('p', 'c', 0, f('c')); // evicts a
+    expect(calls).toBe(3);
+    await cache.get('p', 'b', 0, f('b2'));
+    await cache.get('p', 'c', 0, f('c2'));
+    expect(calls).toBe(3); // b and c still cached
+    await cache.get('p', 'a', 0, f('a2')); // refetch: a was evicted
+    expect(calls).toBe(4);
+  });
+  it('re-requesting a stale key does not evict another entry', async () => {
+    let t = 0;
+    const cache = createRulesCache({ ttlMs: 10, now: () => t, maxEntries: 2 });
+    let calls = 0;
+    const f = () => (calls++, Promise.resolve('v'));
+    await cache.get('p', 'a', 0, f);
+    await cache.get('p', 'b', 0, f);
+    t = 10;
+    await cache.get('p', 'a', 0, f); // a expired, replaced in place
+    t = 11;
+    await cache.get('p', 'b', 0, f);
+    expect(calls).toBe(4);
+  });
+  it('defaults to 256 entries', async () => {
+    const { MAX_ENTRIES } = await import('./rules-cache.ts');
+    expect(MAX_ENTRIES).toBe(256);
+    const cache = createRulesCache({ ttlMs: 3_600_000 });
+    let calls = 0;
+    for (let i = 0; i < 257; i++) await cache.get('p', `c${i}`, 0, () => (calls++, Promise.resolve(i)));
+    await cache.get('p', 'c0', 0, () => (calls++, Promise.resolve(0))); // evicted
+    await cache.get('p', 'c256', 0, () => (calls++, Promise.resolve(0))); // kept
+    expect(calls).toBe(258);
+  });
+});
+
 describe('rules cache', () => {
   it('reads twice with one fetch', async () => {
     const s = setup();
