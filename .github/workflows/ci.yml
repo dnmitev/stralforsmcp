@@ -71,7 +71,8 @@ jobs:
       # added tests, so main recomputes everything and saves a fresh baseline.
       - name: Mutation tests (incremental)
         if: github.ref != 'refs/heads/main'
-        run: npm run mutation
+        # Static mutants are ~19% of mutants but ~87% of test time; main's full run still covers them.
+        run: npm run mutation -- --ignoreStatic
       - name: Mutation tests (full)
         if: github.ref == 'refs/heads/main'
         run: npm run mutation -- --force
