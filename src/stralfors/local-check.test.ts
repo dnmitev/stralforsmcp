@@ -110,6 +110,20 @@ describe('localCheck certainty (never a false invalid)', () => {
   });
 });
 
+describe('children of an AnyRequired group', () => {
+  const B = { ...L('2', 'document.a.b', ['Required', 'NumericExpected']), anyGroup: true as const };
+  const C = { ...L('3', 'document.a.c', ['Required']), anyGroup: true as const };
+  it('skip only the required check: parent and B present, C missing -> nothing', () => {
+    expect(localCheck({ a: { p: 1, b: '1' } }, [L('1', 'document.a.p', ['Required']), B, C])).toEqual([]);
+  });
+  it('other criteria still run', () => {
+    expect(localCheck({ a: { b: 'x' } }, [B]).map((f) => f.kind)).toEqual(['numeric']);
+  });
+  it('AllRequired children (no mark) keep the required check', () => {
+    expect(localCheck({ a: {} }, [L('3', 'document.a.c', ['Required'])]).map((f) => f.kind)).toEqual(['required']);
+  });
+});
+
 describe('localCheck output shape', () => {
   it('dedups the same rule listed twice (two channels), keeps different rules', () => {
     const r = L('1', P, ['Required']);
@@ -128,12 +142,11 @@ describe('localCheck output shape', () => {
     expect(JSON.stringify(doc)).toBe(before);
   });
   it('stops collecting after 200 findings on a 100k element array', () => {
-    const doc = { invoice: { line: Array.from({ length: 100_000 }, () => ({})) } };
-    const t = Date.now();
+    const line = Array.from({ length: 300 }, (_, i) => (i >= 200 ? { get id(): never { throw new Error('read past 201st element'); } } : {}));
+    const doc = { invoice: { line } };
     const f = localCheck(doc, [L('1', 'document.invoice.line[].id', ['Required'])]);
     expect(f).toHaveLength(200);
     expect(f[0]!.path).toBe('document.invoice.line[0].id');
-    expect(Date.now() - t).toBeLessThan(2000);
   });
   it('defaults today to the current date', () => {
     const rules = [L('1', P, ['DateNotInPastExpected'])];

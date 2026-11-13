@@ -79,7 +79,7 @@ export function localCheck(document: unknown, rules: readonly LocalRule[], today
       const example = rule.criteria.find((c) => c.kind === 'example');
       for (const c of rule.criteria) {
         if (out.length >= MAX_FINDINGS) return;
-        if (c.kind === 'required' && optional.has(rule.path)) continue;
+        if (c.kind === 'required' && (rule.anyGroup || optional.has(rule.path))) continue;
         if (!violates(c, v, parent, day)) continue;
         const message = hintFor(c, path, rule.id);
         const dup = `${rule.id}\0${path}\0${c.kind}`;

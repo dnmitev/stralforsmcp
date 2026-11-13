@@ -223,5 +223,13 @@ describe('flattenRulesWithCriteria', () => {
     ]);
     expect('tag' in local[1]!).toBe(false);
   });
+  it('marks only children of an AnyRequired parent', () => {
+    const kid = (id: string) => rule({ id, parameter: `Document.K${id}` });
+    const { local } = flattenRulesWithCriteria([
+      rule({ id: '1', parameter: 'Document.A', dependencyOperator: 'AnyRequired', dependencies: [kid('2')] }),
+      rule({ id: '3', parameter: 'Document.B', dependencyOperator: 'AllRequired', dependencies: [kid('4')] }),
+    ]);
+    expect(local.map((l) => [l.id, l.anyGroup])).toEqual([['1', undefined], ['2', true], ['3', undefined], ['4', undefined]]);
+  });
   it('an empty tree is empty on both sides', () => expect(flattenRulesWithCriteria([])).toEqual({ readable: [], local: [] }));
 });

@@ -57,7 +57,13 @@ export async function validateWorld(pki: Pki, o: WorldOpts = {}) {
     call: (args: Args, t = tool) => callTool(t as never, args, principal('dev', ['test']), { env: 'test', allowWrite: false, prodValidateEnabled: false, audit: audit.audit }),
     callOnly: (args: Args) => callTool(only as never, args, principal('dev', ['test']), { env: 'test', allowWrite: false, prodValidateEnabled: false, audit: audit.audit }),
     bodies: () => requests(VALIDATE).map((r) => JSON.parse(r.body) as { actionId: string; consignmentId: string; document: unknown }),
-    close: () => fake.close(),
+    close: async () => {
+      try {
+        await Promise.allSettled([...all.values()].map((c) => c.close())); // a test may already have closed a client
+      } finally {
+        await fake.close();
+      }
+    },
   };
 }
 export const randomId = randomUUID;

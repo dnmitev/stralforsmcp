@@ -314,7 +314,7 @@ describe('error outcomes: tool failed: <kind>, audit reason = kind', () => {
   });
   it('timeout -> tool failed: timeout', async () => {
     const x = await world({ env: { STRALFORS_TIMEOUT_MS: '100' } });
-    x.routes[VALIDATE] = (_q, r) => void setTimeout(() => json(r, 200, ''), 600);
+    x.routes[VALIDATE] = () => undefined; // never responds; the client deadline ends the request
     const r = await x.callOnly({ document: doc() });
     expect(text(r)).toBe('tool failed: timeout');
     expect(x.audit.lines()[0]).toMatchObject({ reason: 'timeout' });
@@ -339,6 +339,16 @@ describe('error outcomes: tool failed: <kind>, audit reason = kind', () => {
     const r = await x.callOnly({ document: doc() });
     expect(r.isError).toBeFalsy();
     expect(x.audit.lines()[0]).toMatchObject({ outcome: 'allowed' });
+  });
+});
+
+describe('a rejection that names nothing', () => {
+  it.each([['400 {}', {}], ['empty compositeFault', { compositeFault: { faults: [] } }]])('%s -> one fixed document finding, no upstream text', async (_n, body) => {
+    const x = await world();
+    x.routes[VALIDATE] = (_q, r) => json(r, 400, body);
+    const r = await x.run({ document: doc() });
+    expect(r).toEqual({ valid: false, stage: 'dry_run', moreMayFollow: true, findings: [{ source: 'stralfors', path: 'document', kind: 'rejected',
+      message: 'Stralfors rejected the document without naming a field; compare it with get_example_invoice and get_rules.' }] });
   });
 });
 

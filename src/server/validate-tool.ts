@@ -48,6 +48,8 @@ export interface ValidateDeps {
 
 const RULES_UNAVAILABLE: Finding = { source: 'local', path: '', kind: 'rules_unavailable', message: 'The rules of one channel could not be loaded, so they were not checked locally; the dry run still decides.' };
 
+const REJECTED: Finding = { source: 'stralfors', path: 'document', kind: 'rejected', message: 'Stralfors rejected the document without naming a field; compare it with get_example_invoice and get_rules.' };
+const rejected = (f: Finding[]): Finding[] => (f.length > 0 ? f : [{ ...REJECTED }]);
 const order = (a: Finding, b: Finding) => (a.path < b.path ? -1 : a.path > b.path ? 1 : (a.ruleId ?? '') < (b.ruleId ?? '') ? -1 : (a.ruleId ?? '') > (b.ruleId ?? '') ? 1 : 0);
 const result = (stage: 'input' | 'local' | 'dry_run', found: Finding[]): z.infer<typeof validateOutput> => {
   const sorted = found.sort(order);
@@ -96,8 +98,8 @@ export function createValidateInvoice(deps: ValidateDeps): ToolDef<typeof valida
       try {
         await client.validateInvoice({ actionId: agreement.id, consignmentId: args.consignmentId ?? `validate-${uuid()}`, document: { ...args.document, documentHeader, invoice } });
       } catch (e) {
-        if (e instanceof ValidationFailedError) return result('dry_run', [...fromViolations(e.violations), ...unavailable]);
-        if (e instanceof BadRequestError) return result('dry_run', [...fromBadRequest(e.errors ?? {}), ...unavailable]);
+        if (e instanceof ValidationFailedError) return result('dry_run', [...rejected(fromViolations(e.violations)), ...unavailable]);
+        if (e instanceof BadRequestError) return result('dry_run', [...rejected(fromBadRequest(e.errors ?? {})), ...unavailable]);
         if (e instanceof RequestValidationError) return result('dry_run', [...fromFields(e.fields), ...unavailable]);
         if (e instanceof AgreementNotFoundError) throw new ToolInputError('agreement not found for this profile'); // ponytail: audit reason is bad_input, not agreement_not_found; callTool is out of scope
         throw e;

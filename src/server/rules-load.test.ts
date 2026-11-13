@@ -21,7 +21,7 @@ describe('loadRules', () => {
   });
   it('is cached per profile, channel and template', async () => {
     const c = client();
-    const cache = createRulesCache({ ttlMs: 1000 });
+    const cache = createRulesCache({ ttlMs: 1000, now: () => 0 });
     const a = await loadRules(cache, c as never, 'a', 'X', 0);
     expect(await loadRules(cache, c as never, 'a', 'X', 0)).toBe(a);
     await loadRules(cache, c as never, 'a', 'X', 1);

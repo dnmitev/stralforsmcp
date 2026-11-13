@@ -135,6 +135,8 @@ export interface LocalRule {
   path: string;
   tag?: string;
   criteria: Criterion[];
+  /** child of an AnyRequired parent: any one of the group suffices, so the local required check does not apply */
+  anyGroup?: true;
 }
 
 /** Depth-first flat list; children become entries of their own and the parent keeps a dependsOn. The same walk also yields the parsed criteria per rule. */
@@ -142,6 +144,7 @@ export function flattenRulesWithCriteria(tree: readonly RuleNode[]): { readable:
   const all: RuleNode[] = [];
   const walk = (rs: readonly RuleNode[]) => { for (const r of rs) { all.push(r); walk(r.dependencies ?? []); } };
   walk(tree);
+  const anyKids = new Set(all.filter((r) => r.dependencyOperator === 'AnyRequired').flatMap((r) => (r.dependencies ?? []).map((k) => k.id)));
   const paths = new Map(all.map((r) => [r.id, toJsonPath(r.parameter)]));
   const readable: ReadableRule[] = [];
   const local: LocalRule[] = [];
@@ -156,7 +159,7 @@ export function flattenRulesWithCriteria(tree: readonly RuleNode[]): { readable:
     if (r.exampleValue) rule.example = r.exampleValue;
     if (op && kids.length > 0) rule.dependsOn = { operator: op, rules: kids.map((k) => ({ id: k.id, path: paths.get(k.id)! })) };
     readable.push(rule);
-    local.push({ id: r.id, path: rule.path, ...(r.tag ? { tag: r.tag } : {}), criteria });
+    local.push({ id: r.id, path: rule.path, ...(r.tag ? { tag: r.tag } : {}), criteria, ...(anyKids.has(r.id) ? { anyGroup: true as const } : {}) });
   }
   return { readable, local };
 }
