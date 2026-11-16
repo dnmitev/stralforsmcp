@@ -78,7 +78,7 @@ Input: 1 to 4 lookup `channels`, 1 to 1000 `candidates` (each up to 40 character
 | `failed`, reason `error` | the vendor reported another problem for that channel |
 | `unrecognised: n` | the vendor matched `n` entries that fit none of your candidates: it spells identifiers differently from you. Report it |
 
-The call waits for the vendor, usually seconds and at most 20 s (`lookup still running; try again`). Candidates are personal identifiers: they are sent to the vendor and nowhere else, never stored, logged, audited, traced or returned. PROD is not available (see section 6).
+The call waits for the vendor, usually seconds and about 20 s at most (`lookup still running; try again`). Candidates are personal identifiers: they are sent to the vendor and nowhere else, never stored, logged, audited, traced or returned. PROD is not available (see section 6).
 
 ## 4. Typical sessions
 
@@ -104,7 +104,7 @@ The call waits for the vendor, usually seconds and at most 20 s (`lookup still r
 | `tool failed: rate_limited` / `timeout` / `upstream` | the vendor is slow or busy | retry later |
 | `tool failed: schema` | the vendor answered in a shape we do not know | report it: the API may have changed |
 | `tool output too large; narrow the request` | the answer exceeded the output cap | filter or page (`requiredOnly`, `pathPrefix`, `limit`) |
-| `lookup still running; try again` | the vendor did not finish a lookup within 20 s | call again; each call is a new lookup |
+| `lookup still running; try again` | the vendor did not finish a lookup within about 20 s | call again; each call is a new lookup |
 | `exactly one of invoiceNumber, extDocumentId or documentId is required` | `track_document` got none or several keys | give one |
 
 Error texts never contain your input, ids or the vendor's own words.
@@ -117,7 +117,7 @@ These are behaviours the tools rely on, found by running against the vendor's te
 - **Example payloads** are shapes with placeholder values and a placeholder agreement id; they are not valid input.
 - **Dry run.** The vendor reports errors in layers (header first, then template); a request is rejected with a 400 whose fault list is rich but whose `faultCode` is empty. `valid: true` only follows an accepted dry run, never the local stage.
 - **Track & Trace.** Status words come from several vocabularies and lag the real delivery; a tracking miss and an unknown id can look alike, so `not_found` is a statement about the lookup, not about the invoice.
-- **Channel Lookup.** The call is asynchronous (start, then read the result) but in practice completes within seconds and showed no "pending" answer; asking too early or for an unknown id gives a not-found answer that echoes the id (the server never relays it). The result lists **matched** candidates only, so availability is derived: present means available, absent means not. Lookup channels are **configured per client**: a channel the vendor has not set up answers with a configuration-missing sentence and no matches, with an HTTP 200, not an error status. The vendor does not validate the candidate format. The answer also carries the customer's organisation identifier, which the server drops. Whether the vendor spells a real match the way you sent it is unverified; the tool compares ignoring case, spaces and punctuation, and `unrecognised` flags a mismatch.
+- **Channel Lookup.** The call is asynchronous (start, then read the result) but in practice completes within seconds and showed no "pending" answer; asking too early or for an unknown id gives a not-found answer that echoes the id (the server never relays it). The result lists **matched** candidates only, so availability is derived: present means available, absent means not. Lookup channels are **configured per client**: a channel the vendor has not set up answers with a configuration-missing sentence and no matches, with an HTTP 200, not an error status. The vendor does not validate the candidate format. The answer also carries the customer's organisation identifier, which the server drops. Whether the vendor spells a real match the way you sent it is unverified; the tool compares ignoring case, spaces, punctuation and Unicode formatting (letters and digits are kept), and `unrecognised` flags a mismatch.
 - **PROD.** The PROD client may not have the same scopes as TEST (for example Channel Lookup), so a tool that works on TEST can be refused or unavailable on PROD.
 
 ## 7. Known rough edges

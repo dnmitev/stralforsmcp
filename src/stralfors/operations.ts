@@ -59,7 +59,8 @@ const trackPageSchema = unwrap(z.looseObject({ documents: z.array(z.looseObject(
 const trackHistorySchema = unwrap(z.looseObject({}));
 
 const lookupRequest = z.object({ channels: z.array(z.string().min(1)).min(1).max(4), candidates: z.array(z.string().min(1)).min(1).max(1000) });
-const lookupStarted = unwrap(z.looseObject({ correlationId: z.string().min(1) }));
+// well-formed UTF-16 only: a lone surrogate would make encodeURIComponent throw before the poll request, so it is a schema error instead
+const lookupStarted = unwrap(z.looseObject({ correlationId: z.string().min(1).refine((v) => v.isWellFormed()) }));
 const lookupResult = unwrap(z.looseObject({ results: z.array(z.looseObject({ channel: z.string(), matchedCandidates: z.array(z.string()), error: z.string().nullish() })) }));
 
 interface Opts<T> { schema?: z.ZodType<T>; query?: Record<string, string>; operation?: string; noReplay?: boolean }

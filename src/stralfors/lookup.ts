@@ -7,8 +7,8 @@ export type LookupChannelResult = { channel: string; available: boolean[] } | { 
 
 const NOT_CONFIGURED = /configuration is missing/i;
 
-/** Spelling-insensitive key: letters and digits only, lower-case (ASCII). An empty key never matches. */
-export const normalise = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+/** Spelling-insensitive key: Unicode letters and digits only (NFKC, lower-case). Case, spaces and punctuation do not matter; an empty key never matches. */
+export const normalise = (s: string): string => s.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 
 export function mapLookup(channels: readonly string[], candidates: readonly string[], answers: readonly LookupAnswer[]): { results: LookupChannelResult[]; unrecognised: number } {
   const byName = new Map<string, LookupAnswer>();

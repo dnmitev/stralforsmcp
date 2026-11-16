@@ -4,7 +4,7 @@ import { mapLookup, normalise } from './lookup.ts';
 const r = (channel: string, matchedCandidates: string[], error?: string | null) => ({ channel, matchedCandidates, ...(error === undefined ? {} : { error }) });
 
 describe('normalise', () => {
-  it.each([['19000101-0001', '190001010001'], [' AbC-12 ', 'abc12'], ['a.b_c d', 'abcd'], ['', ''], ['---', ''], ['ÅÄ1', '1']])('%j -> %j', (a, b) => expect(normalise(a)).toBe(b));
+  it.each([['19000101-0001', '190001010001'], [' AbC-12 ', 'abc12'], ['a.b_c d', 'abcd'], ['', ''], ['---', ''], ['ÅÄ1', 'åä1'], ['ＡＢ１', 'ab1'], ['a\u0301', 'á'], ['—', '']])('%j -> %j', (a, b) => expect(normalise(a)).toBe(b));
 });
 
 describe('mapLookup', () => {

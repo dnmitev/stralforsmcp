@@ -381,4 +381,11 @@ describe('channel lookup operations', () => {
     for (const id of ['lookup-key-alpha', 'a b', 'plainword', 'a%20b%2Fc']) expect(log.text()).not.toContain(id);
     expect(log.text()).toContain('/channellookup/v1/lookup/*');
   });
+
+  it('a correlation id that is not well-formed UTF-16 is a schema error, not a URIError', async () => {
+    fake = await startFakeApi({ pki, api: (_q, res) => json(res, 201, '{"correlationId":"\\ud800"}', 'application/json') });
+    const { client } = testClient(pki, fake);
+    expect(await rejection(client.channelLookup({ channels: ['K'], candidates: ['a'] }))).toMatchObject({ kind: 'schema' });
+    expect(fake.apiRequests).toHaveLength(1); // the POST only: nothing was polled
+  });
 });

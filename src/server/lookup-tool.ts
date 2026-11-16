@@ -30,7 +30,7 @@ export function createChannelLookup(deps: LookupDeps): ToolDef<typeof lookupInpu
   return {
     spec: { name: 'channel_lookup', access: 'lookup' },
     title: 'Channel lookup',
-    description: 'TEST only. Checks which lookup channels (for example Kivra) can reach each candidate recipient identifier. Candidates are not stored, logged or returned by this server. Answers are indexed by candidate position: available[i] is true when candidates[i] was matched. A lookup takes seconds; the call waits up to 20 s. A channel that reports an error is returned as failed with a reason: not_configured (the vendor has not set the channel up for this client) or error.',
+    description: 'TEST only. Checks which lookup channels (for example Kivra) can reach each candidate recipient identifier. Candidates are not stored, logged or returned by this server. Answers are indexed by candidate position: available[i] is true when candidates[i] was matched. A lookup takes seconds; the call waits about 20 s. A channel that reports an error is returned as failed with a reason: not_configured (the vendor has not set the channel up for this client) or error.',
     inputSchema: lookupInput,
     outputSchema: lookupOutput,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
