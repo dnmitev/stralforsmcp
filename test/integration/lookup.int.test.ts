@@ -58,7 +58,7 @@ describe.skipIf(!enabled)('channel_lookup through the real stack', () => {
     expect(errText(r)).toBe('lookup still running; try again');
     const seen = await lookups();
     expect(seen.filter((x) => x.method === 'POST')).toHaveLength(1);
-    expect(seen.filter((x) => x.method === 'GET').length).toBeGreaterThanOrEqual(1); // the cadence is covered with an injected clock in lookup-tool.test.ts
+    // no GET count here: how many polls fit depends on container latency; cadence and budget are asserted with an injected clock in lookup-tool.test.ts
     const all = await sinks(r);
     for (const v of FORBIDDEN_IN_SINKS) expect(all, v).not.toContain(v);
   }, 60_000);
