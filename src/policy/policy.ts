@@ -1,8 +1,9 @@
 import type { Env, Principal } from '../auth/index.ts';
 
-export type Access = 'read' | 'validate' | 'write';
+/** `lookup`: starts a vendor lookup request (creates no document, sends nothing). TEST only, no write flag, no scope claims. */
+export type Access = 'read' | 'validate' | 'write' | 'lookup';
 export interface ToolSpec { name: string; access: Access; requiredScope?: string }
-export type DenyReason = 'env' | 'role' | 'write' | 'validate' | 'scope';
+export type DenyReason = 'env' | 'role' | 'write' | 'validate' | 'lookup' | 'scope';
 export type Decision = { allow: true } | { allow: false; reason: DenyReason };
 /** `Claims` satisfies this; policy needs nothing else from it. */
 export interface ScopeHolder { hasScope(s: string): boolean }
@@ -12,7 +13,7 @@ export const WRITE_SCOPE = 'apiomni.write';
 
 const deny = (reason: DenyReason): Decision => ({ allow: false, reason });
 
-/** Order matters: env, role, write, validate, scope. The first failing rule is the reason. */
+/** Order matters: env, role, write, validate, lookup, scope. The first failing rule is the reason. */
 export function decide({ principal, env, allowWrite, prodValidateEnabled, tool, claims }: PolicyContext & { tool: ToolSpec }): Decision {
   if (!principal.envs.includes(env)) return deny('env');
   if (env === 'prod' && principal.role !== 'dev') return deny('role');
@@ -20,6 +21,7 @@ export function decide({ principal, env, allowWrite, prodValidateEnabled, tool, 
   if (write && env === 'prod') return deny('write'); // hard constant: never depends on allowWrite
   if (write && !allowWrite) return deny('write');
   if (tool.access === 'validate' && env === 'prod' && !prodValidateEnabled) return deny('validate');
+  if (tool.access === 'lookup' && env === 'prod') return deny('lookup');
   const required = tool.requiredScope ?? (write ? WRITE_SCOPE : undefined);
   if (required !== undefined && !claims?.hasScope(required)) return deny('scope');
   return { allow: true };

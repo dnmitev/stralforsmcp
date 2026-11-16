@@ -17,10 +17,12 @@ Integrating with the Strålfors Output Management API means working out channels
 | `get_rules` | Lists the validation rules of one channel in readable form (JSON path, required, plain-language hints, pattern, example, dependencies); paginated (`limit` up to 200, `hasMore`), `requiredOnly` and `pathPrefix` filter locally; cached per pod (`MCP_RULES_CACHE_S`); allowed in PROD |
 | `get_example_invoice` | Returns the example invoice payload for 1-5 channels without the agreement id, plus fixed usage notes; allowed in PROD |
 | `validate_invoice` | Validates an invoice document in three stages and stops at the first stage with findings: input shape, a local check against the cached rules, then the API's own dry run. Findings are fixed plain-language sentences keyed by JSON path and rule id; `valid: true` only after the dry run accepts the document; `moreMayFollow` is true whenever it is false. The dry run creates nothing. Choose the agreement by label (optional when the profile has one). Hidden and denied in PROD unless `STRALFORS_PROD_VALIDATE_ENABLED=true` |
-| `channel_lookup` | Checks which channels a recipient can receive |
+| `channel_lookup` | **Test environment only.** Checks which lookup channels (for example Kivra) can reach each of 1 to 1000 candidate recipient identifiers, for 1 to 4 channels. Starts one vendor lookup, waits for the result (usually seconds, about 20 s at most) and returns `available` per candidate position. Candidates are personal identifiers: never stored, logged, audited, traced or returned. A channel that reports an error comes back as `failed` with a fixed `reason` (`not_configured`: the vendor has not set the channel up for this client; `error`: anything else); `unrecognised` counts matches that fit no candidate (a spelling difference), never values. See [ADR 0020](docs/adr/0020-channel-lookup-is-test-only-a-lookup-access-class-and-never-echoes-candidates.md) |
 | `track_document` | Reads the delivery status of an invoice by invoice number, external document id or document id (exactly one), through the read-only Track & Trace API. Returns per document and per channel an `outcome` (`delivered`, `in_progress`, `refused`, `failed`, `unknown`), the raw status, timestamps and optionally the delivery history of one document; recipient data and free text never leave the server. Status can lag by hours to days. Cursor paging (`hasMore`, `nextCursor`). Allowed in PROD |
 | `send_invoice` | Sends to the **test** environment only |
 | `search_docs` | Searches the knowledge base |
+
+How to use the tools (vocabulary, a prompt per tool, what each error means, what we learned from the live API): [docs/using-the-tools.md](docs/using-the-tools.md).
 
 Plus ready-made prompts such as "Check my invoice" and "Which channels exist for a country?".
 
@@ -290,6 +292,8 @@ npm run dev 2>/dev/null                              # audit only
 | `STRALFORS_PROFILE_<ID>_ACTION_IDS: invalid agreement id (...)` | an entry is not a UUID | fix the entry |
 | `token list: cannot read` | `MCP_TOKEN_LIST_FILE` missing or unreadable | step 2 |
 | `token list: <field> <rule>` | the file is not a valid token list | recreate it with step 2 (`npm run dev:token -- --force`) |
+| `tool failed: forbidden` from `channel_lookup` | the client has no Channel Lookup scope on this environment (the vendor refuses the POST) | ask the vendor for the Channel Lookup scopes for this client |
+| `lookup still running; try again` | the vendor did not finish a lookup within about 20 s | call again; each call starts a new lookup |
 | `401` on `/mcp` | missing, wrong, expired or revoked token; the body is identical for every cause | recreate the token (step 2, `-- --force` to replace the file), export it again, restart if it still fails |
 | `403` / `404` / `405` on `/mcp` | host not in `MCP_HOSTNAMES`, wrong path, or not `POST` | use `localhost` and `POST /mcp` |
 

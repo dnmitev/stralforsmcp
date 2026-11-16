@@ -1,0 +1,173 @@
+{
+  "mappings": [
+    {
+      "priority": 1,
+      "request": {
+        "method": "POST",
+        "urlPath": "/rest/outputmanagement/channellookup/v1/lookup",
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": {
+              "expression": "$.candidates[0]",
+              "equalTo": "CANARY-CAND-READY-1"
+            }
+          }
+        ]
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "correlationId": "30000000-0000-4000-8000-000000000001"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/channellookup/v1/lookup/30000000-0000-4000-8000-000000000001"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "customerId": "CANARY-ORG-NUMBER",
+          "results": [
+            {
+              "channel": "Kivra",
+              "matchedCandidates": [
+                "CANARYCANDREADY2"
+              ],
+              "error": ""
+            },
+            {
+              "channel": "Billo",
+              "matchedCandidates": [],
+              "error": "CANARY-LOOKUP-CHANNEL-ERROR"
+            },
+            {
+              "channel": "eInvoiceB2C",
+              "matchedCandidates": [],
+              "error": "User configuration is missing for this channel."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "priority": 1,
+      "request": {
+        "method": "POST",
+        "urlPath": "/rest/outputmanagement/channellookup/v1/lookup",
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": {
+              "expression": "$.candidates[0]",
+              "equalTo": "CANARY-CAND-PENDING-1"
+            }
+          }
+        ]
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "correlationId": "30000000-0000-4000-8000-000000000002"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/channellookup/v1/lookup/30000000-0000-4000-8000-000000000002"
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "message": "No completed lookup found for CorrelationID: 30000000-0000-4000-8000-000000000002 CANARY-LOOKUP-404"
+        }
+      }
+    },
+    {
+      "priority": 1,
+      "request": {
+        "method": "POST",
+        "urlPath": "/rest/outputmanagement/channellookup/v1/lookup",
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": {
+              "expression": "$.candidates[0]",
+              "equalTo": "CANARY-CAND-MISMATCH-1"
+            }
+          }
+        ]
+      },
+      "response": {
+        "status": 201,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "correlationId": "30000000-0000-4000-8000-000000000003"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/channellookup/v1/lookup/30000000-0000-4000-8000-000000000003"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "customerId": "CANARY-ORG-NUMBER",
+          "results": [
+            {
+              "channel": "Kivra",
+              "matchedCandidates": [
+                "ZZ-OTHER-SPELLING"
+              ],
+              "error": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "priority": 1,
+      "request": {
+        "method": "POST",
+        "urlPath": "/rest/outputmanagement/channellookup/v1/lookup",
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": {
+              "expression": "$.candidates[0]",
+              "equalTo": "CANARY-CAND-FORBIDDEN-1"
+            }
+          }
+        ]
+      },
+      "response": {
+        "status": 403,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "message": "Forbidden CANARY-LOOKUP-403"
+        }
+      }
+    }
+  ]
+}

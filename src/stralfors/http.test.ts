@@ -342,6 +342,25 @@ describe('R9 prod write guard', () => {
       ['test POST track documents default', pol('test'), 'POST', `${TT}/document/documents`, false],
       ['test POST track documents allowWrite', pol('test', true), 'POST', `${TT}/document/documents`, true],
     ];
+    const CL = '/rest/outputmanagement/channellookup/v1';
+    const lookupRows: [string, Policy, string, string, boolean][] = [
+      ['test POST lookup without allowWrite', pol('test'), 'POST', `${CL}/lookup`, true],
+      ['test POST lookup, lower-case method', pol('test'), 'post', `${CL}/lookup`, true],
+      ['test POST lookup with allowWrite', pol('test', true), 'POST', `${CL}/lookup`, true],
+      ['test POST lookup with a query', pol('test'), 'POST', `${CL}/lookup?x=1`, false],
+      ['test POST lookup trailing slash', pol('test'), 'POST', `${CL}/lookup/`, false],
+      ['test POST lookup with an id', pol('test'), 'POST', `${CL}/lookup/abc`, false],
+      ['test POST extendedlookup', pol('test'), 'POST', `${CL}/extendedlookup`, false],
+      ['test POST lookup other version', pol('test'), 'POST', '/rest/outputmanagement/channellookup/v2/lookup', false],
+      ['test POST lookup other service', pol('test'), 'POST', '/rest/outputmanagement/other/v1/lookup', false],
+      ['test POST lookup lookalike', pol('test'), 'POST', `${CL}/lookup2`, false],
+      ['test PUT lookup without allowWrite', pol('test'), 'PUT', `${CL}/lookup`, false],
+      ['test DELETE lookup without allowWrite', pol('test'), 'DELETE', `${CL}/lookup`, false],
+      ['test GET lookup result', pol('test'), 'GET', `${CL}/lookup/abc`, true],
+      ['prod POST lookup', pol('prod'), 'POST', `${CL}/lookup`, false],
+      ['prod POST lookup even if allowWrite and validate enabled', pol('prod', true, true), 'POST', `${CL}/lookup`, false],
+      ['prod GET lookup result', pol('prod'), 'GET', `${CL}/lookup/abc`, false],
+    ];
     it.each<[string, Policy, string, string, boolean]>([
       ['prod GET allowlisted reads', pol('prod'), 'GET', reads[0]!, true],
       ['prod GET channels', pol('prod'), 'GET', reads[2]!, true],
@@ -374,6 +393,7 @@ describe('R9 prod write guard', () => {
       ['test HEAD default', pol('test'), 'HEAD', '/rest/anything', false],
       ['test PUT validate test=true', pol('test'), 'PUT', `${v}?test=true`, true],
       ...trackRows,
+      ...lookupRows,
     ])('%s', (_n, policy, method, path, expected) => {
       expect(isAllowed(policy, method, path)).toBe(expected);
     });

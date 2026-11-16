@@ -27,6 +27,8 @@
     "src/server/validate-tool.ts",
     "src/server/track-tool.ts",
     "src/stralfors/tracking.ts",
+    "src/stralfors/lookup.ts",
+    "src/server/lookup-tool.ts",
     "src/server/rules-load.ts",
     "src/server/main.ts",
     "src/server/rate-limit.ts",

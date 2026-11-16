@@ -3,6 +3,7 @@ import { RequestValidationError } from './errors.ts';
 
 const V = '/rest/outputmanagement/apiomni/v2/invoices';
 const TT = '/rest/outputmanagement/tracktrace/v1';
+const CL = '/rest/outputmanagement/channellookup/v1';
 
 export const KNOWN_CHANNELS = ['AvtaleGiro', 'Custom', 'Digipost', 'eBrevWeMail', 'EDI', 'eInvoice', 'eMail', 'Kivra', 'SMS', 'WeMailNO'] as const;
 export type KnownChannel = (typeof KNOWN_CHANNELS)[number];
@@ -57,9 +58,15 @@ const validateResponse = unwrap(
 const trackPageSchema = unwrap(z.looseObject({ documents: z.array(z.looseObject({ documentId: z.string().optional() })), lastDocuments: z.boolean() }));
 const trackHistorySchema = unwrap(z.looseObject({}));
 
-interface Opts<T> { schema?: z.ZodType<T>; query?: Record<string, string>; operation?: string }
+const lookupRequest = z.object({ channels: z.array(z.string().min(1)).min(1).max(4), candidates: z.array(z.string().min(1)).min(1).max(1000) });
+// well-formed UTF-16 only: a lone surrogate would make encodeURIComponent throw before the poll request, so it is a schema error instead
+const lookupStarted = unwrap(z.looseObject({ correlationId: z.string().min(1).refine((v) => v.isWellFormed()) }));
+const lookupResult = unwrap(z.looseObject({ results: z.array(z.looseObject({ channel: z.string(), matchedCandidates: z.array(z.string()), error: z.string().nullish() })) }));
+
+interface Opts<T> { schema?: z.ZodType<T>; query?: Record<string, string>; operation?: string; noReplay?: boolean }
 interface Core {
   get<T = unknown>(path: string, opts?: Opts<T>): Promise<T>;
+  post<T = unknown>(path: string, body: unknown, opts?: Opts<T>): Promise<T>;
   put<T = unknown>(path: string, body: unknown, opts?: Opts<T>): Promise<T>;
 }
 const defined = (o: Record<string, string | number | boolean | undefined>) =>
@@ -79,6 +86,13 @@ export function operations(c: Core) {
     trackDocuments: (f: { invoiceNumber?: string; extDocumentId?: string; documentId?: string; lastDocumentId?: string; channelId?: number }) =>
       get('trackDocuments', `${TT}/document/documents`, trackPageSchema, defined(f)),
     trackHistory: (documentId: string) => get('trackHistory', `${TT}/document/${encodeURIComponent(documentId)}/documentinfohistory`, trackHistorySchema),
+    /** Starts a lookup (POST). Candidates are personal identifiers: they only travel in the body, never in a path, query or operation name. */
+    async channelLookup(body: z.input<typeof lookupRequest>) {
+      const check = lookupRequest.safeParse(body);
+      if (!check.success) throw new RequestValidationError(`invalid request: ${[...new Set(check.error.issues.map((i) => String(i.path[0])))].join(', ')}`, { fields: [...new Set(check.error.issues.map((i) => String(i.path[0])))] });
+      return c.post(`${CL}/lookup`, body, { schema: lookupStarted, operation: 'channelLookup', noReplay: true });
+    },
+    channelLookupResult: (correlationId: string) => get('channelLookupResult', `${CL}/lookup/${encodeURIComponent(correlationId)}`, lookupResult),
     /** Dry run only: always test=true, there is no way to send test=false from here. */
     async validateInvoice(body: z.input<typeof validateRequest>) {
       const check = validateRequest.safeParse(body);
