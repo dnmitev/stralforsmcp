@@ -91,6 +91,16 @@ Certificate rotation: the cert, key and passphrase files are re-read every `STRA
 
 Smoke check against the live test API (manual, never run in CI): export the variables above, then `npm run live:channels`. It prints the token scopes, the client channel catalogue and the channels of each configured agreement by label (or `#1`, `#2`), never by id.
 
+### Running against production (local, read only)
+
+Set `STRALFORS_ENV=prod` and point the profile `*_FILE` variables at the production credentials; the base URL follows from the environment (ADR 0005). Never mix test and production credentials in one shell, and keep the credential files outside any repository with mode 600.
+
+- `STRALFORS_ALLOW_WRITE=true` is refused at start; write tools are not registered and the HTTP client only lets known read endpoints through (ADR 0007).
+- Only the `dev` role can call tools in production.
+- `validate_invoice` stays denied until `STRALFORS_PROD_VALIDATE_ENABLED=true`. Use synthetic data only; the dry run creates nothing.
+- The production client may hold write scopes. The client logs one warning when the token carries `apiomni.write` and keeps every guard active; the guards, not the credential, are the protection.
+- Start with `npm run live:channels`, which only reads.
+
 ## Running
 
 `node src/server/main.ts` starts the stateless Streamable HTTP MCP server (SDK v2). It creates one Stralfors client per credential profile at start and serves `whoami`, `list_channels`, `get_rules`, `get_example_invoice`, `validate_invoice` and `track_document` to authenticated callers. Configuration is read from the environment; an invalid value refuses to start (exit 1, `refusing to start: <fixed text>`).
