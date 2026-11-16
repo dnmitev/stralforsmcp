@@ -17,7 +17,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { AgreementNotFoundError, RequestValidationError, ValidationFailedError, mapHttpError } from './errors.ts';
 import { isKnownChannel, rulesResponseSchema } from './operations.ts';
-import { canary, fixture, fixtureJson, json, startFakeApi, testClient, type FakeApi } from '../../test/helpers/api.ts';
+import { canary, fixture, fixtureJson, json, memoryLogger, startFakeApi, testClient, type FakeApi } from '../../test/helpers/api.ts';
 import { generatePki, type Pki } from '../../test/helpers/mtls.ts';
 
 let pki: Pki;
@@ -275,5 +275,83 @@ describe('track operations (03-02a)', () => {
     await fake.close();
     fake = await startFakeApi({ pki, api: (_q, res) => json(res, 400, { message: 'x' }) });
     expect(await rejection(testClient(pki, fake).client.trackHistory('M8I4'))).toMatchObject({ operation: 'trackHistory' });
+  });
+});
+
+describe('channel lookup operations', () => {
+  const CL = '/rest/outputmanagement/channellookup/v1';
+  const cid = randomUUID();
+  const run = async (api: Parameters<typeof startFakeApi>[0]['api'], f: (c: ReturnType<typeof testClient>['client']) => Promise<unknown>, o: Parameters<typeof testClient>[2] = {}) => {
+    fake = await startFakeApi({ pki, api });
+    const t = testClient(pki, fake, o);
+    return { out: await f(t.client), fake };
+  };
+
+  it('channelLookup POSTs channels and candidates (TEST, no allowWrite) and returns the correlation id', async () => {
+    const { out, fake: f } = await run((_q, res) => json(res, 201, { correlationId: cid }), (c) => c.channelLookup({ channels: ['Kivra'], candidates: ['a1', 'b2'] }));
+    expect(out).toMatchObject({ correlationId: cid });
+    const r = f.apiRequests[0]!;
+    expect([r.method, r.url]).toEqual(['POST', `${CL}/lookup`]);
+    expect(JSON.parse(r.body)).toEqual({ channels: ['Kivra'], candidates: ['a1', 'b2'] });
+  });
+
+  it('channelLookup checks the request before any I/O', async () => {
+    fake = await startFakeApi({ pki, api: (_q, res) => json(res, 201, { correlationId: cid }) });
+    const { client } = testClient(pki, fake);
+    for (const bad of [{ channels: [], candidates: ['a'] }, { channels: ['K'], candidates: [] }, { channels: ['a', 'b', 'c', 'd', 'e'], candidates: ['a'] }, { channels: ['K'], candidates: Array.from({ length: 1001 }, (_, i) => `c${i}`) }]) {
+      expect(await rejection(client.channelLookup(bad))).toBeInstanceOf(RequestValidationError);
+    }
+    expect(fake.requests).toHaveLength(0);
+    await expect(client.channelLookup({ channels: ['K'], candidates: Array.from({ length: 1000 }, (_, i) => `c${i}`) })).resolves.toMatchObject({ correlationId: cid });
+  });
+
+  it('a malformed POST answer is a schema error, not a crash', async () => {
+    fake = await startFakeApi({ pki, api: (_q, res) => json(res, 201, { nope: 1 }) });
+    const { client } = testClient(pki, fake);
+    expect(await rejection(client.channelLookup({ channels: ['K'], candidates: ['a'] }))).toMatchObject({ kind: 'schema' });
+  });
+
+  it('channelLookupResult GETs the encoded id and keeps extra keys', async () => {
+    const body = { customerId: 'x', results: [{ channel: 'Kivra', matchedCandidates: ['a1'], error: '' }] };
+    const { out, fake: f } = await run((_q, res) => json(res, 200, body), (c) => c.channelLookupResult('a b/c'));
+    expect(out).toMatchObject(body);
+    expect(f.apiRequests[0]!.url).toBe(`${CL}/lookup/a%20b%2Fc`);
+  });
+
+  it('result error may be null or absent; a missing results array is a schema error', async () => {
+    const ok = await run((_q, res) => json(res, 200, { results: [{ channel: 'K', matchedCandidates: [], error: null }, { channel: 'L', matchedCandidates: [] }] }), (c) => c.channelLookupResult('x'));
+    expect(ok.out).toBeTruthy();
+    fake = await startFakeApi({ pki, api: (_q, res) => json(res, 200, { customerId: 'x' }) });
+    const { client } = testClient(pki, fake);
+    expect(await rejection(client.channelLookupResult('x'))).toMatchObject({ kind: 'schema' });
+  });
+
+  it('the JSON 404 of a lookup that is not completed is an AgreementNotFoundError (the tool treats it as not ready)', async () => {
+    fake = await startFakeApi({ pki, api: (_q, res) => json(res, 404, { message: 'No completed lookup found for CorrelationID: x' }) });
+    const { client } = testClient(pki, fake);
+    expect(await rejection(client.channelLookupResult('x'))).toBeInstanceOf(AgreementNotFoundError);
+  });
+
+  it('candidates, the correlation id and upstream text reach no log line, error or onBlocked callback', async () => {
+    const cand = canary('CAND');
+    const upstream = canary('UP');
+    const log = memoryLogger();
+    const blocked: unknown[] = [];
+    fake = await startFakeApi({ pki, api: (req, res) => (req.method === 'POST' ? json(res, 201, { correlationId: cid }) : json(res, 404, { message: `${upstream} ${cid}` })) });
+    const { client } = testClient(pki, fake, { logger: log.logger, onBlocked: (b) => blocked.push(b) });
+    await client.channelLookup({ channels: ['K'], candidates: [cand] });
+    const err = await rejection(client.channelLookupResult(cid));
+    for (const text of [log.text(), JSON.stringify(blocked), String(err), JSON.stringify(err)]) {
+      expect(text).not.toContain(cand);
+      expect(text).not.toContain(cid);
+      expect(text).not.toContain(upstream);
+    }
+  });
+
+  it('the POST is refused in prod before any request', async () => {
+    fake = await startFakeApi({ pki, api: (_q, res) => json(res, 201, { correlationId: cid }) });
+    const { client } = testClient(pki, fake, { extra: { STRALFORS_ENV: 'prod' } });
+    expect(await rejection(client.channelLookup({ channels: ['K'], candidates: ['a'] }))).toBeTruthy();
+    expect(fake.requests).toHaveLength(0);
   });
 });

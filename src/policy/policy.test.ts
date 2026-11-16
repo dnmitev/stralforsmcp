@@ -112,3 +112,25 @@ describe('R5 scope and visibility', () => {
     expect(visibleTools({ principal: dev, env: 'test', allowWrite: false, prodValidateEnabled: true, claims: new Claims({ scope: 'apiomni.read' }) }, tools).map((t) => t.name)).toEqual(['r', 'v']);
   });
 });
+
+describe('lookup access class (channel_lookup, TEST only)', () => {
+  const lookup = tool('lookup');
+  const ctx = (role: Role, member: Env[], env: Env, over: Partial<Parameters<typeof decide>[0]> = {}) =>
+    ({ principal: who(role, member), env, allowWrite: false, prodValidateEnabled: false, tool: lookup, ...over }) as Parameters<typeof decide>[0];
+  it.each<Role>(['dev', 'qa', 'pm'])('%s with test access is allowed in test without write flag or scope claims', (role) => {
+    expect(decide(ctx(role, ['test'], 'test'))).toEqual({ allow: true });
+  });
+  it.each<Role>(['dev', 'qa', 'pm'])('%s is denied in prod with reason lookup (role dev included), even with every flag on', (role) => {
+    const r = decide(ctx(role, ['test', 'prod'], 'prod', { allowWrite: true, prodValidateEnabled: true, claims: scopes(WRITE_SCOPE, 'channellookup.write') }));
+    expect(r).toEqual(role === 'dev' ? { allow: false, reason: 'lookup' } : { allow: false, reason: 'role' });
+  });
+  it('env membership is still checked first', () => {
+    expect(decide(ctx('dev', ['prod'], 'test'))).toEqual({ allow: false, reason: 'env' });
+  });
+  it('visibleTools lists it in test for every role and in no prod context', () => {
+    for (const role of roles) {
+      expect(visibleTools({ principal: who(role, ['test', 'prod']), env: 'test', allowWrite: false, prodValidateEnabled: false }, [lookup])).toEqual([lookup]);
+      expect(visibleTools({ principal: who(role, ['test', 'prod']), env: 'prod', allowWrite: true, prodValidateEnabled: true }, [lookup])).toEqual([]);
+    }
+  });
+});

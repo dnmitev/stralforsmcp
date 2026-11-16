@@ -22,13 +22,16 @@ const PROD_READS = new Set(['/v2/apiinfo', '/v1/manage/health', '/v2/invoices/ch
 const TT = '/rest/outputmanagement/tracktrace/v1/document/';
 const trackRead = (path: string) => path === `${TT}documents` || new RegExp(`^${TT}[A-Za-z0-9]{1,10}/documentinfohistory$`).test(path);
 
+// The one POST outside allowWrite: a Channel Lookup request creates no document and sends nothing. Exact path, no query, TEST only (PROD never reaches it).
+const LOOKUP = '/rest/outputmanagement/channellookup/v1/lookup';
+
 export function isAllowed(policy: { env: 'test' | 'prod'; allowWrite: boolean; prodValidateEnabled: boolean }, method: string, pathWithQuery: string): boolean {
   const u = new URL(pathWithQuery, 'http://x');
   const path = u.pathname;
   const m = method.toUpperCase();
   const dryRun = m === 'PUT' && path === `${BASE}/v2/invoices/validate` && u.searchParams.getAll('test').join() === 'true';
   if (policy.env === 'prod') return (m === 'GET' && (PROD_READS.has(path) || trackRead(path))) || (dryRun && policy.prodValidateEnabled);
-  return m === 'GET' || dryRun || policy.allowWrite; // fail closed: any other method needs allowWrite
+  return m === 'GET' || dryRun || (m === 'POST' && path === LOOKUP && u.search === '') || policy.allowWrite; // fail closed: any other method needs allowWrite
 }
 
 export interface Raw {

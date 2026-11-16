@@ -25,7 +25,7 @@ describe.skipIf(!enabled)('tools through the real stack', () => {
 
   it('lists the tools of this phase', async () => {
     const names = (await w.client.listTools()).tools.map((t) => t.name);
-    expect(names).toEqual(expect.arrayContaining(['list_channels', 'get_rules', 'get_example_invoice', 'validate_invoice', 'track_document']));
+    expect(names).toEqual(expect.arrayContaining(['list_channels', 'get_rules', 'get_example_invoice', 'validate_invoice', 'track_document', 'channel_lookup']));
   });
 
   describe('list_channels', () => {
