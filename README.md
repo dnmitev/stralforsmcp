@@ -89,7 +89,65 @@ Per profile, with `<ID>` the upper-cased profile id (`-` becomes `_`, so `test-a
 
 Certificate rotation: the cert, key and passphrase files are re-read every `STRALFORS_CERT_RELOAD_S` seconds. When their content changed, the client switches to a new connection pool with the new material and lets in-flight requests finish on the old one; no restart is needed. Bad files (unreadable, empty, not PEM, key not opening) keep the last good material and log one `credentials.reload_failed` warning per kind, without paths or content. The client id and secret files are read at start only; rotating them needs a restart (see ADR 0013).
 
-Smoke check against the live test API (manual, never run in CI): export the variables above, then `npm run live:channels`. It prints the token scopes, the client channel catalogue and the channels of each configured agreement by label (or `#1`, `#2`), never by id.
+Smoke check against the live test API (manual, never run in CI): export the variables above (or use an env file, see [Environment files for the live checks](#environment-files-for-the-live-checks)), then `npm run live:channels`. It prints the token scopes, the client channel catalogue and the channels of each configured agreement by label (or `#1`, `#2`), never by id.
+
+Read-tool check (manual, never run in CI, agents never run it): `npm run live:read-check` (with an env file: `node --env-file=<file> scripts/live-read-check.ts`) calls `list_channels`, `get_rules`, `get_example_invoice` and, when asked, `track_document` through the real tool code and prints shapes only: environment first (`env: test` or `env: prod`), token scopes, rule counts with a criterion-kind histogram, example key names with a leaf count, and tracking outcomes and status strings (a status prints only when it is a known status name, anything else shows only its length); never a value, id or invoice number, so the output is safe to paste. `LIVE_CHECK_RAW_STATUS=1` prints statuses verbatim, which the V-8 TEST check needs to learn unknown spellings; that output is NOT safe to paste (the report says so on its own line). `LIVE_CHECK_CHANNELS` (comma list, default: the first two channels of the client catalogue) picks the channels; `LIVE_CHECK_INVOICE_NUMBER` turns on one tracking lookup (skipped when unset). Each step prints `ok` or `fail <kind>`, and the exit code is 1 if any failed. PROD runs are the maintainer's call and read-only: `STRALFORS_ENV=prod`, `STRALFORS_ALLOW_WRITE` unset, in a shell separate from TEST.
+
+### Environment files for the live checks
+
+`npm run live:channels` and `npm run live:read-check` read the variables from the shell, nothing else: npm scripts do not load `.env` files (only the `dev` scripts pass `--env-file`), and Node refuses `--env-file` inside `NODE_OPTIONS`. Either export the variables, or run the script with node and an env file (one file per environment):
+
+```sh
+node --env-file=.env.local scripts/live-read-check.ts        # TEST
+node --env-file=.env.prod.local scripts/live-read-check.ts   # PROD, in a shell that never had TEST variables
+```
+
+`.env.local` and `.env.prod.local` are git-ignored. They hold paths and settings, never secret values. The read check prints a channel status only when it is a known status name (anything else shows its length); `LIVE_CHECK_RAW_STATUS=1` prints statuses verbatim for the V-8 check and is NOT safe to paste.
+
+**Secret files.** Every `*_FILE` variable points at a file that holds exactly one raw value (client id, client secret, key passphrase), with no `NAME=` prefix and no quotes; surrounding whitespace is trimmed. A credentials bundle in `NAME=value` form has to be split first, without printing anything (mode 600, `$D` is the directory that holds the bundle, `bundle.env` its name):
+
+```sh
+umask 077
+sed -n 's/^CLIENT_ID=//p' "$D/bundle.env" > "$D/client_id"
+sed -n 's/^CLIENT_SECRET=//p' "$D/bundle.env" > "$D/client_secret"
+sed -n 's/^CERT_PASSPHRASE=//p' "$D/bundle.env" > "$D/cert_passphrase"
+wc -c "$D"/client_id "$D"/client_secret "$D"/cert_passphrase   # sizes only, each must be > 1
+```
+
+**The env file** has one line per variable. `<ID>` is the profile id upper-cased with `-` as `_` (profile `prod` gives `PROD`). The angle-bracket parts are placeholders that you replace inside the file; typed into a terminal, `<` is a redirect and the shell answers `parse error`.
+
+```
+STRALFORS_ENV=prod
+STRALFORS_PROFILES=prod
+STRALFORS_PROFILE_<ID>_COUNTRY=SE
+STRALFORS_PROFILE_<ID>_CLIENT_ID_FILE=<absolute path to client_id>
+STRALFORS_PROFILE_<ID>_CLIENT_SECRET_FILE=<absolute path to client_secret>
+STRALFORS_PROFILE_<ID>_CERT_FILE=<absolute path to the certificate, PEM>
+STRALFORS_PROFILE_<ID>_KEY_FILE=<absolute path to the key, PEM>
+STRALFORS_PROFILE_<ID>_KEY_PASSPHRASE_FILE=<absolute path>   # only if the key is encrypted
+STRALFORS_PROFILE_<ID>_ACTION_IDS=<label>:<uuid>             # optional; adds the per-agreement channel lines
+```
+
+Pitfalls seen when writing this file by hand:
+
+- Typing `NAME=value` in the terminal sets a shell variable, not a line in the file. Put the line in the file with an editor or `echo 'NAME=value' >> file` (single quotes).
+- Each name once. A second `STRALFORS_PROFILE_<ID>_...` line is not an error, so a stale path can win silently. Check with `cut -d= -f1 .env.prod.local | sort | uniq -c`, which prints names only.
+- Edit in a plain-text editor. TextEdit in rich-text mode saves smart quotes, and an open editor window can write an old copy back over a file you just changed with a command.
+- Do not paste or print the values. To prove that a key and its passphrase file belong together, print a verdict only:
+
+  ```sh
+  openssl pkey -in "$KEY" -passin "file:$PASSFILE" -noout && echo KEY-OPENS || echo KEY-FAILS
+  ```
+
+| Message | Cause | Fix |
+|---------|-------|-----|
+| `node: .env.prod.local: not found` | the file does not exist yet | create it (template above) |
+| `config: missing STRALFORS_ENV` | no env file loaded, e.g. plain `npm run live:read-check` without exported variables | use `node --env-file=... scripts/...` |
+| `config: STRALFORS_ENV must be test or prod` | wrong value: upper case, quotes, spaces, or a Windows line ending | exactly `STRALFORS_ENV=prod` or `=test` |
+| `config: missing STRALFORS_PROFILE_<ID>_...` | the line is not in the file, or `<ID>` is mis-spelt | one line per variable; names above |
+| `config: cannot read file of STRALFORS_PROFILE_<ID>_...` | the path is wrong, has a trailing space, or the file is not readable by you | `test -r "<path>" && echo readable` |
+| `config: ..._ACTION_IDS: invalid agreement id (entry N)` | not a UUID, or quotes or spaces around it | `label:uuid` or `uuid`, no quotes; remove the line to skip the per-agreement lines |
+| `tls: cannot load client key of profile <ID>` | wrong or missing passphrase file, a key that is not encrypted (drop the passphrase line), or a key that does not belong to the certificate | the `openssl pkey` check above |
 
 ### Running against production (local, read only)
 
@@ -99,7 +157,7 @@ Set `STRALFORS_ENV=prod` and point the profile `*_FILE` variables at the product
 - Only the `dev` role can call tools in production.
 - `validate_invoice` stays denied until `STRALFORS_PROD_VALIDATE_ENABLED=true`. Use synthetic data only; the dry run creates nothing.
 - The production client may hold write scopes. The client logs one warning when the token carries `apiomni.write` and keeps every guard active; the guards, not the credential, are the protection.
-- Start with `npm run live:channels`, which only reads.
+- Start with `node --env-file=.env.prod.local scripts/live-read-check.ts` (or `npm run live:channels` with the variables exported), which only read; see [Environment files for the live checks](#environment-files-for-the-live-checks).
 
 ## Running
 
