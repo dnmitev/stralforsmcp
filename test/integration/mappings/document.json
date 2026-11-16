@@ -1,0 +1,40 @@
+{
+  "mappings": [
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/apiomni/v2/invoices/document",
+        "queryParameters": {
+          "channels": {
+            "equalTo": "EDI"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "actionId": "CANARY-EXAMPLE-ACTIONID-1A2B3C",
+          "consignmentId": "CONSIGNMENT-0001",
+          "document": {
+            "documentHeader": {
+              "timeStamp": "2000-01-01T00:00:00Z",
+              "channelPriority": [
+                "EDI"
+              ],
+              "unknownExtra": "placeholder"
+            },
+            "invoice": {
+              "id": "INV-0001",
+              "issueDate": "2000-01-01",
+              "documentCurrencyCode": "XXX",
+              "note": "placeholder"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

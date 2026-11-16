@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "/rest/outputmanagement/apiomni/v2/apiinfo"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": "{\n  \"name\": \"ApiOmni\",\n  \"version\": \"2.1.68.0\",\n  \"description\": \"Example output management API\",\n  \"contact\": {\n    \"name\": \"Example Support\",\n    \"email\": \"support@example.invalid\",\n    \"url\": \"https://example.invalid/support\"\n  },\n  \"documentation\": \"https://example.invalid/docs\",\n  \"status\": \"active\"\n}\n"
+  }
+}

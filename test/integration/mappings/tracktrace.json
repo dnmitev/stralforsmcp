@@ -1,0 +1,331 @@
+{
+  "mappings": [
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/tracktrace/v1/document/documents",
+        "queryParameters": {
+          "invoiceNumber": {
+            "equalTo": "INV-LIST-1"
+          },
+          "lastDocumentId": {
+            "absent": true
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "documents": [
+            {
+              "documentId": "M8I4",
+              "extDocumentId": "ext-M8I4",
+              "invoiceNumber": "INV-LIST-1",
+              "lastChange": "2030-01-02T03:04:05Z",
+              "customerNumber": "CANARY-CUSTNO-1C2D",
+              "subCustomerId": "CANARY-SUBCUST-3E4F",
+              "receiverName": "CANARY-RECVNAME-5A6B",
+              "receiverAddress": "CANARY-RECVADDR-7C8D",
+              "receiverPostalCode": "CANARY-RECVZIP-9E0F",
+              "receiverPostOffice": "CANARY-RECVPOST-1A2B",
+              "receiverCountryCode": "CANARY-RECVCTRY-3C4D",
+              "eAddress": "CANARY-EADDRESS-5E6F",
+              "documentKeyId": "CANARY-DOCKEY-7A8B",
+              "fileId": "CANARY-FILEID-9C0D",
+              "vendorNewField": "CANARY-NEWFIELD-1E2F",
+              "channels": [
+                {
+                  "channelId": 9,
+                  "channelName": "eBrev/WeMail",
+                  "status": "Delivered",
+                  "documents": 1,
+                  "pages": 2,
+                  "deliveryTime": "2030-01-03T00:00:00Z",
+                  "statusComments": [
+                    {
+                      "status": "Delivered",
+                      "dateTime": "2030-01-02T03:04:05Z",
+                      "comment": "CANARY-COMMENT-3A4B",
+                      "paymentMethod": "Card"
+                    }
+                  ],
+                  "additionalDatas": [
+                    {
+                      "key": "k",
+                      "value": "CANARY-ADDITIONAL-5C6D"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "documentId": "M8I5",
+              "extDocumentId": "ext-M8I5",
+              "invoiceNumber": "INV-LIST-1",
+              "lastChange": "2030-01-02T03:04:05Z",
+              "customerNumber": "CANARY-CUSTNO-1C2D",
+              "subCustomerId": "CANARY-SUBCUST-3E4F",
+              "receiverName": "CANARY-RECVNAME-5A6B",
+              "receiverAddress": "CANARY-RECVADDR-7C8D",
+              "receiverPostalCode": "CANARY-RECVZIP-9E0F",
+              "receiverPostOffice": "CANARY-RECVPOST-1A2B",
+              "receiverCountryCode": "CANARY-RECVCTRY-3C4D",
+              "eAddress": "CANARY-EADDRESS-5E6F",
+              "documentKeyId": "CANARY-DOCKEY-7A8B",
+              "fileId": "CANARY-FILEID-9C0D",
+              "vendorNewField": "CANARY-NEWFIELD-1E2F",
+              "channels": [
+                {
+                  "channelId": 9,
+                  "channelName": "eBrev/WeMail",
+                  "status": "Processing",
+                  "documents": 1,
+                  "pages": 2,
+                  "statusComments": [
+                    {
+                      "status": "Processing",
+                      "dateTime": "2030-01-02T03:04:05Z",
+                      "comment": "CANARY-COMMENT-3A4B",
+                      "paymentMethod": "Card"
+                    }
+                  ],
+                  "additionalDatas": [
+                    {
+                      "key": "k",
+                      "value": "CANARY-ADDITIONAL-5C6D"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "lastDocuments": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/tracktrace/v1/document/documents",
+        "queryParameters": {
+          "invoiceNumber": {
+            "equalTo": "INV-LIST-1"
+          },
+          "lastDocumentId": {
+            "equalTo": "M8I5"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "documents": [
+            {
+              "documentId": "M8I6",
+              "extDocumentId": "ext-M8I6",
+              "invoiceNumber": "INV-LIST-1",
+              "lastChange": "2030-01-02T03:04:05Z",
+              "customerNumber": "CANARY-CUSTNO-1C2D",
+              "subCustomerId": "CANARY-SUBCUST-3E4F",
+              "receiverName": "CANARY-RECVNAME-5A6B",
+              "receiverAddress": "CANARY-RECVADDR-7C8D",
+              "receiverPostalCode": "CANARY-RECVZIP-9E0F",
+              "receiverPostOffice": "CANARY-RECVPOST-1A2B",
+              "receiverCountryCode": "CANARY-RECVCTRY-3C4D",
+              "eAddress": "CANARY-EADDRESS-5E6F",
+              "documentKeyId": "CANARY-DOCKEY-7A8B",
+              "fileId": "CANARY-FILEID-9C0D",
+              "vendorNewField": "CANARY-NEWFIELD-1E2F",
+              "channels": [
+                {
+                  "channelId": 9,
+                  "channelName": "eBrev/WeMail",
+                  "status": "Rejected",
+                  "documents": 1,
+                  "pages": 2,
+                  "statusComments": [
+                    {
+                      "status": "Rejected",
+                      "dateTime": "2030-01-02T03:04:05Z",
+                      "comment": "CANARY-COMMENT-3A4B",
+                      "paymentMethod": "Card"
+                    }
+                  ],
+                  "additionalDatas": [
+                    {
+                      "key": "k",
+                      "value": "CANARY-ADDITIONAL-5C6D"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "lastDocuments": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/tracktrace/v1/document/documents",
+        "queryParameters": {
+          "documentId": {
+            "equalTo": "M8I4"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "documents": [
+            {
+              "documentId": "M8I4",
+              "extDocumentId": "ext-M8I4",
+              "invoiceNumber": "INV-LIST-1",
+              "lastChange": "2030-01-02T03:04:05Z",
+              "customerNumber": "CANARY-CUSTNO-1C2D",
+              "subCustomerId": "CANARY-SUBCUST-3E4F",
+              "receiverName": "CANARY-RECVNAME-5A6B",
+              "receiverAddress": "CANARY-RECVADDR-7C8D",
+              "receiverPostalCode": "CANARY-RECVZIP-9E0F",
+              "receiverPostOffice": "CANARY-RECVPOST-1A2B",
+              "receiverCountryCode": "CANARY-RECVCTRY-3C4D",
+              "eAddress": "CANARY-EADDRESS-5E6F",
+              "documentKeyId": "CANARY-DOCKEY-7A8B",
+              "fileId": "CANARY-FILEID-9C0D",
+              "vendorNewField": "CANARY-NEWFIELD-1E2F",
+              "channels": [
+                {
+                  "channelId": 9,
+                  "channelName": "eBrev/WeMail",
+                  "status": "Delivered",
+                  "documents": 1,
+                  "pages": 2,
+                  "deliveryTime": "2030-01-03T00:00:00Z",
+                  "statusComments": [
+                    {
+                      "status": "Delivered",
+                      "dateTime": "2030-01-02T03:04:05Z",
+                      "comment": "CANARY-COMMENT-3A4B",
+                      "paymentMethod": "Card"
+                    }
+                  ],
+                  "additionalDatas": [
+                    {
+                      "key": "k",
+                      "value": "CANARY-ADDITIONAL-5C6D"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "lastDocuments": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/tracktrace/v1/document/documents",
+        "queryParameters": {
+          "extDocumentId": {
+            "equalTo": "ext-wrapped"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "text/plain"
+        },
+        "body": "\"{\\\"documents\\\":[{\\\"documentId\\\":\\\"M8I7\\\",\\\"extDocumentId\\\":\\\"ext-M8I7\\\",\\\"invoiceNumber\\\":\\\"INV-LIST-1\\\",\\\"lastChange\\\":\\\"2030-01-02T03:04:05Z\\\",\\\"customerNumber\\\":\\\"CANARY-CUSTNO-1C2D\\\",\\\"subCustomerId\\\":\\\"CANARY-SUBCUST-3E4F\\\",\\\"receiverName\\\":\\\"CANARY-RECVNAME-5A6B\\\",\\\"receiverAddress\\\":\\\"CANARY-RECVADDR-7C8D\\\",\\\"receiverPostalCode\\\":\\\"CANARY-RECVZIP-9E0F\\\",\\\"receiverPostOffice\\\":\\\"CANARY-RECVPOST-1A2B\\\",\\\"receiverCountryCode\\\":\\\"CANARY-RECVCTRY-3C4D\\\",\\\"eAddress\\\":\\\"CANARY-EADDRESS-5E6F\\\",\\\"documentKeyId\\\":\\\"CANARY-DOCKEY-7A8B\\\",\\\"fileId\\\":\\\"CANARY-FILEID-9C0D\\\",\\\"vendorNewField\\\":\\\"CANARY-NEWFIELD-1E2F\\\",\\\"channels\\\":[{\\\"channelId\\\":9,\\\"channelName\\\":\\\"eBrev/WeMail\\\",\\\"status\\\":\\\"Delivered\\\",\\\"documents\\\":1,\\\"pages\\\":2,\\\"statusComments\\\":[{\\\"status\\\":\\\"Delivered\\\",\\\"dateTime\\\":\\\"2030-01-02T03:04:05Z\\\",\\\"comment\\\":\\\"CANARY-COMMENT-3A4B\\\",\\\"paymentMethod\\\":\\\"Card\\\"}],\\\"additionalDatas\\\":[{\\\"key\\\":\\\"k\\\",\\\"value\\\":\\\"CANARY-ADDITIONAL-5C6D\\\"}]}]}],\\\"lastDocuments\\\":true}\""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/tracktrace/v1/document/documents",
+        "queryParameters": {
+          "invoiceNumber": {
+            "equalTo": "INV-NONE"
+          }
+        }
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "message": "Document not found CANARY-TRACK-404-2C3D",
+          "compositeFault": null
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/tracktrace/v1/document/M8I4/documentinfohistory"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "status": "Delivered",
+          "arrivalTime": "2030-01-01T00:00:00Z",
+          "deliveryDocumentsDelivered": 1,
+          "deliveryDocumentsTotal": 1,
+          "receiverName": "CANARY-RECVNAME-5A6B",
+          "receiverAddress": "CANARY-RECVADDR-7C8D",
+          "channels": [
+            {
+              "channelId": 9,
+              "channelName": "eBrev/WeMail",
+              "status": "Delivered",
+              "receiverAddress": "CANARY-RECVADDR-7C8D",
+              "receiverName": "CANARY-RECVNAME-5A6B",
+              "deliveryDocuments": [
+                {
+                  "deliveryDocumentId": "D1",
+                  "receiverName": "CANARY-RECVNAME-5A6B",
+                  "receiverAddress": "CANARY-RECVADDR-7C8D",
+                  "statusHistory": [
+                    {
+                      "dateTime": "2030-01-01T01:00:00Z",
+                      "message": "Registered"
+                    },
+                    {
+                      "dateTime": "2030-01-01T02:00:00Z",
+                      "message": "Printing for CANARY-STATUSMSG-7E8F"
+                    },
+                    {
+                      "dateTime": "2030-01-02T03:04:05Z",
+                      "message": "Delivered"
+                    },
+                    {
+                      "dateTime": "2030-01-02T04:00:00Z",
+                      "message": "Letter to CANARY-STATUSMSG-9A0B returned"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

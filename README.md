@@ -340,6 +340,12 @@ spec:
 
 Logs and audit lines written inside a request carry `trace_id` (32 hex) and, on log lines, `span_id` (16 hex). `traceId` in an audit or log line is the Stralfors vendor request id; `trace_id` is this server's trace. Loki derived field (never a Loki label): `"trace_id":"(\w+)"`.
 
+## Integration tests
+
+`npm run test:integration` runs a second test tier: the real server and client against a [WireMock](https://wiremock.org) container that enforces mutual TLS (client certificate required) and answers with synthetic stubs from `test/integration/mappings/`. It needs Docker and `openssl`. The image is pulled by digest from Docker Hub on first use; keys, certificates and passwords are generated into a temp dir at run time and removed afterwards. The container is bound to `127.0.0.1` on random ports, has a unique `stralforsmcp-it-` name and is removed after the run, also when a test fails or the run is interrupted.
+
+Without Docker the suite is skipped with a message; if `CI` is set it fails instead, so a skipped job cannot look green. `npm test` and `npm run check` do not collect it. CI runs it as the `integration` job on Linux (Node 24). It does not call the live vendor API and says nothing about how the real vendor behaves: the stubs are a written grammar, not a recording. See [ADR 0019](docs/adr/0019-integration-suite-runs-wiremock-with-mtls-through-the-docker-cli.md).
+
 ## Mutation testing
 
 `npm run mutation` runs [StrykerJS](https://stryker-mutator.io) with the Vitest runner over the core modules (`src/stralfors/token.ts`, `errors.ts`, `http.ts`, `index.ts`, `config.ts`, `src/auth/token-store.ts`, `src/policy/policy.ts`, `src/audit/audit.ts`, `src/server/auth.ts`, `src/server/tools.ts`, `src/server/guards.ts`, `channels.ts`, `rate-limit.ts`, `context.ts`). Target score is 80 %; the run fails below 70 % (`break`). Reports land in `reports/mutation/` (`mutation.html`, `mutation.json`). The incremental file `reports/stryker-incremental.json` is kept between runs, so a re-run only tests what changed. CI runs this as the `mutation` job on Node 24, publishes the score in the job summary and uploads the report as an artifact.

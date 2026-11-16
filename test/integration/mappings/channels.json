@@ -1,0 +1,76 @@
+{
+  "mappings": [
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/apiomni/v2/invoices/channels",
+        "queryParameters": {
+          "actionId": {
+            "absent": true
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": [
+          "AvtaleGiro",
+          "Custom",
+          "Digipost",
+          "eBrevWeMail",
+          "EDI",
+          "eInvoice",
+          "eMail",
+          "Kivra",
+          "SMS",
+          "WeMailNO"
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/apiomni/v2/invoices/channels",
+        "queryParameters": {
+          "actionId": {
+            "equalTo": "10000000-0000-4000-8000-000000000001"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": [
+          "EDI",
+          "eBrevWeMail",
+          "eInvoice",
+          "Custom"
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/apiomni/v2/invoices/channels",
+        "queryParameters": {
+          "actionId": {
+            "equalTo": "10000000-0000-4000-8000-000000000002"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": [
+          "EDI"
+        ]
+      }
+    }
+  ]
+}

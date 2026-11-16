@@ -1,0 +1,2742 @@
+{
+  "mappings": [
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/apiomni/v2/invoices/rules",
+        "queryParameters": {
+          "channel": {
+            "equalTo": "eInvoice"
+          },
+          "templateStandardId": {
+            "equalTo": "0"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "channel": "eInvoice",
+          "templateStandardId": 0,
+          "emailTemplateStandardId": 0,
+          "rules": [
+            {
+              "id": "1000",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field00",
+              "isRequired": true,
+              "isOptional": false,
+              "ruleCriterias": [
+                "Required"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1001",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field01",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1002",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field02",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "ArrayExpected"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1003",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field03",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "ArrayWithValidItemsExpected"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1004",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field04",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "ValidDefaultChannel"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1005",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field05",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "NumericExpected"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1006",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field06",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "DecimalExpected"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1007",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field07",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "UniqueValueExpected"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1008",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field08",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "ExactCasingExpected"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1009",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field09",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "DateNotInPastExpected"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1010",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field10",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "FileNameExpected"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1011",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field11",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "ValidItems: Alpha, Beta, Gamma"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1012",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field12",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "ValidTemplates: 0, 2, 3"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1013",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field13",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "ValidChannels: EDI, eInvoice"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1014",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field14",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "ExpectedPattern: ^[A-Z]{3}$",
+                "ExampleValue: ABC"
+              ],
+              "expectedPattern": null,
+              "exampleValue": "ABC",
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1015",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field15",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "MinValue: 0"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1016",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field16",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "MaxValue: 100.5"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1017",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field17",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "MinValue: -79228162514264337593543950335"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1018",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field18",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "MaxCount: The maximum count of items is 5."
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1019",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field19",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "StartDateNotPastEndDateExpected"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1020",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field20",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "StartTimeNotPastEndTimeExpected"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1021",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field21",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "CanNotBeCombinedWith: Other"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1022",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field22",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "OptionalWhen: PASSTHRU-OPT the buyer is a company"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1023",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field23",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "RequiredWhen: PASSTHRU-REQ the payment is by card"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1024",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field24",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "InvalidWhen: PASSTHRU-INV the document is a copy"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1025",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field25",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "ValidationCriteria: (VPDF)"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1026",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field26",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "ValidationCriteria: PASSTHRU-NOTE check by hand"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1027",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.Field27",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "SomeFutureCriterion: whatever"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1100",
+              "tag": "Template0",
+              "parameter": "Document.Invoice.Sample.RuleLevelPattern",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": null,
+              "expectedPattern": "^[0-9]+$",
+              "exampleValue": "123",
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "1200",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.AnyParent",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "HasDependencies (AnyRequired): #1201, #1202"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": true,
+              "dependencyOperator": "AnyRequired",
+              "dependencies": [
+                {
+                  "id": "1201",
+                  "tag": null,
+                  "parameter": "Document.Invoice.Sample.ChildA",
+                  "isRequired": false,
+                  "isOptional": false,
+                  "ruleCriterias": [
+                    "Required"
+                  ],
+                  "expectedPattern": null,
+                  "exampleValue": null,
+                  "hasDependencies": false,
+                  "dependencyOperator": null,
+                  "dependencies": []
+                },
+                {
+                  "id": "1202",
+                  "tag": null,
+                  "parameter": "Document.Invoice.Sample.ChildB",
+                  "isRequired": false,
+                  "isOptional": false,
+                  "ruleCriterias": [
+                    "Required"
+                  ],
+                  "expectedPattern": null,
+                  "exampleValue": null,
+                  "hasDependencies": false,
+                  "dependencyOperator": null,
+                  "dependencies": []
+                }
+              ]
+            },
+            {
+              "id": "1210",
+              "tag": null,
+              "parameter": "Document.Invoice.Sample.AllParent",
+              "isRequired": false,
+              "isOptional": false,
+              "ruleCriterias": [
+                "HasDependencies (AllRequired): #1211, #1212"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": true,
+              "dependencyOperator": "AllRequired",
+              "dependencies": [
+                {
+                  "id": "1211",
+                  "tag": null,
+                  "parameter": "Document.Invoice.Sample.ChildC",
+                  "isRequired": false,
+                  "isOptional": false,
+                  "ruleCriterias": [
+                    "Required"
+                  ],
+                  "expectedPattern": null,
+                  "exampleValue": null,
+                  "hasDependencies": false,
+                  "dependencyOperator": null,
+                  "dependencies": []
+                },
+                {
+                  "id": "1212",
+                  "tag": null,
+                  "parameter": "Document.Invoice.Sample.ChildD",
+                  "isRequired": false,
+                  "isOptional": false,
+                  "ruleCriterias": [
+                    "Required"
+                  ],
+                  "expectedPattern": null,
+                  "exampleValue": null,
+                  "hasDependencies": false,
+                  "dependencyOperator": null,
+                  "dependencies": []
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/apiomni/v2/invoices/rules",
+        "queryParameters": {
+          "channel": {
+            "equalTo": "eInvoice"
+          },
+          "templateStandardId": {
+            "equalTo": "2"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "channel": "eInvoice",
+          "templateStandardId": 2,
+          "emailTemplateStandardId": 0,
+          "rules": [
+            {
+              "id": "1300",
+              "tag": "Template2",
+              "parameter": "Document.Invoice.Sample.OnlyTemplateTwo",
+              "isRequired": true,
+              "isOptional": false,
+              "ruleCriterias": [
+                "Required"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/apiomni/v2/invoices/rules",
+        "queryParameters": {
+          "channel": {
+            "equalTo": "eBrevWeMail"
+          },
+          "templateStandardId": {
+            "equalTo": "0"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "channel": "eBrevWeMail",
+          "templateStandardId": 0,
+          "emailTemplateStandardId": 0,
+          "rules": [
+            {
+              "id": "900",
+              "tag": null,
+              "parameter": "Document.DocumentHeader.TimeStamp",
+              "isRequired": true,
+              "isOptional": false,
+              "ruleCriterias": null,
+              "expectedPattern": "^[0-9]{4}$",
+              "exampleValue": "2000-01-01T00:00:00Z",
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "901",
+              "tag": "Template0",
+              "parameter": "Document.Invoice.Id",
+              "isRequired": true,
+              "isOptional": false,
+              "ruleCriterias": [
+                "Required"
+              ],
+              "expectedPattern": "^[A-Z]{2}$",
+              "exampleValue": "AB",
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "902",
+              "tag": "Template0",
+              "parameter": "Document.Invoice.Note",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": null,
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "903",
+              "tag": null,
+              "parameter": "Document.Invoice.BuyerReference",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": null,
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "904",
+              "tag": null,
+              "parameter": "Document.Invoice.AccountingCost",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": null,
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": true,
+              "dependencyOperator": "AnyRequired",
+              "dependencies": [
+                {
+                  "id": "902",
+                  "tag": "Template0",
+                  "parameter": "Document.Invoice.Note",
+                  "isRequired": false,
+                  "isOptional": true,
+                  "ruleCriterias": null,
+                  "expectedPattern": null,
+                  "exampleValue": null,
+                  "hasDependencies": false,
+                  "dependencyOperator": null,
+                  "dependencies": []
+                }
+              ]
+            },
+            {
+              "id": "2000",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item000",
+              "isRequired": true,
+              "isOptional": false,
+              "ruleCriterias": [
+                "Required"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2001",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item001",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2002",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item002",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2003",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item003",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2004",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item004",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2005",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item005",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2006",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item006",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2007",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item007",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2008",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item008",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2009",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item009",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2010",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item010",
+              "isRequired": true,
+              "isOptional": false,
+              "ruleCriterias": [
+                "Required"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2011",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item011",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2012",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item012",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2013",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item013",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2014",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item014",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2015",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item015",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2016",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item016",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2017",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item017",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2018",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item018",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2019",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item019",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2020",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item020",
+              "isRequired": true,
+              "isOptional": false,
+              "ruleCriterias": [
+                "Required"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2021",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item021",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2022",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item022",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2023",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item023",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2024",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item024",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2025",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item025",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2026",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item026",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2027",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item027",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2028",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item028",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2029",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item029",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2030",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item030",
+              "isRequired": true,
+              "isOptional": false,
+              "ruleCriterias": [
+                "Required"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2031",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item031",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2032",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item032",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2033",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item033",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2034",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item034",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2035",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item035",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2036",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item036",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2037",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item037",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2038",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item038",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2039",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item039",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2040",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item040",
+              "isRequired": true,
+              "isOptional": false,
+              "ruleCriterias": [
+                "Required"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2041",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item041",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2042",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item042",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2043",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item043",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2044",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item044",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2045",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item045",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2046",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item046",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2047",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item047",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2048",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item048",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2049",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item049",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2050",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item050",
+              "isRequired": true,
+              "isOptional": false,
+              "ruleCriterias": [
+                "Required"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2051",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item051",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2052",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item052",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2053",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item053",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2054",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item054",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2055",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item055",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2056",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item056",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2057",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item057",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2058",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item058",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2059",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item059",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2060",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item060",
+              "isRequired": true,
+              "isOptional": false,
+              "ruleCriterias": [
+                "Required"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2061",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item061",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2062",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item062",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2063",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item063",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2064",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item064",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2065",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item065",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2066",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item066",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2067",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item067",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2068",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item068",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2069",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item069",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2070",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item070",
+              "isRequired": true,
+              "isOptional": false,
+              "ruleCriterias": [
+                "Required"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2071",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item071",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2072",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item072",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2073",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item073",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2074",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item074",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2075",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item075",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2076",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item076",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2077",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item077",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2078",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item078",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2079",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item079",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2080",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item080",
+              "isRequired": true,
+              "isOptional": false,
+              "ruleCriterias": [
+                "Required"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2081",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item081",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2082",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item082",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2083",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item083",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2084",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item084",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2085",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item085",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2086",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item086",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2087",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item087",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2088",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item088",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2089",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item089",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2090",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item090",
+              "isRequired": true,
+              "isOptional": false,
+              "ruleCriterias": [
+                "Required"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2091",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item091",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2092",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item092",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2093",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item093",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2094",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item094",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2095",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item095",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2096",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item096",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2097",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item097",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2098",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item098",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2099",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item099",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2100",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item100",
+              "isRequired": true,
+              "isOptional": false,
+              "ruleCriterias": [
+                "Required"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2101",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item101",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2102",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item102",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2103",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item103",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2104",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item104",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2105",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item105",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2106",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item106",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2107",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item107",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2108",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item108",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2109",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item109",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2110",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item110",
+              "isRequired": true,
+              "isOptional": false,
+              "ruleCriterias": [
+                "Required"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2111",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item111",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2112",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item112",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2113",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item113",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2114",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item114",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2115",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item115",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2116",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item116",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2117",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item117",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2118",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item118",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2119",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item119",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2120",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item120",
+              "isRequired": true,
+              "isOptional": false,
+              "ruleCriterias": [
+                "Required"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2121",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item121",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2122",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item122",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2123",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item123",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2124",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item124",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2125",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item125",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2126",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item126",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2127",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item127",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2128",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item128",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "2129",
+              "tag": null,
+              "parameter": "Document.Invoice.Bulk.Item129",
+              "isRequired": false,
+              "isOptional": true,
+              "ruleCriterias": [
+                "Optional"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/apiomni/v2/invoices/rules",
+        "queryParameters": {
+          "channel": {
+            "equalTo": "EDI"
+          },
+          "templateStandardId": {
+            "equalTo": "0"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "channel": "EDI",
+          "templateStandardId": 0,
+          "emailTemplateStandardId": 0,
+          "rules": [
+            {
+              "id": "3001",
+              "tag": null,
+              "parameter": "Document.DocumentHeader.TimeStamp",
+              "isRequired": true,
+              "isOptional": false,
+              "ruleCriterias": [
+                "Required",
+                "ExpectedPattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$",
+                "ExampleValue: 2000-01-01T00:00:00Z"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            },
+            {
+              "id": "3002",
+              "tag": null,
+              "parameter": "Document.Invoice.Id",
+              "isRequired": true,
+              "isOptional": false,
+              "ruleCriterias": [
+                "Required"
+              ],
+              "expectedPattern": null,
+              "exampleValue": null,
+              "hasDependencies": false,
+              "dependencyOperator": null,
+              "dependencies": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/apiomni/v2/invoices/rules",
+        "queryParameters": {
+          "channel": {
+            "equalTo": "Custom"
+          },
+          "templateStandardId": {
+            "equalTo": "0"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "channel": "Custom",
+          "templateStandardId": 0,
+          "emailTemplateStandardId": 0,
+          "rules": []
+        }
+      }
+    }
+  ]
+}
