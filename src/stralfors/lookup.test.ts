@@ -4,7 +4,7 @@ import { mapLookup, normalise } from './lookup.ts';
 const r = (channel: string, matchedCandidates: string[], error?: string | null) => ({ channel, matchedCandidates, ...(error === undefined ? {} : { error }) });
 
 describe('normalise', () => {
-  it.each([['19000101-0001', '190001010001'], [' AbC-12 ', 'abc12'], ['a.b_c d', 'abcd'], ['', ''], ['---', ''], ['ÅÄ1', 'åä1'], ['ＡＢ１', 'ab1'], ['a\u0301', 'á'], ['—', '']])('%j -> %j', (a, b) => expect(normalise(a)).toBe(b));
+  it.each([['SYN-0001', 'syn0001'], [' AbC-12 ', 'abc12'], ['a.b_c d', 'abcd'], ['', ''], ['---', ''], ['ÅÄ1', 'åä1'], ['ＡＢ１', 'ab1'], ['a\u0301', 'á'], ['—', '']])('%j -> %j', (a, b) => expect(normalise(a)).toBe(b));
 });
 
 describe('mapLookup', () => {
@@ -13,7 +13,7 @@ describe('mapLookup', () => {
     expect(out).toEqual({ results: [{ channel: 'Kivra', available: [true, false, true] }], unrecognised: 0 });
   });
   it('matches regardless of spelling: hyphens, case, spaces on either side', () => {
-    const out = mapLookup(['Kivra'], ['1900-0101 0001', 'AB-1'], [r('Kivra', ['190001010001', 'ab1'])]);
+    const out = mapLookup(['Kivra'], ['SYN 0001', 'AB-1'], [r('Kivra', ['syn0001', 'ab1'])]);
     expect(out.results).toEqual([{ channel: 'Kivra', available: [true, true] }]);
   });
   it('duplicates in the input each get the answer', () => {
