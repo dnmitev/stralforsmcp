@@ -300,6 +300,48 @@ describe('R9 prod write guard', () => {
     const v = `${BASE}/v2/invoices/validate`;
     type Policy = Parameters<typeof isAllowed>[0];
     const pol = (env: 'test' | 'prod', allowWrite = false, prodValidateEnabled = false): Policy => ({ env, allowWrite, prodValidateEnabled });
+    const TT = '/rest/outputmanagement/tracktrace/v1';
+    const trackRows: [string, Policy, string, string, boolean][] = [
+      ['prod GET track documents', pol('prod'), 'GET', `${TT}/document/documents`, true],
+      ['prod GET track documents with query', pol('prod'), 'GET', `${TT}/document/documents?invoiceNumber=INV-1&lastDocumentId=M8K0`, true],
+      ['prod GET track documents, lower-case method', pol('prod'), 'get', `${TT}/document/documents`, true],
+      ['prod GET track history', pol('prod'), 'GET', `${TT}/document/M8I4/documentinfohistory`, true],
+      ['prod GET track history, 10-char id', pol('prod'), 'GET', `${TT}/document/ABCDEFGHI9/documentinfohistory`, true],
+      ['prod GET track history, 1-char id', pol('prod'), 'GET', `${TT}/document/A/documentinfohistory`, true],
+      ['prod GET track history, 11-char id', pol('prod'), 'GET', `${TT}/document/ABCDEFGHIJK/documentinfohistory`, false],
+      ['prod GET track history, empty id', pol('prod'), 'GET', `${TT}/document//documentinfohistory`, false],
+      ['prod GET track history, id with dash', pol('prod'), 'GET', `${TT}/document/M8-I4/documentinfohistory`, false],
+      ['prod GET track history, id with dot', pol('prod'), 'GET', `${TT}/document/M8.I4/documentinfohistory`, false],
+      ['prod GET track history, id with slash', pol('prod'), 'GET', `${TT}/document/M8/I4/documentinfohistory`, false],
+      ['prod GET track history, dot-dot id', pol('prod'), 'GET', `${TT}/document/../documentinfohistory`, false],
+      ['prod GET track history, dot-dot traversal', pol('prod'), 'GET', `${TT}/document/M8I4/../../../v1/x/documentinfohistory`, false],
+      ['prod GET track history, encoded slash', pol('prod'), 'GET', `${TT}/document/M8%2FI4/documentinfohistory`, false],
+      ['prod GET track history, encoded dot-dot', pol('prod'), 'GET', `${TT}/document/%2e%2e/documentinfohistory`, false],
+      ['prod GET track history, trailing slash', pol('prod'), 'GET', `${TT}/document/M8I4/documentinfohistory/`, false],
+      ['prod GET track history, extra suffix', pol('prod'), 'GET', `${TT}/document/M8I4/documentinfohistory/x`, false],
+      ['prod GET track history, suffix lookalike', pol('prod'), 'GET', `${TT}/document/M8I4/documentinfohistory2`, false],
+      ['prod GET track other sub-path', pol('prod'), 'GET', `${TT}/document/M8I4/other`, false],
+      ['prod GET track document id only', pol('prod'), 'GET', `${TT}/document/M8I4`, false],
+      ['prod GET track documents sub-path', pol('prod'), 'GET', `${TT}/document/documents/x`, false],
+      ['prod GET track documents lookalike', pol('prod'), 'GET', `${TT}/document/documents2`, false],
+      ['prod GET track documents trailing slash', pol('prod'), 'GET', `${TT}/document/documents/`, false],
+      ['prod GET track file endpoint', pol('prod'), 'GET', `${TT}/file/files`, false],
+      ['prod GET track file by id', pol('prod'), 'GET', `${TT}/file/12345`, false],
+      ['prod GET track health', pol('prod'), 'GET', `${TT}/manage/health`, false],
+      ['prod GET track other version', pol('prod'), 'GET', '/rest/outputmanagement/tracktrace/v2/document/documents', false],
+      ['prod GET track other service', pol('prod'), 'GET', '/rest/outputmanagement/other/v1/document/documents', false],
+      ['prod GET track prefix before', pol('prod'), 'GET', `/x${TT}/document/documents`, false],
+      ['prod POST track documents', pol('prod'), 'POST', `${TT}/document/documents`, false],
+      ['prod PUT track documents', pol('prod'), 'PUT', `${TT}/document/documents`, false],
+      ['prod DELETE track history', pol('prod'), 'DELETE', `${TT}/document/M8I4/documentinfohistory`, false],
+      ['prod PATCH track history', pol('prod'), 'PATCH', `${TT}/document/M8I4/documentinfohistory`, false],
+      ['prod POST track history even if allowWrite', pol('prod', true, true), 'POST', `${TT}/document/M8I4/documentinfohistory`, false],
+      ['prod PUT track documents even if allowWrite', pol('prod', true, true), 'PUT', `${TT}/document/documents`, false],
+      ['test GET track documents', pol('test'), 'GET', `${TT}/document/documents`, true],
+      ['test GET track file endpoint (test env unchanged)', pol('test'), 'GET', `${TT}/file/files`, true],
+      ['test POST track documents default', pol('test'), 'POST', `${TT}/document/documents`, false],
+      ['test POST track documents allowWrite', pol('test', true), 'POST', `${TT}/document/documents`, true],
+    ];
     it.each<[string, Policy, string, string, boolean]>([
       ['prod GET allowlisted reads', pol('prod'), 'GET', reads[0]!, true],
       ['prod GET channels', pol('prod'), 'GET', reads[2]!, true],
@@ -331,6 +373,7 @@ describe('R9 prod write guard', () => {
       ['test PUT other path allowWrite', pol('test', true), 'PUT', '/rest/anything', true],
       ['test HEAD default', pol('test'), 'HEAD', '/rest/anything', false],
       ['test PUT validate test=true', pol('test'), 'PUT', `${v}?test=true`, true],
+      ...trackRows,
     ])('%s', (_n, policy, method, path, expected) => {
       expect(isAllowed(policy, method, path)).toBe(expected);
     });

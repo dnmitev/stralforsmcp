@@ -217,3 +217,63 @@ describe('R6 channels and validate behaviour', () => {
     await expect(again.client.validateInvoice(validBody())).resolves.toEqual({ ok: true });
   });
 });
+
+describe('track operations (03-02a)', () => {
+  const T = '/rest/outputmanagement/tracktrace/v1';
+  const reply = (body: unknown, type = 'application/json') => startFakeApi({ pki, api: (_q, res) => json(res, 200, body, type) });
+  const page = { documents: [{ documentId: 'M8I4', extra: 'kept', channels: [] }], lastDocuments: true };
+  const only = (f: FakeApi) => f.apiRequests.map((r) => [r.method, r.url.split('?')[0], Object.fromEntries(new URL(r.url, 'https://x').searchParams)]);
+
+  it('trackDocuments sends exactly the given filter, GET, and keeps extra keys (lenient)', async () => {
+    fake = await reply(page);
+    const { client } = testClient(pki, fake);
+    await expect(client.trackDocuments({ invoiceNumber: 'INV-1' })).resolves.toEqual(page);
+    expect(only(fake)).toEqual([['GET', `${T}/document/documents`, { invoiceNumber: 'INV-1' }]]);
+  });
+  it('trackDocuments passes cursor and channelId, and no key that was not given', async () => {
+    fake = await reply(page);
+    const { client } = testClient(pki, fake);
+    await client.trackDocuments({ extDocumentId: 'ext_1.a-b', lastDocumentId: 'M8K0', channelId: 9 });
+    await client.trackDocuments({ documentId: 'M8I4' });
+    expect(only(fake)).toEqual([
+      ['GET', `${T}/document/documents`, { extDocumentId: 'ext_1.a-b', lastDocumentId: 'M8K0', channelId: '9' }],
+      ['GET', `${T}/document/documents`, { documentId: 'M8I4' }],
+    ]);
+  });
+  it('trackDocuments unwraps a JSON string body', async () => {
+    fake = await reply(JSON.stringify(JSON.stringify(page)), 'text/plain');
+    const { client } = testClient(pki, fake);
+    await expect(client.trackDocuments({ invoiceNumber: 'INV-1' })).resolves.toEqual(page);
+  });
+  it('trackDocuments rejects a body without the list or the flag', async () => {
+    fake = await reply({ documents: 'x', lastDocuments: true });
+    const { client } = testClient(pki, fake);
+    expect(await rejection(client.trackDocuments({ invoiceNumber: 'a' }))).toMatchObject({ kind: 'schema' });
+    await fake.close();
+    fake = await reply({ documents: [] });
+    expect(await rejection(testClient(pki, fake).client.trackDocuments({ invoiceNumber: 'a' }))).toMatchObject({ kind: 'schema' });
+  });
+  it('trackDocuments errors carry the fixed operation name and the profile', async () => {
+    fake = await startFakeApi({ pki, api: (_q, res) => json(res, 400, { message: 'x' }) });
+    const { client } = testClient(pki, fake);
+    expect(await rejection(client.trackDocuments({ invoiceNumber: 'a' }))).toMatchObject({ profile: 'a', operation: 'trackDocuments' });
+  });
+  it('trackHistory builds document/<id>/documentinfohistory with the id path-encoded', async () => {
+    fake = await reply({ status: 'Delivered', channels: [], extra: 1 });
+    const { client } = testClient(pki, fake);
+    await expect(client.trackHistory('M8I4')).resolves.toEqual({ status: 'Delivered', channels: [], extra: 1 });
+    await client.trackHistory('a/b c');
+    expect(fake.apiRequests.map((r) => [r.method, r.url])).toEqual([
+      ['GET', `${T}/document/M8I4/documentinfohistory`],
+      ['GET', `${T}/document/a%2Fb%20c/documentinfohistory`],
+    ]);
+  });
+  it('trackHistory unwraps a JSON string body and errors name the operation', async () => {
+    fake = await reply(JSON.stringify(JSON.stringify({ status: 'S' })), 'text/plain');
+    const { client } = testClient(pki, fake);
+    await expect(client.trackHistory('M8I4')).resolves.toEqual({ status: 'S' });
+    await fake.close();
+    fake = await startFakeApi({ pki, api: (_q, res) => json(res, 400, { message: 'x' }) });
+    expect(await rejection(testClient(pki, fake).client.trackHistory('M8I4'))).toMatchObject({ operation: 'trackHistory' });
+  });
+});

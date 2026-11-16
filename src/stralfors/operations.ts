@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { RequestValidationError } from './errors.ts';
 
 const V = '/rest/outputmanagement/apiomni/v2/invoices';
+const TT = '/rest/outputmanagement/tracktrace/v1';
 
 export const KNOWN_CHANNELS = ['AvtaleGiro', 'Custom', 'Digipost', 'eBrevWeMail', 'EDI', 'eInvoice', 'eMail', 'Kivra', 'SMS', 'WeMailNO'] as const;
 export type KnownChannel = (typeof KNOWN_CHANNELS)[number];
@@ -53,6 +54,9 @@ const validateResponse = unwrap(
   ]),
 );
 
+const trackPageSchema = unwrap(z.looseObject({ documents: z.array(z.looseObject({ documentId: z.string().optional() })), lastDocuments: z.boolean() }));
+const trackHistorySchema = unwrap(z.looseObject({}));
+
 interface Opts<T> { schema?: z.ZodType<T>; query?: Record<string, string>; operation?: string }
 interface Core {
   get<T = unknown>(path: string, opts?: Opts<T>): Promise<T>;
@@ -72,6 +76,9 @@ export function operations(c: Core) {
       get('rules', `${V}/rules`, rulesResponseSchema, defined({ channel, templateStandardId: o.templateStandardId ?? 0, emailTemplateStandardId: o.emailTemplateStandardId, required: o.required })),
     documentExample: (o: { channels: string | string[]; defaultChannel?: string; templateStandardId?: number }) =>
       get('documentExample', `${V}/document`, documentSchema, defined({ channels: [o.channels].flat().join(','), defaultChannel: o.defaultChannel, templateStandardId: o.templateStandardId })),
+    trackDocuments: (f: { invoiceNumber?: string; extDocumentId?: string; documentId?: string; lastDocumentId?: string; channelId?: number }) =>
+      get('trackDocuments', `${TT}/document/documents`, trackPageSchema, defined(f)),
+    trackHistory: (documentId: string) => get('trackHistory', `${TT}/document/${encodeURIComponent(documentId)}/documentinfohistory`, trackHistorySchema),
     /** Dry run only: always test=true, there is no way to send test=false from here. */
     async validateInvoice(body: z.input<typeof validateRequest>) {
       const check = validateRequest.safeParse(body);

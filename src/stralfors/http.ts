@@ -19,12 +19,15 @@ export function createAgent(profile: Profile, opts: { ca?: string } = {}): Dispa
 const BASE = '/rest/outputmanagement/apiomni';
 const PROD_READS = new Set(['/v2/apiinfo', '/v1/manage/health', '/v2/invoices/channels', '/v2/invoices/templates', '/v2/invoices/rules', '/v2/invoices/document'].map((p) => BASE + p));
 
+const TT = '/rest/outputmanagement/tracktrace/v1/document/';
+const trackRead = (path: string) => path === `${TT}documents` || new RegExp(`^${TT}[A-Za-z0-9]{1,10}/documentinfohistory$`).test(path);
+
 export function isAllowed(policy: { env: 'test' | 'prod'; allowWrite: boolean; prodValidateEnabled: boolean }, method: string, pathWithQuery: string): boolean {
   const u = new URL(pathWithQuery, 'http://x');
   const path = u.pathname;
   const m = method.toUpperCase();
   const dryRun = m === 'PUT' && path === `${BASE}/v2/invoices/validate` && u.searchParams.getAll('test').join() === 'true';
-  if (policy.env === 'prod') return (m === 'GET' && PROD_READS.has(path)) || (dryRun && policy.prodValidateEnabled);
+  if (policy.env === 'prod') return (m === 'GET' && (PROD_READS.has(path) || trackRead(path))) || (dryRun && policy.prodValidateEnabled);
   return m === 'GET' || dryRun || policy.allowWrite; // fail closed: any other method needs allowWrite
 }
 
