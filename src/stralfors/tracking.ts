@@ -23,8 +23,8 @@ export function documentOutcome(channels: { outcome: Outcome }[], hist?: { deliv
   return has('refused') ? 'refused' : 'failed';
 }
 
-/** A history message is kept only when it is one of the known status strings; anything else may carry recipient text. */
-export const safeMessage = (s: string): string | undefined => (channelOutcome(s) === 'unknown' ? undefined : s);
+/** A history message is kept only when it is exactly one of the known status names (no prefix groups: "Printing for <name>" must not pass); anything else may carry recipient text. */
+export const safeMessage = (s: string): string | undefined => (Object.hasOwn(EXACT, s.replace(/\s+/g, '').toLowerCase()) ? s : undefined);
 
 type Rec = Record<string, unknown>;
 const rec = (v: unknown): Rec => (typeof v === 'object' && v !== null ? (v as Rec) : {});

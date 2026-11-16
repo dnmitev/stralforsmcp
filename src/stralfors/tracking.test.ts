@@ -7,7 +7,7 @@
  *   documentOutcome(channels: { outcome: Outcome }[], hist?: { delivered: number; total: number }): Outcome
  *   minimiseDocument(raw: unknown): TrackedDocument          allowlist pick; never a receiver field, never an unknown field
  *   minimiseHistory(raw: unknown): History                   same, events[].message only if safeMessage passes
- *   safeMessage(s: string): string | undefined               s only if channelOutcome(s) !== 'unknown'
+ *   safeMessage(s: string): string | undefined               s only if its stripped, lower-cased form is an EXACT status name (no prefix groups)
  *
  * src/stralfors/operations.ts (client methods, base /rest/outputmanagement/tracktrace/v1, GET)
  *   trackDocuments(f: { invoiceNumber?; extDocumentId?; documentId?; lastDocumentId?: string; channelId?: number }) -> { documents: unknown[]; lastDocuments: boolean }
@@ -89,6 +89,10 @@ describe('documentOutcome (A7, AC-4)', () => {
 describe('safeMessage', () => {
   it('keeps only known status strings, case and whitespace insensitive', () => {
     for (const m of ['Delivered', 'Verified Delivered', 'delivered', 'REGISTERED']) expect(safeMessage(m), m).toBe(m);
+  });
+  it('keeps the prefix-group statuses out of messages: they are channel statuses, and a prefix match would pass recipient text', () => {
+    for (const m of ['Printing', 'SignOrderSent', 'Enveloping done']) expect(channelOutcome(m), m).not.toBe('unknown'); // still mapped as channel statuses
+    for (const m of ['Printing for Alice Smith', 'Enveloping Alice Smith', 'Reprints Alice', 'PostProcessing Alice', 'SignOrder Alice', 'Printing']) expect(safeMessage(m), m).toBeUndefined();
   });
   it.each(['', 'a', 'ok', 'Delivered to Alice Smith', 'Delivered to <name> at <street>', 'Status: ok / done-1.2_x', 'constructor'])('drops %j', (m) => {
     expect(safeMessage(m)).toBeUndefined();

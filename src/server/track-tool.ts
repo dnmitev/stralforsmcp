@@ -3,7 +3,7 @@ import { AgreementNotFoundError } from '../stralfors/errors.ts';
 import type { StralforsClient } from '../stralfors/index.ts';
 import { documentOutcome, minimiseDocument, minimiseHistory } from '../stralfors/tracking.ts';
 import { resolveProfile } from './profile.ts';
-import { ToolInputError, KIND_TEXT, type ToolDef } from './tools.ts';
+import { ToolInputError, type ToolDef } from './tools.ts';
 
 const ONE_OF = 'exactly one of invoiceNumber, extDocumentId or documentId is required';
 const NEEDS_ONE = 'history needs a single document';
@@ -36,7 +36,7 @@ export interface TrackDeps {
 // ponytail: a JSON 404 is classified agreement_not_found by the client and shown as bad_input in the audit; a text 404 stays route_not_found.
 // Revisit with V-8 (does 404 mean "no match"?) and a dedicated not_found kind.
 const notFound = async <T>(p: Promise<T>): Promise<T> => p.catch((e: unknown) => {
-  throw e instanceof AgreementNotFoundError ? new ToolInputError(KIND_TEXT('not_found' as never)) : e;
+  throw e instanceof AgreementNotFoundError ? new ToolInputError('tool failed: not_found') : e;
 });
 
 export function createTrackDocument(deps: TrackDeps): ToolDef<typeof trackInput, typeof trackOutput> {
