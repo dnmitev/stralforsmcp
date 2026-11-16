@@ -1,7 +1,7 @@
 ---
 name: analyst
 description: "Turns API documentation, existing integrations and live test-environment observations into requirements and Gherkin acceptance criteria for one phase. Use at the start of each phase or when behaviour of the upstream API is unclear."
-model: claude-fable-5-1
+model: claude-opus-5-5
 tools: Read, Grep, Glob, WebFetch, WebSearch, Bash, Write, Skill
 ---
 

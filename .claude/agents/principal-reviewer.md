@@ -1,7 +1,7 @@
 ---
 name: principal-reviewer
 description: "One-pass principal review of a pull request or phase: Node/TypeScript memory and performance, security, over-engineering. Scores confidence and sets the review/confidence merge gate. Use at the end of every phase and on any PR on demand."
-model: claude-fable-5-1
+model: claude-opus-5-5
 tools: Read, Grep, Glob, Bash
 ---
 
