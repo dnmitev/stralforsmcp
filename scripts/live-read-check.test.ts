@@ -60,7 +60,7 @@ const example = (c: C) => ({
 const trackPage = (c: C) => page([rawDoc(c, { documentId: c.docId, extDocumentId: c.extDoc, invoiceNumber: c.invoice, channels: [channel('Delivered', {}, c)] })], false);
 
 interface Spy { calls: Record<string, unknown[][]> }
-interface Over { channels?: (id?: string) => Promise<string[]>; rules?: (ch: string) => Promise<unknown>; documentExample?: (a: { channels: string[] }) => Promise<unknown>; trackDocuments?: (a: unknown) => Promise<unknown> }
+interface Over { channels?: (id?: string) => Promise<string[]>; rules?: (ch: string) => Promise<unknown>; documentExample?: (a: { channels: string[] }) => Promise<unknown>; trackDocuments?: (a: unknown) => Promise<unknown>; agreements?: { label?: string; id: string }[] }
 
 function world(c: C, over: Over = {}) {
   const spy: Spy = { calls: {} };
@@ -81,7 +81,7 @@ function world(c: C, over: Over = {}) {
       return t[k as string];
     },
   });
-  const agreements = [{ label: 'test-a', id: c.agreementA }, { id: c.agreementB }];
+  const agreements = over.agreements ?? [{ label: 'test-a', id: c.agreementA }, { id: c.agreementB }];
   const deps = (env: 'test' | 'prod' = 'test') => ({ client, profile: { id: 'p1', agreements }, env }) as unknown as Parameters<typeof report>[0];
   return { spy, deps };
 }
@@ -165,6 +165,29 @@ describe('AC-1: report content per tool', () => {
   });
 });
 
+// ---- review findings ----------------------------------------------------------------------------------------------
+describe('review findings', () => {
+  it('reads channels by id when two agreements share a label', async () => {
+    const c = canaries();
+    const agreements = [{ label: 'dup', id: c.agreementA }, { label: 'dup', id: c.agreementB }];
+    const out = await run(world(c, { agreements }), { channels: [] });
+    const ls = out.split('\n').filter((l) => l.includes('list_channels dup:'));
+    expect(ls).toHaveLength(2);
+    expect(ls[0]).toContain('ChanA, ChanB');
+    expect(ls[1]).toContain('ChanC');
+  });
+
+  it('a rejecting default channel discovery still yields env, fail and track lines', async () => {
+    const c = canaries();
+    const channels = async (id?: string) => { if (id === undefined) throw new UpstreamError(c.msg); return ['ChanC']; };
+    const out = await run(world(c, { channels }), { invoiceNumber: c.invoice });
+    expect(out.split('\n')[0]).toBe('env: test');
+    expect(line(out, 'discover channels')).toMatch(/^fail upstream discover channels:/);
+    expect(out).toContain('ok track:');
+    expect(out).not.toContain(c.msg);
+  });
+});
+
 // ---- AC-2 ----------------------------------------------------------------------------------------------------------
 describe('AC-2: nothing but shapes leaves the process', () => {
   it('contains no canary, id, invoice number or receiver field with every step enabled', async () => {
@@ -230,15 +253,30 @@ describe('AC-3: track_document is opt-in and minimal', () => {
     for (const v of values(c)) expect(out).not.toContain(v);
   });
 
-  it('prints a status only when it looks like an enum value; free text becomes a length marker', async () => {
+  it('prints a status only when it is a known status name; anything else becomes a length marker', async () => {
     const c = canaries();
-    const free = `Delivered to <${c.name}> at <${c.addr}>`;
-    const trackDocuments = async () => page([rawDoc(c, { documentId: c.docId, channels: [channel(free, {}, c), channel('Verified Delivered', {}, c)] })], false);
+    const free = `Delivered to Alice Smith ${c.name}`;
+    const prefix = 'Printing for Alice';
+    const letters = 'Delivered to Alice Smith';
+    const trackDocuments = async () => page([rawDoc(c, { documentId: c.docId, channels: [channel(free, {}, c), channel(letters, {}, c), channel(prefix, {}, c), channel('Verified Delivered', {}, c), channel('Delivered', {}, c)] })], false);
     const out = await run(world(c, { trackDocuments }), { invoiceNumber: c.invoice });
     expect(out).toContain('status=Verified Delivered');
+    expect(out).toContain('status=Delivered ');
     expect(out).toContain(`status=<other len=${free.length}>`);
+    expect(out).toContain(`status=<other len=${letters.length}>`);
+    expect(out).toContain(`status=<other len=${prefix.length}>`);
+    expect(out).not.toContain('Alice');
     expect(out).not.toContain(c.name);
-    expect(out).not.toContain(c.addr);
+    expect(out).not.toContain('raw status strings shown');
+  });
+
+  it('rawStatus prints statuses verbatim and says so on its own line', async () => {
+    const c = canaries();
+    const prefix = 'Printing for Alice';
+    const trackDocuments = async () => page([rawDoc(c, { documentId: c.docId, channels: [channel(prefix, {}, c)] })], false);
+    const out = await run(world(c, { trackDocuments }), { invoiceNumber: c.invoice, rawStatus: true });
+    expect(out).toContain(`status=${prefix}`);
+    expect(out.split('\n')).toContain('track: raw status strings shown (LIVE_CHECK_RAW_STATUS), do not paste');
   });
 
   it('reports a tracking failure by kind and keeps the earlier steps', async () => {
