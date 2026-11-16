@@ -91,6 +91,16 @@ Certificate rotation: the cert, key and passphrase files are re-read every `STRA
 
 Smoke check against the live test API (manual, never run in CI): export the variables above, then `npm run live:channels`. It prints the token scopes, the client channel catalogue and the channels of each configured agreement by label (or `#1`, `#2`), never by id.
 
+### Running against production (local, read only)
+
+Set `STRALFORS_ENV=prod` and point the profile `*_FILE` variables at the production credentials; the base URL follows from the environment (ADR 0005). Never mix test and production credentials in one shell, and keep the credential files outside any repository with mode 600.
+
+- `STRALFORS_ALLOW_WRITE=true` is refused at start; write tools are not registered and the HTTP client only lets known read endpoints through (ADR 0007).
+- Only the `dev` role can call tools in production.
+- `validate_invoice` stays denied until `STRALFORS_PROD_VALIDATE_ENABLED=true`. Use synthetic data only; the dry run creates nothing.
+- The production client may hold write scopes. The client logs one warning when the token carries `apiomni.write` and keeps every guard active; the guards, not the credential, are the protection.
+- Start with `npm run live:channels`, which only reads.
+
 ## Running
 
 `node src/server/main.ts` starts the stateless Streamable HTTP MCP server (SDK v2). It creates one Stralfors client per credential profile at start and serves `whoami`, `list_channels`, `get_rules`, `get_example_invoice`, `validate_invoice` and `track_document` to authenticated callers. Configuration is read from the environment; an invalid value refuses to start (exit 1, `refusing to start: <fixed text>`).
@@ -339,6 +349,12 @@ spec:
 ```
 
 Logs and audit lines written inside a request carry `trace_id` (32 hex) and, on log lines, `span_id` (16 hex). `traceId` in an audit or log line is the Stralfors vendor request id; `trace_id` is this server's trace. Loki derived field (never a Loki label): `"trace_id":"(\w+)"`.
+
+## Integration tests
+
+`npm run test:integration` runs a second test tier: the real server and client against a [WireMock](https://wiremock.org) container that enforces mutual TLS (client certificate required) and answers with synthetic stubs from `test/integration/mappings/`. It needs Docker and `openssl`; the truststore step uses `openssl pkcs12 -jdktrust`, verified with the OpenSSL on the GitHub `ubuntu-latest` runner and OpenSSL 4.1 locally, and older OpenSSL builds that lack the flag will fail during setup. The image is pulled by digest from Docker Hub on first use; keys, certificates and passwords are generated into a temp dir at run time and removed afterwards. The container is bound to `127.0.0.1` on random ports, has a unique `stralforsmcp-it-` name and is removed after the run, also when a test fails or the run is interrupted.
+
+Without Docker the suite is skipped with a message; if `CI` is set it fails instead, so a skipped job cannot look green. `npm test` and `npm run check` do not collect it. CI runs it as the `integration` job on Linux (Node 24). It does not call the live vendor API and says nothing about how the real vendor behaves: the stubs are a written grammar, not a recording. See [ADR 0019](docs/adr/0019-integration-suite-runs-wiremock-with-mtls-through-the-docker-cli.md).
 
 ## Mutation testing
 

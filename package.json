@@ -18,6 +18,7 @@
     "dev:token": "node --env-file=.env.local scripts/dev-token.ts",
     "mcpb:build": "node scripts/build-mcpb.ts",
     "live:channels": "node scripts/live-channels.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "check": "npm run lint && npm run typecheck && vitest run --coverage",
     "mutation": "stryker run",
     "bench:factory": "node scripts/bench-factory.ts"

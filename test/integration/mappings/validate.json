@@ -1,0 +1,230 @@
+{
+  "mappings": [
+    {
+      "priority": 1,
+      "request": {
+        "method": "PUT",
+        "urlPath": "/rest/outputmanagement/apiomni/v2/invoices/validate",
+        "queryParameters": {
+          "test": {
+            "equalTo": "true"
+          }
+        },
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": {
+              "expression": "$.actionId",
+              "equalTo": "10000000-0000-4000-8000-000000000003"
+            }
+          }
+        ]
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "message": "CustomerContract was not found based on identityId 'ID' and actionId '22222222-2222-4222-8222-222222222222'. CANARY-AGREEMENT-404-9D7E",
+          "compositeFault": null
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "urlPath": "/rest/outputmanagement/apiomni/v2/invoices/validate",
+        "queryParameters": {
+          "test": {
+            "equalTo": "true"
+          }
+        },
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": {
+              "expression": "$.consignmentId",
+              "equalTo": "it-valid-000001"
+            }
+          }
+        ]
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "text/plain"
+        },
+        "body": "\"{\\\"guid\\\":\\\"20000000-0000-4000-8000-000000000001\\\",\\\"isTest\\\":true,\\\"document\\\":{\\\"documentHeader\\\":{},\\\"invoice\\\":{}}}\""
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "urlPath": "/rest/outputmanagement/apiomni/v2/invoices/validate",
+        "queryParameters": {
+          "test": {
+            "equalTo": "true"
+          }
+        },
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": {
+              "expression": "$.consignmentId",
+              "equalTo": "it-header-fault-1"
+            }
+          }
+        ]
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "message": "ValidateInvoice | DtoGuid: 00000000-0000-0000-0000-000000000000 | CreateInvoiceDto: Document is not valid. CANARY-FAULT-MESSAGE-4D1E",
+          "compositeFault": {
+            "faults": [
+              {
+                "paramValues": [
+                  {
+                    "param": "#2:Document.DocumentHeader.TimeStamp",
+                    "value": "Required | ExpectedPattern: ^([0-9]{4})-([0-1][0-9])-([0-3][0-9])T([0-1][0-9]|[2][0-3]):([0-5][0-9]):([0-5][0-9])Z$ | ExampleValue: 2021-02-03T04:05:06Z"
+                  },
+                  {
+                    "param": "#3:Document.DocumentHeader.ChannelPriority",
+                    "value": "Required | ArrayExpected | ArrayWithValidItemsExpected | ExactCasingExpected | ValidChannels: eBrevWeMail, EDI | ValidDefaultChannel: eBrevWeMail | UnheardOfCriterion: CANARY-FAULT-PROSE-8C3A"
+                  }
+                ],
+                "explanationText": "ValidateInvoice | DtoGuid: 00000000-0000-0000-0000-000000000000 | CreateInvoiceDto: Document is not valid. CANARY-FAULT-EXPLAIN-6B2F",
+                "faultCode": null
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "urlPath": "/rest/outputmanagement/apiomni/v2/invoices/validate",
+        "queryParameters": {
+          "test": {
+            "equalTo": "true"
+          }
+        },
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": {
+              "expression": "$.consignmentId",
+              "equalTo": "it-template-fault-1"
+            }
+          }
+        ]
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "message": "Document is not valid. CANARY-TEMPLATE-MESSAGE-5E4B",
+          "compositeFault": {
+            "faults": [
+              {
+                "explanationText": "CANARY-TEMPLATE-EXPLAIN-7A5C",
+                "faultCode": null,
+                "paramValues": [
+                  {
+                    "param": "#3002:Template0:Document.Invoice.Id",
+                    "value": "Required | ExpectedPattern: ^[0-9]+$ | ExampleValue: 12345"
+                  },
+                  {
+                    "param": "#1300:Template2:Document.Invoice.Sample.OnlyTemplateTwo",
+                    "value": "ValidItems: Alpha, Beta"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "urlPath": "/rest/outputmanagement/apiomni/v2/invoices/validate",
+        "queryParameters": {
+          "test": {
+            "equalTo": "true"
+          }
+        },
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": {
+              "expression": "$.consignmentId",
+              "equalTo": "it-engine-fault-1"
+            }
+          }
+        ]
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "message": "Document is not valid.",
+          "compositeFault": {
+            "faults": [
+              {
+                "explanationText": "x",
+                "faultCode": null,
+                "paramValues": [
+                  {
+                    "param": "#3002:Template0:Document.Invoice.Id",
+                    "value": "Unexpected error occurred in rule evaluation: NullReferenceException at Rules.Engine.Evaluate CANARY-ENGINE-EXCEPTION-2F6D"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "urlPath": "/rest/outputmanagement/apiomni/v2/invoices/validate",
+        "queryParameters": {
+          "test": {
+            "equalTo": "true"
+          }
+        },
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": {
+              "expression": "$.consignmentId",
+              "equalTo": "it-problem-details-1"
+            }
+          }
+        ]
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Type": "application/problem+json"
+        },
+        "jsonBody": {
+          "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+          "title": "One or more validation errors occurred. CANARY-PROBLEM-TITLE-3A8F",
+          "status": 400,
+          "errors": {
+            "document.invoice.note": [
+              "The value is not valid. CANARY-PROBLEM-ERROR-1B9A"
+            ]
+          },
+          "traceId": "00-32e2925721171fbec9c3660dabbd69f6-f5672e9d2f6cc41b-00"
+        }
+      }
+    }
+  ]
+}

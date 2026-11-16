@@ -1,0 +1,22 @@
+# Stub grammar
+
+Every file here is a synthetic WireMock mapping set. Together they are the written grammar of the answers the code understands: the drift runner compares live answers against this table, not against the stub bodies. Bodies are invented or taken from `test/fixtures/stralfors/`; nothing is copied from a vendor document.
+
+Stubs are stateless. A scenario is chosen by a path, a query value or a field of the request body, never by call order. Values that begin with `CANARY-` mark a field the tools must never return, log, trace or audit; `test/integration/privacy.int.test.ts` reads them from these files. Values that begin with `PASSTHRU-` mark rule metadata that is passed through on purpose.
+
+Paths are relative to the API base. `V` is the invoice API prefix, `TT` the track and trace prefix.
+
+| Endpoint (file) | Shape the stub answers | What the code parses from it | Used by |
+|---|---|---|---|
+| POST token endpoint (`token.json`) | JSON with a bearer token (unsigned JWT with scopes, far-future expiry) and `expires_in` | access token and expiry; scopes only as claims | all |
+| GET `apiinfo` (`apiinfo.json`) | JSON object with name, version, status | `name`, `version`, `status` (all optional) | stack |
+| GET `V/channels` (`channels.json`) | JSON array of channel names; one answer when `actionId` is absent, one per agreement id | array of strings | tools, privacy |
+| GET `V/templates` (`templates.json`) | JSON array of objects with `standardId` and a `type` object with `name` | `standardId`, `type.name` | not yet used by a tool |
+| GET `V/rules` (`rules.json`) | object with `channel` and a `rules` tree; selected by `channel` and `templateStandardId` query | per rule: `id`, `tag`, `parameter`, `isRequired`, `isOptional`, `ruleCriterias`, `expectedPattern`, `exampleValue`, `hasDependencies`, `dependencyOperator`, nested `dependencies`; every criterion kind the parser knows appears in the `eInvoice` tree, including free-text and unknown ones; `eBrevWeMail` is larger than the default page | tools (get_rules, validate_invoice), privacy |
+| GET `V/document` (`document.json`) | object with `actionId`, `consignmentId` and a `document` (header and invoice) of placeholder leaves | whole object kept; `actionId` is removed before output | tools, privacy |
+| PUT `V/validate` with `test=true` (`validate.json`) | selected by the request body: 200 whose body is a JSON string wrapping an object with `guid`, `isTest`, `document`; 400 with a list of faults of `param` and `value` strings (header layer, and template layer where `param` carries a rule id and tag); a fault value with a rule-engine exception sentence; 400 with field errors only; 404 for one agreement id | string unwrap, `compositeFault.faults[].paramValues[]` (`param` as `#id:tag:path`, `value` split by ` \| `), `errors` keys, 404 JSON body | tools, errors, privacy |
+| GET `TT/document/documents` (`tracktrace.json`) | object with `documents` and `lastDocuments`; selected by `invoiceNumber`, `documentId`, `extDocumentId` and `lastDocumentId` query; one answer is a JSON string wrapping the object; one is a JSON 404 | `documents[].documentId`, `extDocumentId`, `invoiceNumber`, `lastChange`, `channels[]` (`channelId`, `channelName`, `status`, `deliveryTime`, `documents`, `pages`, `statusComments[]` of `status`, `dateTime`, `paymentMethod`), `lastDocuments` as the cursor flag; every receiver field and free-text comment is present and ignored | tools, errors, privacy |
+| GET `TT/document/{id}/documentinfohistory` (`tracktrace.json`) | object with overall counts and `channels[].deliveryDocuments[].statusHistory[]` of `dateTime` and `message`; messages are a mix of known status names and free text | counts, per channel status, event `dateTime`, `message` only when it is exactly a known status name | tools, privacy |
+| GET `TT/document/documents` with `invoiceNumber` = an `ERR-` key (`errors.json`) | gateway text 404; JSON 404 with `message`; 400 problem details with `errors`; 401; 403; 429 with `Retry-After` in seconds; 500 with `message` and `traceId`; a connection reset | status, content type, `Retry-After`, `traceId`, `compositeFault`, `errors`; the `message` text is never used | errors, privacy |
+
+Anything not listed here is answered by WireMock itself (an unmatched-request 404 with a text body), which the code treats like the gateway text 404.

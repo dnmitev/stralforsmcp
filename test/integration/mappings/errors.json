@@ -1,0 +1,168 @@
+{
+  "mappings": [
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/tracktrace/v1/document/documents",
+        "queryParameters": {
+          "invoiceNumber": {
+            "equalTo": "ERR-GATEWAY-404"
+          }
+        }
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Type": "text/plain"
+        },
+        "body": "No Mapping Rule matched CANARY-GATEWAY-TEXT-4E5F"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/tracktrace/v1/document/documents",
+        "queryParameters": {
+          "invoiceNumber": {
+            "equalTo": "ERR-AGREEMENT-404"
+          }
+        }
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "message": "CustomerContract was not found based on identityId 'ID' and actionId '22222222-2222-4222-8222-222222222222'. CANARY-AGREEMENT-404-9D7E",
+          "compositeFault": null
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/tracktrace/v1/document/documents",
+        "queryParameters": {
+          "invoiceNumber": {
+            "equalTo": "ERR-PROBLEM-400"
+          }
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Type": "application/problem+json"
+        },
+        "jsonBody": {
+          "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+          "title": "One or more validation errors occurred. CANARY-PROBLEM-TITLE-3A8F",
+          "status": 400,
+          "errors": {
+            "document.invoice.note": [
+              "The value is not valid. CANARY-PROBLEM-ERROR-1B9A"
+            ]
+          },
+          "traceId": "00-32e2925721171fbec9c3660dabbd69f6-f5672e9d2f6cc41b-00"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/tracktrace/v1/document/documents",
+        "queryParameters": {
+          "invoiceNumber": {
+            "equalTo": "ERR-UNAUTHORIZED-401"
+          }
+        }
+      },
+      "response": {
+        "status": 401,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "message": "Unauthorized CANARY-ERR-401-6A7B"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/tracktrace/v1/document/documents",
+        "queryParameters": {
+          "invoiceNumber": {
+            "equalTo": "ERR-FORBIDDEN-403"
+          }
+        }
+      },
+      "response": {
+        "status": 403,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "message": "Forbidden CANARY-ERR-403-8C9D"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/tracktrace/v1/document/documents",
+        "queryParameters": {
+          "invoiceNumber": {
+            "equalTo": "ERR-RATE-429"
+          }
+        }
+      },
+      "response": {
+        "status": 429,
+        "headers": {
+          "Content-Type": "application/json",
+          "Retry-After": "7"
+        },
+        "jsonBody": {
+          "message": "Too many requests CANARY-ERR-429-0E1F"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/tracktrace/v1/document/documents",
+        "queryParameters": {
+          "invoiceNumber": {
+            "equalTo": "ERR-SERVER-500"
+          }
+        }
+      },
+      "response": {
+        "status": 500,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "message": "Internal failure CANARY-ERR-500-2A3B",
+          "compositeFault": null,
+          "traceId": "00-32e2925721171fbec9c3660dabbd69f6-f5672e9d2f6cc41b-00"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/tracktrace/v1/document/documents",
+        "queryParameters": {
+          "invoiceNumber": {
+            "equalTo": "ERR-RESET"
+          }
+        }
+      },
+      "response": {
+        "fault": "CONNECTION_RESET_BY_PEER"
+      }
+    }
+  ]
+}

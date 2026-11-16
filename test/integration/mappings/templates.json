@@ -1,0 +1,46 @@
+{
+  "mappings": [
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/rest/outputmanagement/apiomni/v2/invoices/templates"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": [
+          {
+            "type": {
+              "value": 0,
+              "name": "Layout"
+            },
+            "standardId": 0
+          },
+          {
+            "type": {
+              "value": 0,
+              "name": "Layout"
+            },
+            "standardId": 2
+          },
+          {
+            "type": {
+              "value": 0,
+              "name": "Layout"
+            },
+            "standardId": 3
+          },
+          {
+            "type": {
+              "value": 1,
+              "name": "Email"
+            },
+            "standardId": 1
+          }
+        ]
+      }
+    }
+  ]
+}

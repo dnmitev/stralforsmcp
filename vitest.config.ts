@@ -3,6 +3,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     include: ['src/**/*.test.ts', 'scripts/**/*.test.ts', 'test/**/*.test.ts'],
+    exclude: ['**/node_modules/**', 'test/integration/**'],
     reporters: ['default', ['junit', { outputFile: 'reports/junit.xml' }]],
     coverage: {
       provider: 'v8',
