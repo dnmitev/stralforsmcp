@@ -19,6 +19,7 @@
     "mcpb:build": "node scripts/build-mcpb.ts",
     "live:channels": "node scripts/live-channels.ts",
     "live:read-check": "node scripts/live-read-check.ts",
+    "drift": "node scripts/drift/run.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "check": "npm run lint && npm run typecheck && vitest run --coverage",
     "mutation": "stryker run",
