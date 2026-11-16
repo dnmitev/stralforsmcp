@@ -1,7 +1,7 @@
 /** Local drift runner (manual, never in CI): GET-only reads from one environment, compared with what the code understands. Report and baseline go to a private directory outside the repo; stdout shows counts only. */
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import { ConfigError, createClient, loadConfig, StralforsError, type StralforsClient } from '../../src/stralfors/index.ts';
 import type { RuleNode } from '../../src/stralfors/rules.ts';
@@ -12,7 +12,8 @@ const STABLE = ['unknown-criterion', 'pattern-not-compilable'];
 const baselineSchema = z.object({ counts: z.record(z.string(), z.number()).optional(), channels: z.array(z.string()), templates: z.array(z.number()), version: z.string().optional(), rules: z.record(z.string(), z.array(z.string())) });
 export type Baseline = z.infer<typeof baselineSchema>;
 export interface Opts { expectChannels?: string[] | undefined; expectVersion?: string | undefined; baseline?: Baseline | undefined }
-export interface Result { findings: Finding[]; report: string; baseline: Baseline }
+/** `complete` is false when any fetch failed: such a baseline would silently drop what could not be read, so it must not replace a good one */
+export interface Result { findings: Finding[]; report: string; baseline: Baseline; complete: boolean }
 
 const REFUSAL = 'drift: DRIFT_OUT must be an absolute path to a directory outside the repository checkout';
 const REPO = resolve(import.meta.dirname, '../..');
@@ -20,7 +21,7 @@ const REPO = resolve(import.meta.dirname, '../..');
 export function outDirOk(out: string | undefined, repo = REPO): out is string {
   if (!out || !isAbsolute(out)) return false;
   const rel = relative(repo, resolve(out));
-  return rel !== '' && (rel.startsWith('..') || isAbsolute(rel));
+  return rel !== '' && (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)); // a child named `..x` is inside the repo
 }
 
 const kindOf = (e: unknown) => (e instanceof StralforsError ? e.kind : 'unknown');
@@ -35,12 +36,13 @@ export async function runDrift({ client, env }: { client: DriftClient; env: stri
   };
 
   const info = await fetched('apiInfo', () => client.apiInfo());
-  const channels = (await fetched('channels', () => client.channels())) ?? [];
+  const fetchedChannels = await fetched('channels', () => client.channels());
+  const channels = fetchedChannels ?? [];
   const templates = (await fetched('templates', () => client.templates())) ?? [];
   const expectVersion = opts.expectVersion ?? base?.version;
   const expectChannels = opts.expectChannels ?? base?.channels;
   if (info) findings.push(...versionDiff(info.version, expectVersion));
-  if (channels.length > 0) findings.push(...channelDiff(channels, expectChannels));
+  if (fetchedChannels) findings.push(...channelDiff(fetchedChannels, expectChannels)); // a successful empty catalogue is compared too; only a failed fetch is skipped
   findings.push(...templateShape(templates));
   const newTemplates = base ? templates.filter((t) => !base.templates.includes(t.standardId)).length : 0;
   if (newTemplates > 0) findings.push({ check: 'template-new', count: newTemplates });
@@ -68,7 +70,7 @@ export async function runDrift({ client, env }: { client: DriftClient; env: stri
     `expectations: version ${expectVersion === undefined ? 'skipped' : 'set'}, channels ${expectChannels === undefined ? 'skipped' : 'set'}, baseline ${base ? 'present' : 'none'}`,
     ...lines, `findings: ${out.length === 0 ? 'none' : out.reduce((n, f) => n + f.count, 0)}${stable ? '' : ' (no baseline: standing unknown kinds and patterns included)'}`, ...[...byCheck].map(([c, n]) => `- ${c}: ${n}`),
   ].join('\n');
-  return { findings: out, report, baseline: { counts, channels: [...channels], templates: templates.map((t) => t.standardId), ...(info?.version !== undefined ? { version: info.version } : {}), rules } };
+  return { findings: out, report, complete: !findings.some((f) => f.check === 'fetch-failed'), baseline: { counts, channels: [...channels], templates: templates.map((t) => t.standardId), ...(info?.version !== undefined ? { version: info.version } : {}), rules } };
 }
 
 async function main(): Promise<number> {
@@ -86,14 +88,17 @@ async function main(): Promise<number> {
     await mkdir(out, { recursive: true, mode: 0o700 });
     const name = `drift-${config.env}-${new Date().toISOString().replace(/[:.]/g, '-')}.md`;
     await writeFile(join(out, name), `${res.report}\n`, { mode: 0o600 });
-    if (process.env['DRIFT_WRITE_BASELINE'] === '1') await writeFile(baselineFile, `${JSON.stringify(res.baseline)}\n`, { mode: 0o600 });
+    if (process.env['DRIFT_WRITE_BASELINE'] === '1') {
+      if (res.complete) await writeFile(baselineFile, `${JSON.stringify(res.baseline)}\n`, { mode: 0o600 });
+      else console.error('drift: a fetch failed, baseline not written');
+    }
     console.log(['env: ' + config.env, `findings: ${res.findings.reduce((n, f) => n + f.count, 0)}`, ...[...new Set(res.findings.map((f) => f.check))].map((c) => `  ${c}: ${res.findings.filter((f) => f.check === c).reduce((n, f) => n + f.count, 0)}`), `report: ${name}`].join('\n'));
     return res.findings.length > 0 ? 1 : 0;
   } catch (e) {
     console.error(e instanceof StralforsError ? `${e.kind}: ${e.message}` : e instanceof ConfigError ? e.message : 'drift: unexpected error');
     return 1;
   } finally {
-    await client?.close();
+    await client?.close().catch(() => console.error('drift: client close failed'));
   }
 }
 

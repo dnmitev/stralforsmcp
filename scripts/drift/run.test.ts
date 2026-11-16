@@ -63,6 +63,16 @@ describe('runDrift', () => {
     expect((await runDrift({ client: withUnknown(2), env: 'test' }, { baseline: first.baseline })).findings).toEqual([]);
     expect((await runDrift({ client: withUnknown(3), env: 'test' }, { baseline: first.baseline })).findings).toEqual([{ check: 'unknown-criterion', count: 1 }]);
   });
+  it('an empty but successful channel catalogue is compared; a failed fetch is not', async () => {
+    const first = await runDrift({ client: fake().client, env: 'test' });
+    const empty = await runDrift({ client: fake({ channels: [] }).client, env: 'test' }, { baseline: first.baseline });
+    expect(empty.findings.map((x) => x.check)).toContain('channel-missing');
+    expect(empty.complete).toBe(true);
+  });
+  it('a failed fetch marks the result incomplete (no baseline replacement)', async () => {
+    expect((await runDrift({ client: fake({ fail: 'rules' }).client, env: 'test' })).complete).toBe(false);
+    expect((await runDrift({ client: fake().client, env: 'test' })).complete).toBe(true);
+  });
   it('report and baseline carry no vendor text, names or rule hashes in the report', async () => {
     const r = await runDrift({ client: fake().client, env: 'test' }, { expectChannels: [] });
     expect(r.report).not.toContain(CANARY);
@@ -72,7 +82,7 @@ describe('runDrift', () => {
 
 describe('outDirOk', () => {
   const repo = resolve('/repo/x');
-  it.each([[undefined, false], ['', false], ['relative/dir', false], ['/repo/x', false], ['/repo/x/reports', false], ['/repo/xy', true], ['/elsewhere/drift', true], ['/repo', true]])('%s -> %s', (p, ok) => expect(outDirOk(p, repo)).toBe(ok));
+  it.each([[undefined, false], ['', false], ['relative/dir', false], ['/repo/x', false], ['/repo/x/reports', false], ['/repo/xy', true], ['/repo/x/..reports', false], ['/repo/x/../y', true], ['/elsewhere/drift', true], ['/repo', true]])('%s -> %s', (p, ok) => expect(outDirOk(p, repo)).toBe(ok));
 });
 
 describe('main (spawned)', () => {
