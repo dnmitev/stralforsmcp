@@ -33,7 +33,14 @@ export async function bootWorld(wm: WiremockStack) {
   const token = f.raw.tA;
   const bearer: typeof fetch = (url, init) =>
     fetch(`http://127.0.0.1:${s.port}${new URL(String(url)).pathname}`, { ...init, headers: { ...Object.fromEntries(new Headers(init?.headers)), authorization: `Bearer ${token}` } });
-  const client: Client = await connect('modern', bearer);
+  let client: Client;
+  try {
+    client = await connect('modern', bearer);
+  } catch (e) {
+    await s.close().catch(() => undefined);
+    rmSync(dir, { recursive: true, force: true });
+    throw e;
+  }
   return {
     client, audit, tel, profile,
     /** server log lines (stderr) as one text */

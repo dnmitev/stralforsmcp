@@ -52,7 +52,7 @@ export async function startWiremock(): Promise<WiremockStack> {
     ossl('pkcs12', '-export', '-nokeys', '-jdktrust', 'anyExtendedKeyUsage', '-in', 'ca-trust.pem', '-name', 'ca', '-passout', 'env:WM_PW', '-out', join(certDir, 'truststore.p12'));
     for (const f of ['keystore.p12', 'truststore.p12']) chmodSync(join(certDir, f), 0o644);
 
-    track(name);
+    track(name, cleanFiles);
     await docker([
       'run', '-d', '--rm', '--name', name,
       '-p', '127.0.0.1::8080', '-p', '127.0.0.1::8443',

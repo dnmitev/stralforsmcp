@@ -96,14 +96,20 @@ describe.skipIf(!enabled)('tools through the real stack', () => {
 
   describe('validate_invoice', () => {
     const putBodies = async () => (await served()).filter((e) => e.method === 'PUT');
+    let fresh: World; // own server: a cold rules cache, so the dry run's rules request is always in the journal
+    beforeAll(async () => {
+      fresh = await bootWorld(wm);
+    });
+    afterAll(() => fresh?.close());
     it('200 string-wrapped body -> valid; the dry run is always test=true and carries the agreement', async () => {
-      expect(ok(await validate('it-valid-000001'))).toEqual({ valid: true, stage: 'passed', findings: [], moreMayFollow: false });
+      expect(ok(await fresh.call('validate_invoice', { agreement: 'main', consignmentId: 'it-valid-000001', document: doc() }))).toEqual({ valid: true, stage: 'passed', findings: [], moreMayFollow: false });
       const puts = await putBodies();
       expect(puts).toHaveLength(1);
       expect(query(puts[0]!.url).get('test')).toBe('true');
       expect(JSON.parse(puts[0]!.body)).toMatchObject({ consignmentId: 'it-valid-000001', actionId: expect.stringMatching(/^10000000-/) });
       const rules = (await served()).filter((e) => e.url.includes('/rules'));
-      expect(rules.every((e) => query(e.url).get('templateStandardId') === '0')).toBe(true); // may be empty: the rules cache is shared across the file
+      expect(rules.length).toBeGreaterThan(0);
+      expect(rules.every((e) => query(e.url).get('templateStandardId') === '0')).toBe(true);
     });
     it('400 header-layer fault -> fixed findings with rule ids, nothing of the vendor wording', async () => {
       const r = ok(await validate('it-header-fault-1'));

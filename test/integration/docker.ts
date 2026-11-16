@@ -45,21 +45,24 @@ export async function waitFor(url: string, timeoutMs: number): Promise<void> {
   }
 }
 
-const live = new Set<string>();
+const live = new Map<string, () => void>();
 let hooked = false;
 
 function removeAllSync(): void {
-  for (const name of live) {
+  for (const [name, cleanup] of live) {
     try {
       execFileSync('docker', ['rm', '-f', name], { stdio: 'ignore', timeout: 20_000 });
+    } catch {}
+    try {
+      cleanup();
     } catch {}
   }
   live.clear();
 }
 
-/** Registers `name` for removal on exit, SIGINT and SIGTERM (the afterAll path calls removeForce itself). */
-export function track(name: string): void {
-  live.add(name);
+/** Registers `name` for removal on exit, SIGINT and SIGTERM, then runs `cleanup` (generated files; must be idempotent). The afterAll path calls removeForce itself. */
+export function track(name: string, cleanup: () => void = () => {}): void {
+  live.set(name, cleanup);
   if (hooked) return;
   hooked = true;
   process.on('exit', removeAllSync);
@@ -71,8 +74,8 @@ export function track(name: string): void {
 }
 
 export async function removeForce(name: string): Promise<void> {
-  live.delete(name);
   await docker(['rm', '-f', name], 30_000);
+  live.delete(name);
 }
 
 /** Host address Docker published for a container port, e.g. `8080/tcp` -> 49153. */
