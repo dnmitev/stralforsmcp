@@ -58,10 +58,11 @@ export function createTrackDocument(deps: TrackDeps): ToolDef<typeof trackInput,
         const only = documents.length === 1 ? documents[0] : undefined;
         if (!only) throw new ToolInputError(NEEDS_ONE);
         const history = minimiseHistory(await notFound(client.trackHistory(only.documentId ?? '')));
-        const d = Number(history['deliveryDocumentsDelivered']);
-        const t = Number(history['deliveryDocumentsTotal']);
+        const d = history['deliveryDocumentsDelivered'];
+        const t = history['deliveryDocumentsTotal'];
         only['history'] = history;
-        only.outcome = documentOutcome(only.channels, { delivered: d, total: t });
+        // Number.isFinite does not coerce: true, strings, null and objects are not numbers, so they never force an outcome.
+        if (Number.isFinite(d) && Number.isFinite(t)) only.outcome = documentOutcome(only.channels, { delivered: d as number, total: t as number });
       }
       const last = documents.at(-1);
       return { profile, documents, hasMore: !page.lastDocuments, ...(!page.lastDocuments && last?.documentId ? { nextCursor: last.documentId } : {}), checkedAt: new Date(now()).toISOString() };

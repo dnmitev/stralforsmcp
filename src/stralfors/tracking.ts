@@ -12,7 +12,7 @@ const PREFIX: [string, Outcome][] = [['signorder', 'delivered'], ['printing', 'i
 
 export function channelOutcome(status: string): Outcome {
   const s = status.replace(/\s+/g, '').toLowerCase();
-  return EXACT[s] ?? PREFIX.find(([p]) => s.startsWith(p))?.[1] ?? 'unknown';
+  return (Object.hasOwn(EXACT, s) ? EXACT[s] : undefined) ?? PREFIX.find(([p]) => s.startsWith(p))?.[1] ?? 'unknown';
 }
 
 export function documentOutcome(channels: { outcome: Outcome }[], hist?: { delivered: number; total: number }): Outcome {
@@ -23,13 +23,15 @@ export function documentOutcome(channels: { outcome: Outcome }[], hist?: { deliv
   return has('refused') ? 'refused' : 'failed';
 }
 
-export const safeMessage = (s: string): string | undefined => (/^[A-Za-z0-9 ._:/-]{1,120}$/.test(s) ? s : undefined);
+/** A history message is kept only when it is one of the known status strings; anything else may carry recipient text. */
+export const safeMessage = (s: string): string | undefined => (channelOutcome(s) === 'unknown' ? undefined : s);
 
 type Rec = Record<string, unknown>;
 const rec = (v: unknown): Rec => (typeof v === 'object' && v !== null ? (v as Rec) : {});
 const list = (v: unknown): Rec[] => (Array.isArray(v) ? v.map(rec) : []);
-/** Copies the named keys that are present. */
-const pick = (o: Rec, keys: string[]): Rec => Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, o[k]]));
+const scalar = (v: unknown) => ['string', 'number', 'boolean'].includes(typeof v);
+/** Copies the named keys that hold a string, number or boolean; objects and arrays are dropped. */
+const pick = (o: Rec, keys: string[]): Rec => Object.fromEntries(keys.filter((k) => scalar(o[k])).map((k) => [k, o[k]]));
 const status = (o: Rec) => (typeof o['status'] === 'string' ? o['status'] : '');
 
 export interface TrackedChannel { outcome: Outcome; status?: string; [k: string]: unknown }

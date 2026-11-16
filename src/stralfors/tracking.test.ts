@@ -7,7 +7,7 @@
  *   documentOutcome(channels: { outcome: Outcome }[], hist?: { delivered: number; total: number }): Outcome
  *   minimiseDocument(raw: unknown): TrackedDocument          allowlist pick; never a receiver field, never an unknown field
  *   minimiseHistory(raw: unknown): History                   same, events[].message only if safeMessage passes
- *   safeMessage(s: string): string | undefined               ^[A-Za-z0-9 ._:/-]{1,120}$
+ *   safeMessage(s: string): string | undefined               s only if channelOutcome(s) !== 'unknown'
  *
  * src/stralfors/operations.ts (client methods, base /rest/outputmanagement/tracktrace/v1, GET)
  *   trackDocuments(f: { invoiceNumber?; extDocumentId?; documentId?; lastDocumentId?: string; channelId?: number }) -> { documents: unknown[]; lastDocuments: boolean }
@@ -87,14 +87,48 @@ describe('documentOutcome (A7, AC-4)', () => {
 });
 
 describe('safeMessage', () => {
-  it('passes plain system text', () => {
-    for (const m of ['Delivered', 'a', 'Status: ok / done-1.2_x', 'A'.repeat(120)]) expect(safeMessage(m), m).toBe(m);
+  it('keeps only known status strings, case and whitespace insensitive', () => {
+    for (const m of ['Delivered', 'Verified Delivered', 'delivered', 'REGISTERED']) expect(safeMessage(m), m).toBe(m);
   });
-  it.each(['', 'A'.repeat(121), 'Delivered to <name> at <street>', 'a,b', 'a@b', 'tab\there', 'line\nbreak', 'ünï', 'a(b)', "o'k", 'a"b', 'a;b', 'a#b'])('drops %j', (m) => {
+  it.each(['', 'a', 'ok', 'Delivered to Alice Smith', 'Delivered to <name> at <street>', 'Status: ok / done-1.2_x', 'constructor'])('drops %j', (m) => {
     expect(safeMessage(m)).toBeUndefined();
   });
-  it('accepts every character class edge', () => {
-    expect(safeMessage('Az09 ._:/-')).toBe('Az09 ._:/-');
+});
+
+describe('channelOutcome ignores inherited properties', () => {
+  it.each(['constructor', '__proto__', 'toString', 'hasOwnProperty', 'valueOf'])('%s is unknown', (n) => {
+    expect(channelOutcome(n)).toBe('unknown');
+  });
+});
+
+describe('input shape', () => {
+  it('whitespace of any kind inside a status is ignored', () => {
+    expect(channelOutcome('Verified\t Delivered')).toBe('delivered');
+    expect(safeMessage('Verified  \n Delivered')).toBe('Verified  \n Delivered');
+  });
+  it('null, scalars and non-object list items are treated as empty', () => {
+    expect(minimiseDocument(null)).toStrictEqual({ outcome: 'unknown', channels: [] });
+    expect(minimiseDocument('x')).toStrictEqual({ outcome: 'unknown', channels: [] });
+    const d = minimiseDocument({ channels: [null, 'x', 5] });
+    expect(d.channels).toHaveLength(3);
+    expect(d.channels.every((c) => c.outcome === 'unknown')).toBe(true);
+  });
+  it('a dropped message leaves no message key', () => {
+    const h = minimiseHistory({ channels: [{ deliveryDocuments: [{ statusHistory: [{ dateTime: 't', message: 'Delivered to Bob' }] }] }] }) as { channels: { deliveryDocuments: { events: unknown[] }[] }[] };
+    expect(h.channels[0]!.deliveryDocuments[0]!.events).toStrictEqual([{ dateTime: 't' }]);
+  });
+});
+
+describe('only scalar values are picked', () => {
+  it('an object under any allowed key is dropped', () => {
+    const k = 'NESTED-CANARY';
+    const o = { [k]: 1 };
+    const doc = minimiseDocument({ documentId: o, extDocumentId: o, invoiceNumber: o, lastChange: o, channels: [{ channelId: o, channelName: o, status: o, deliveryTime: o, documents: o, pages: o, statusComments: [{ status: o, dateTime: o, paymentMethod: o }] }] });
+    const hist = minimiseHistory({ status: o, arrivalTime: o, deliveryDocumentsDelivered: o, deliveryDocumentsTotal: o, channels: [{ channelId: o, channelName: o, status: o, deliveryDocuments: [{ deliveryDocumentId: o, statusHistory: [{ dateTime: o, message: o }, { dateTime: [k] }] }] }] });
+    expect(JSON.stringify([doc, hist])).not.toContain(k);
+  });
+  it('string, number and boolean survive', () => {
+    expect(minimiseDocument({ documentId: 'A', lastChange: 1, invoiceNumber: false })).toMatchObject({ documentId: 'A', lastChange: 1, invoiceNumber: false });
   });
 });
 
@@ -153,9 +187,9 @@ describe('minimiseHistory', () => {
   it('an event whose message fails the allowlist keeps its dateTime but loses the message', () => {
     const c = receiverCanaries();
     const bad = `Delivered to <${c.receiverName}> at <${c.receiverAddress}>`;
-    const raw = rawHistory(c, { channels: [{ channelId: 9, channelName: 'n', status: 'Delivered', deliveryDocuments: [{ deliveryDocumentId: 'D1', statusHistory: [{ dateTime: 't1', message: bad }, { dateTime: 't2', message: 'ok' }, { dateTime: 't3' }] }] }] });
+    const raw = rawHistory(c, { channels: [{ channelId: 9, channelName: 'n', status: 'Delivered', deliveryDocuments: [{ deliveryDocumentId: 'D1', statusHistory: [{ dateTime: 't1', message: bad }, { dateTime: 't2', message: 'Delivered' }, { dateTime: 't4', message: 'Delivered to Alice Smith' }, { dateTime: 't3' }] }] }] });
     const h = minimiseHistory(raw) as { channels: { deliveryDocuments: { events: Record<string, unknown>[] }[] }[] };
-    expect(h.channels[0]!.deliveryDocuments[0]!.events).toEqual([{ dateTime: 't1' }, { dateTime: 't2', message: 'ok' }, { dateTime: 't3' }]);
+    expect(h.channels[0]!.deliveryDocuments[0]!.events).toEqual([{ dateTime: 't1' }, { dateTime: 't2', message: 'Delivered' }, { dateTime: 't4' }, { dateTime: 't3' }]);
     expect(JSON.stringify(h)).not.toContain(c.receiverName);
   });
   it('missing channels become an empty list', () => {

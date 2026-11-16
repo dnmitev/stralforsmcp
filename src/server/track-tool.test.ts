@@ -242,6 +242,20 @@ describe('AC-6 history', () => {
     expect(r.documents[0]!.history!.channels[0]!.deliveryDocuments[0]!.events).toEqual([{ dateTime: '2030-01-02T03:04:05Z' }]);
     expect(JSON.stringify(r)).not.toContain(c.receiverName);
   });
+  it.each([[true, true], [{ valueOf: null, toString: null }, { valueOf: null, toString: null }], ['1', '1'], [null, null]])('non-number counters %j never force delivered and never throw', async (d, t) => {
+    const x = await world();
+    const c = receiverCanaries();
+    x.serve(DOCS, 200, page([rawDoc(c, { channels: [channel('Registered')] })]));
+    x.serve(HIST('M8I4'), 200, rawHistory(c, { deliveryDocumentsDelivered: d, deliveryDocumentsTotal: t }));
+    expect(((await x.run({ documentId: 'M8I4', history: true })) as Out).documents[0]!.outcome).toBe('in_progress');
+  });
+  it.each([true, false])('a malformed documentId is a typed schema error, not a TypeError (history %s)', async (history) => {
+    const x = await world();
+    x.serve(DOCS, 200, page([rawDoc(receiverCanaries(), { documentId: { toString: null } })]));
+    const e = await rejection(x.run({ invoiceNumber: 'INV-1', history }));
+    expect(e).not.toBeInstanceOf(TypeError);
+    expect(e).toMatchObject({ kind: 'schema' });
+  });
   it('history false (and default): no history request, no history key', async () => {
     const x = await world();
     x.serve(DOCS, 200, page([rawDoc(receiverCanaries())]));

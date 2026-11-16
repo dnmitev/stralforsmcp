@@ -1,25 +1,9 @@
 // Mutation-killing cases for the track_document mapper (written red, sharpened after green). Synthetic data only.
 import { describe, expect, it } from 'vitest';
-import { channelOutcome, documentOutcome, minimiseDocument, minimiseHistory, safeMessage } from './tracking.ts';
+import { channelOutcome, documentOutcome, minimiseDocument, minimiseHistory } from './tracking.ts';
 import { channel, rawDoc, receiverCanaries } from '../../test/helpers/track.ts';
 
 describe('boundaries', () => {
-  it('safeMessage length 1 and 120 pass, 0 and 121 fail', () => {
-    expect(safeMessage('x')).toBe('x');
-    expect(safeMessage('x'.repeat(120))).toHaveLength(120);
-    expect(safeMessage('')).toBeUndefined();
-    expect(safeMessage('x'.repeat(121))).toBeUndefined();
-  });
-  it('safeMessage is anchored at both ends', () => {
-    expect(safeMessage('ok\n<bad>')).toBeUndefined();
-    expect(safeMessage('<bad>\nok')).toBeUndefined();
-    expect(safeMessage('<ok')).toBeUndefined();
-    expect(safeMessage('ok>')).toBeUndefined();
-  });
-  it('safeMessage allows exactly the listed punctuation', () => {
-    for (const ch of ' ._:/-') expect(safeMessage(`a${ch}b`), JSON.stringify(ch)).toBe(`a${ch}b`);
-    for (const ch of ',;!?@#$%&*()[]{}<>=+|\\\'"`~^\t') expect(safeMessage(`a${ch}b`), JSON.stringify(ch)).toBeUndefined();
-  });
   it('history forcing needs delivered === total and total > 0', () => {
     const r = [{ outcome: 'refused' as const }];
     expect(documentOutcome(r, { delivered: 1, total: 1 })).toBe('delivered');
@@ -56,7 +40,7 @@ describe('minimiser is an allowlist', () => {
   });
   it('history keeps raw counts and never an unknown field', () => {
     const c = receiverCanaries();
-    const h = minimiseHistory({ status: 'S', arrivalTime: 'A', deliveryDocumentsDelivered: 4, deliveryDocumentsTotal: 5, surprise: c.fileId, channels: [{ channelId: 1, channelName: 'n', status: 'Rejected', surprise: c.fileId, deliveryDocuments: [{ deliveryDocumentId: 'Z', surprise: c.fileId, statusHistory: [{ dateTime: 'd', message: 'm', paymentMethod: 'P', surprise: c.fileId }] }] }] });
-    expect(h).toEqual({ status: 'S', arrivalTime: 'A', deliveryDocumentsDelivered: 4, deliveryDocumentsTotal: 5, channels: [{ channelId: 1, channelName: 'n', status: 'Rejected', outcome: 'refused', deliveryDocuments: [{ deliveryDocumentId: 'Z', events: [{ dateTime: 'd', message: 'm' }] }] }] });
+    const h = minimiseHistory({ status: 'S', arrivalTime: 'A', deliveryDocumentsDelivered: 4, deliveryDocumentsTotal: 5, surprise: c.fileId, channels: [{ channelId: 1, channelName: 'n', status: 'Rejected', surprise: c.fileId, deliveryDocuments: [{ deliveryDocumentId: 'Z', surprise: c.fileId, statusHistory: [{ dateTime: 'd', message: 'Delivered', paymentMethod: 'P', surprise: c.fileId }] }] }] });
+    expect(h).toEqual({ status: 'S', arrivalTime: 'A', deliveryDocumentsDelivered: 4, deliveryDocumentsTotal: 5, channels: [{ channelId: 1, channelName: 'n', status: 'Rejected', outcome: 'refused', deliveryDocuments: [{ deliveryDocumentId: 'Z', events: [{ dateTime: 'd', message: 'Delivered' }] }] }] });
   });
 });

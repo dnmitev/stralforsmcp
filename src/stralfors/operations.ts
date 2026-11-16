@@ -54,7 +54,7 @@ const validateResponse = unwrap(
   ]),
 );
 
-const trackPageSchema = unwrap(z.looseObject({ documents: z.array(z.looseObject({})), lastDocuments: z.boolean() }));
+const trackPageSchema = unwrap(z.looseObject({ documents: z.array(z.looseObject({ documentId: z.string().optional() })), lastDocuments: z.boolean() }));
 const trackHistorySchema = unwrap(z.looseObject({}));
 
 interface Opts<T> { schema?: z.ZodType<T>; query?: Record<string, string>; operation?: string }
