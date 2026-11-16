@@ -24,7 +24,7 @@ function fakeClient(s: Script) {
   };
 }
 const answer = (matched: string[], error = '') => () => ({ customerId: 'CANARY-org', results: [{ channel: 'Kivra', matchedCandidates: matched, error }] });
-const clock = () => { let t = 1_000_000; return { now: () => t, sleep: async (ms: number) => { t += ms; } }; };
+const clock = () => { let t = 1_000_000; const sleeps: number[] = []; return { now: () => t, sleep: async (ms: number) => { sleeps.push(ms); t += ms; }, advance: (ms: number) => { t += ms; }, sleeps }; };
 const deps = (f: ReturnType<typeof fakeClient>, c = clock()) => ({ clients: new Map([['p', f.client]]), now: c.now, sleep: c.sleep });
 const ctx = {} as never;
 const rejection = (p: Promise<unknown>) => p.then(() => undefined, (e: unknown) => e);
@@ -84,8 +84,26 @@ describe('run', () => {
     expect((e as Error).message).toBe(STILL_RUNNING);
     expect(STILL_RUNNING).toBe('lookup still running; try again');
     expect(String(e) + JSON.stringify(e)).not.toContain(CORR);
-    expect(f.calls.polled.length).toBe(21);
+    expect(f.calls.polled.length).toBe(20);
+    expect(c.sleeps.every((ms) => ms === 1000)).toBe(true);
     expect(f.calls.started).toHaveLength(1);
+  });
+  it('the 20 s budget includes the POST: a slow POST leaves less time, and a spent budget polls nothing', async () => {
+    const c = clock();
+    const slow = fakeClient({ results: [notReady] });
+    const base = (slow.client as { channelLookup: (b: unknown) => Promise<unknown> }).channelLookup;
+    (slow.client as { channelLookup: (b: unknown) => Promise<unknown> }).channelLookup = async (b) => { const r = await base(b); c.advance(19_500); return r; };
+    const e1 = await rejection(createChannelLookup(deps(slow, c)).run({ channels: ['K'], candidates: CAND }, ctx));
+    expect((e1 as Error).message).toBe(STILL_RUNNING);
+    expect(slow.calls.polled).toHaveLength(1);
+    expect(c.sleeps).toEqual([500]); // never sleeps past the budget
+
+    const c2 = clock();
+    const spent = fakeClient({ results: [answer([])] });
+    const base2 = (spent.client as { channelLookup: (b: unknown) => Promise<unknown> }).channelLookup;
+    (spent.client as { channelLookup: (b: unknown) => Promise<unknown> }).channelLookup = async (b) => { const r = await base2(b); c2.advance(20_000); return r; };
+    expect(((await rejection(createChannelLookup(deps(spent, c2)).run({ channels: ['K'], candidates: CAND }, ctx))) as Error).message).toBe(STILL_RUNNING);
+    expect(spent.calls.polled).toHaveLength(0);
   });
   it('any other poll error ends the call unchanged and does not retry', async () => {
     const boom = new UpstreamError('upstream', { status: 500, operation: 'channelLookupResult' });

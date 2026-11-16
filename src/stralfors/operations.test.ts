@@ -354,4 +354,31 @@ describe('channel lookup operations', () => {
     expect(await rejection(client.channelLookup({ channels: ['K'], candidates: ['a'] }))).toBeTruthy();
     expect(fake.requests).toHaveLength(0);
   });
+
+  it('a 401 on the lookup POST is not replayed (one POST), the token is dropped for the next call', async () => {
+    fake = await startFakeApi({ pki, api: (_q, res) => json(res, 401, { message: 'no' }) });
+    const { client } = testClient(pki, fake);
+    const err = await rejection(client.channelLookup({ channels: ['K'], candidates: ['a'] }));
+    expect(err).toMatchObject({ kind: 'auth' });
+    expect(fake.apiRequests.map((r) => r.method)).toEqual(['POST']);
+    expect(fake.tokenRequests).toHaveLength(1);
+  });
+
+  it('a 401 on a GET is still replayed once with a fresh token', async () => {
+    let n = 0;
+    fake = await startFakeApi({ pki, api: (_q, res) => (n++ === 0 ? json(res, 401, { message: 'no' }) : json(res, 200, { results: [] })) });
+    const { client } = testClient(pki, fake);
+    await expect(client.channelLookupResult('x')).resolves.toMatchObject({ results: [] });
+    expect(fake.apiRequests).toHaveLength(2);
+    expect(fake.tokenRequests).toHaveLength(2);
+  });
+
+  it('the correlation id is masked by position in logs and blocked events, whatever it looks like', async () => {
+    const log = memoryLogger();
+    fake = await startFakeApi({ pki, api: (_q, res) => json(res, 404, { message: 'x' }) });
+    const { client } = testClient(pki, fake, { logger: log.logger });
+    for (const id of ['lookup-key-alpha', 'a b/c', 'plainword']) await rejection(client.channelLookupResult(id));
+    for (const id of ['lookup-key-alpha', 'a b', 'plainword', 'a%20b%2Fc']) expect(log.text()).not.toContain(id);
+    expect(log.text()).toContain('/channellookup/v1/lookup/*');
+  });
 });

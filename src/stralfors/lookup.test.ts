@@ -64,4 +64,8 @@ describe('mapLookup', () => {
     expect(out.results).toEqual([{ channel: 'A', failed: true, reason: 'not_configured' }, { channel: 'B', failed: true, reason: 'error' }, { channel: 'C', failed: true, reason: 'not_configured' }]);
     expect(JSON.stringify(out)).not.toMatch(/CANARY|User configuration/);
   });
+  it('unrecognised counts entries before de-duplication: two spellings of one odd key are two signals', () => {
+    expect(mapLookup(['K'], ['a'], [r('K', ['x-y', 'xy'])]).unrecognised).toBe(2);
+    expect(mapLookup(['K'], ['a'], [r('K', ['x', 'x', 'a'])]).unrecognised).toBe(2);
+  });
 });

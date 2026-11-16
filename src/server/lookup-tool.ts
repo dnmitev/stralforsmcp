@@ -36,15 +36,15 @@ export function createChannelLookup(deps: LookupDeps): ToolDef<typeof lookupInpu
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async run(args) {
       const { profile, client } = resolveProfile(deps.clients, args.profile);
+      const deadline = now() + MAX_WAIT_MS; // one budget for the whole call, the POST included
       const { correlationId } = await client.channelLookup({ channels: args.channels, candidates: args.candidates });
-      const deadline = now() + MAX_WAIT_MS;
       for (let answer; ; ) {
+        if (now() >= deadline) throw new ToolInputError(STILL_RUNNING);
         try {
           answer = await client.channelLookupResult(correlationId);
         } catch (e) {
           if (!(e instanceof AgreementNotFoundError)) throw e; // the JSON 404 means "not completed (or unknown)": keep polling, never POST again
-          if (now() >= deadline) throw new ToolInputError(STILL_RUNNING);
-          await sleep(POLL_MS);
+          await sleep(Math.min(POLL_MS, Math.max(0, deadline - now()))); // never sleep past the budget
           continue;
         }
         const { results, unrecognised } = mapLookup(args.channels, args.candidates, answer.results);

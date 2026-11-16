@@ -62,7 +62,7 @@ const lookupRequest = z.object({ channels: z.array(z.string().min(1)).min(1).max
 const lookupStarted = unwrap(z.looseObject({ correlationId: z.string().min(1) }));
 const lookupResult = unwrap(z.looseObject({ results: z.array(z.looseObject({ channel: z.string(), matchedCandidates: z.array(z.string()), error: z.string().nullish() })) }));
 
-interface Opts<T> { schema?: z.ZodType<T>; query?: Record<string, string>; operation?: string }
+interface Opts<T> { schema?: z.ZodType<T>; query?: Record<string, string>; operation?: string; noReplay?: boolean }
 interface Core {
   get<T = unknown>(path: string, opts?: Opts<T>): Promise<T>;
   post<T = unknown>(path: string, body: unknown, opts?: Opts<T>): Promise<T>;
@@ -89,7 +89,7 @@ export function operations(c: Core) {
     async channelLookup(body: z.input<typeof lookupRequest>) {
       const check = lookupRequest.safeParse(body);
       if (!check.success) throw new RequestValidationError(`invalid request: ${[...new Set(check.error.issues.map((i) => String(i.path[0])))].join(', ')}`, { fields: [...new Set(check.error.issues.map((i) => String(i.path[0])))] });
-      return c.post(`${CL}/lookup`, body, { schema: lookupStarted, operation: 'channelLookup' });
+      return c.post(`${CL}/lookup`, body, { schema: lookupStarted, operation: 'channelLookup', noReplay: true });
     },
     channelLookupResult: (correlationId: string) => get('channelLookupResult', `${CL}/lookup/${encodeURIComponent(correlationId)}`, lookupResult),
     /** Dry run only: always test=true, there is no way to send test=false from here. */

@@ -22,7 +22,7 @@ export function mapLookup(channels: readonly string[], candidates: readonly stri
     const error = (a.error ?? '').trim();
     if (error !== '') return { channel, failed: true, reason: NOT_CONFIGURED.test(error) ? 'not_configured' : 'error' };
     const matched = new Set(a.matchedCandidates.map(normalise));
-    for (const m of matched) if (!known.has(m)) unrecognised++;
+    for (const m of a.matchedCandidates) if (!known.has(normalise(m))) unrecognised++; // per entry, before de-duplication: two odd spellings are two signals
     return { channel, available: keys.map((k) => k !== '' && matched.has(k)) };
   });
   return { results, unrecognised };

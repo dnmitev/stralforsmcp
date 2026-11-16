@@ -39,7 +39,8 @@ export interface CreateClientOptions {
 export interface InstrumentInfo { operation: string; method: string }
 // unanchored on purpose: an id hidden inside a segment (encoded separator, prefix) is still masked
 const ID_SEGMENT = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\d{6,}/i;
-interface RequestOpts<T> { schema?: z.ZodType<T>; query?: Record<string, string>; operation?: string }
+/** `noReplay`: on a 401 invalidate the token but never send the request a second time (a request that starts something must not be duplicated). */
+interface RequestOpts<T> { schema?: z.ZodType<T>; query?: Record<string, string>; operation?: string; noReplay?: boolean }
 
 export function createClient(o: CreateClientOptions) {
   const { config } = o;
@@ -117,7 +118,8 @@ export function createClient(o: CreateClientOptions) {
       }
     };
     // a tracking document id is short and alphanumeric, so ID_SEGMENT does not catch it
-    const clean = p!.split('/').map(hide).join('/').replace(/\/document\/[^/]+\/documentinfohistory$/, '/document/*/documentinfohistory');
+    // a channel lookup correlation id is vendor-chosen, so it is masked by position, whatever it looks like
+    const clean = p!.split('/').map(hide).join('/').replace(/\/document\/[^/]+\/documentinfohistory$/, '/document/*/documentinfohistory').replace(/\/channellookup\/v1\/lookup\/[^/]+$/, '/channellookup/v1/lookup/*');
     const pathTemplate = q ? `${clean}?${q.split('&').map((kv) => `${hide(kv.split('=')[0]!)}=*`).join('&')}` : clean;
     method = method.toUpperCase();
     const operation = opts.operation ?? `${method} ${pathTemplate}`;
@@ -144,9 +146,11 @@ export function createClient(o: CreateClientOptions) {
       let res = await attempt(used);
       if (res.status === 401) {
         token.invalidate(used);
-        const fresh = await token.get();
-        res = await attempt(fresh);
-        if (res.status === 401) token.invalidate(fresh);
+        if (!opts.noReplay) {
+          const fresh = await token.get();
+          res = await attempt(fresh);
+          if (res.status === 401) token.invalidate(fresh);
+        }
       }
       if (res.status < 200 || res.status > 299) {
         const h = (n: string) => [res.headers[n]].flat()[0];
