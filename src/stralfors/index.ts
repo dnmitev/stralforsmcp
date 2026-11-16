@@ -116,7 +116,8 @@ export function createClient(o: CreateClientOptions) {
         return '*'; // malformed percent-encoding: do not echo it
       }
     };
-    const clean = p!.split('/').map(hide).join('/');
+    // a tracking document id is short and alphanumeric, so ID_SEGMENT does not catch it
+    const clean = p!.split('/').map(hide).join('/').replace(/\/document\/[^/]+\/documentinfohistory$/, '/document/*/documentinfohistory');
     const pathTemplate = q ? `${clean}?${q.split('&').map((kv) => `${hide(kv.split('=')[0]!)}=*`).join('&')}` : clean;
     method = method.toUpperCase();
     const operation = opts.operation ?? `${method} ${pathTemplate}`;

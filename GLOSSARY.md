@@ -102,6 +102,18 @@ _Avoid_: correlation id, batch id, run id
 A validation request that is checked by the API as if it were a send but creates nothing. The client can only issue dry runs; there is no way to turn the test flag off from this code.
 _Avoid_: validate (ambiguous with local schema validation), test send, simulation
 
+**Outcome** (`Outcome`, `channelOutcome()`, `documentOutcome()`):
+Our own five-value reading of a tracking status: `delivered`, `in_progress`, `refused`, `failed` or `unknown`. A fixed mapping of the raw status strings, which are always returned beside it; a status the table does not know is `unknown`. A document's outcome is derived from its channels (any delivered wins, in progress or unknown beats refused, refused beats failed).
+_Avoid_: state, result
+
+**Tracking channel** (Track & Trace `channelId`, `channelName`):
+A delivery route as the tracking system names it, with its own numeric ids and names, different from the `Channel` names of the Omni API. A document can have several, each with its own status.
+_Avoid_: channel (unqualified) when both vocabularies appear
+
+**Tracking document id** (`documentId` in `track_document`):
+The tracking system's identifier of one document: alphanumeric, at most 10 characters, assigned after sending and never returned by the send. Not the `guid` that a dry run echoes.
+_Avoid_: guid, consignment id
+
 ## Responses and errors
 
 **Double-encoded response** (`unwrap`):
@@ -138,7 +150,7 @@ The fail-closed check applied to every outgoing request before any socket or tok
 _Avoid_: prod write guard (it acts in both environments), allowlist (unqualified)
 
 **Prod read allowlist** (`PROD_READS`):
-The fixed set of read paths the write guard lets through in `prod`.
+The fixed set of read paths the write guard lets through in `prod`: the Omni reads in `PROD_READS` and exactly two Track & Trace GET paths (document lookup and one document's history).
 
 **Path guard**:
 The check that a request path stays under the API's own prefixes and never leaves the fixed base URL.
