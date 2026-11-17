@@ -19,7 +19,7 @@ export function parseChannels(env: string | undefined): string[] | undefined {
 }
 
 const leaves = (v: unknown): number => (v !== null && typeof v === 'object' ? Object.values(v).reduce<number>((n, x) => n + leaves(x), 0) : 1);
-/** A status is printed only when it is exactly a known status name ; anything else may be free text and shows its length only. */
+/** A status is printed only when it is exactly a known status name; anything else may be free text and shows its length only. */
 const shown = (s: unknown): string => {
   const t = String(s);
   return safeMessage(t) !== undefined ? t : `<other len=${t.length}>`;
