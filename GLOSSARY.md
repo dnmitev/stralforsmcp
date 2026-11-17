@@ -49,6 +49,7 @@ _Avoid_: profile label
 
 **Channel**:
 A delivery route for a document, named by the API as a string (`eInvoice`, `EDI`, `Kivra`, ...). The set of names the client knows at build time is `KNOWN_CHANNELS`; the API may return others.
+_Avoid_: channel (unqualified) when a lookup channel or tracking channel is also meant; say delivery channel then
 
 **Client catalogue** (`channels()` without an agreement id):
 The channels enabled for the credential profile as a whole. Wider than any single agreement allows.
@@ -66,6 +67,10 @@ One validation requirement the API publishes for a channel: a parameter path, cr
 
 **Criterion** (`ruleCriterias[]`, `parseCriterion()`):
 One requirement text of a rule, such as "required", "one of these values" or "must match a pattern". Parsed into a criterion kind and parameters; text the parser does not know becomes the `unknown` kind.
+
+**Rule pattern** (`pattern` criterion, `expectedPattern`):
+A regular expression a rule publishes for a value. It follows the vendor's own regular-expression dialect, which this server cannot always interpret; such a pattern never produces a local finding and only the dry run decides.
+_Avoid_: regex (unqualified), format
 
 **Criterion kind** (`Criterion.kind`):
 The fixed token for a criterion (`required`, `valid_items`, `pattern`, ...). Each kind has one fixed sentence template, so callers read the same wording whatever the vendor text says.
@@ -85,9 +90,6 @@ One reported problem in a validation result: source (local or Stralfors), rule i
 **Local check** (`localCheck()`):
 The second validation stage: the cached rules are interpreted against the document without calling the API. It reports only what it is certain of; a rule whose ancestor is absent, or that is conditional, is left to the dry run.
 
-**Dry run** (`validateInvoice()`, `PUT .../validate?test=true`):
-The API's own validation of a document. It creates nothing and is the authority: a document is valid only when the dry run accepts it.
-
 **Validation stage** (`input`, `local`, `dry_run`, `passed`):
 The step that produced a validation result's findings. Stages run in that order and stop at the first one with findings.
 
@@ -99,7 +101,7 @@ A caller-supplied idempotency key for one document, 10 to 50 characters, unique 
 _Avoid_: correlation id, batch id, run id
 
 **Dry run** (`validateInvoice()`, `PUT .../validate?test=true`):
-A validation request that is checked by the API as if it were a send but creates nothing. The client can only issue dry runs; there is no way to turn the test flag off from this code.
+A validation request that is checked by the API as if it were a send but creates nothing. It is the authority: a document is valid only when the dry run accepts it. The client can only issue dry runs; there is no way to turn the test flag off from this code.
 _Avoid_: validate (ambiguous with local schema validation), test send, simulation
 
 **Outcome** (`Outcome`, `channelOutcome()`, `documentOutcome()`):
@@ -113,6 +115,37 @@ _Avoid_: channel (unqualified) when both vocabularies appear
 **Tracking document id** (`documentId` in `track_document`):
 The tracking system's identifier of one document: alphanumeric, at most 10 characters, assigned after sending and never returned by the send. Not the `guid` that a dry run echoes.
 _Avoid_: guid, consignment id
+
+## Channel lookup
+
+**Channel lookup** (`channel_lookup`, Channel Lookup API):
+An asynchronous question to the vendor: which lookup channels can reach each of a few candidate recipients. A start request returns a correlation id; a later read returns the completed answer. TEST only in this server.
+_Avoid_: channel check, recipient search
+
+**Lookup channel** (`channels` of `channel_lookup`):
+A channel name in the Channel Lookup API's own vocabulary (`Kivra`, `eInvoiceB2C`, `eInvoiceB2B`, `Billo`, ...). Configured per client and independent of the agreement's delivery channels: having a delivery channel does not imply its lookup channel.
+_Avoid_: channel (unqualified), delivery channel
+
+**Candidate**:
+A recipient identifier submitted to a channel lookup, such as a personal or organisation number. Personal data: it travels only in the request body and is never logged, audited, echoed or returned.
+_Avoid_: recipient, customer, subject
+
+**Matched candidate** (`matchedCandidates`):
+A candidate the vendor lists as reachable in a lookup channel. The vendor answers with matches only; a candidate that is absent is not reachable there, and the answer has no per-candidate yes or no.
+_Avoid_: hit, result
+
+**Availability** (`available[]`):
+This server's per-candidate yes or no for one lookup channel, derived by matching normalised candidates against the matched candidates, in the order the candidates were given.
+
+**Unrecognised count** (`unrecognised`):
+The number of matched candidates that fit none of the submitted candidates after normalisation. Shows a spelling mismatch without showing any value.
+
+**Lookup failure reason** (`reason`: `not_configured` | `error`):
+Why a lookup channel has no availability: `not_configured` when the vendor says the channel is not set up for this client, `error` for anything else. A fixed code; the vendor sentence is never returned.
+
+**Correlation id** (lookup):
+The vendor's handle for one started channel lookup, used only to read its answer. Never returned to the caller.
+_Avoid_: consignment id, lookup id
 
 ## Responses and errors
 
@@ -207,14 +240,14 @@ _Avoid_: group, permission
 The internal reason a token was refused: `malformed`, `unknown`, `expired` or `revoked`. Reaches the audit event, never the caller.
 
 **Access level** (`ToolSpec.access`, `Access`):
-What a tool may do upstream: `read`, `validate` (the dry run) or `write`. The policy decides on this, never on the tool name.
+What a tool may do upstream: `read`, `validate` (the dry run), `lookup` (a channel lookup: TEST only, no write flag needed; a required scope still applies if the tool declares one) or `write`. The policy decides on this, never on the tool name.
 _Avoid_: permission, verb, method
 
 **Tool spec** (`ToolSpec`):
 The static description of a tool the policy needs: name, access level and an optional required scope.
 
 **Decision** (`decide`, `Decision`):
-The pure result of the policy for one principal and one tool: the environment, role, write, validate and scope rules checked in that fixed order, so a denial carries exactly the first failing reason code (`env`, `role`, `write`, `validate`, `scope`). The validate rule denies a validate-level tool in `prod` unless the prod-validate setting is on. A write in `prod` is denied whatever the role or configuration.
+The pure result of the policy for one principal and one tool: the environment, role, write, validate, lookup and scope rules checked in that fixed order, so a denial carries exactly the first failing reason code (`env`, `role`, `write`, `validate`, `lookup`, `scope`). The validate rule denies a validate-level tool in `prod` unless the prod-validate setting is on. A write in `prod` is denied whatever the role or configuration.
 _Avoid_: authorization (ambiguous with the header), check, policy (the module, not its result)
 
 **Tool visibility** (`visibleTools`):
@@ -506,6 +539,28 @@ _Avoid_: dotenv, config file (unqualified)
 **Dev token** (`npm run dev:token`, `scripts/dev-token.ts`):
 A personal token for one local user (`dev`, role `dev`, environment `test`, 30 days) written as a fresh token list with only the digest in the file; the raw token is shown once on stderr. Never used against a hosted server.
 _Avoid_: test token, default token
+
+## Live and contract checks
+
+**Drift check**:
+A manual, read-only comparison of what one environment's API publishes (version, channels, templates, rules) with what this server's code understands. Its output is counts per check name, never vendor text.
+_Avoid_: drift test, contract test, monitoring
+
+**Drift finding** (`unknown-criterion`, `pattern-not-compilable`, `channel-new`, ...):
+One check name with a count from a drift check. Distinct from a validation finding.
+
+**Drift baseline** (`baseline-<env>.json`):
+The private record of a previous drift check (names, ids, version, counts and hashes of free-text criteria) that later runs compare against.
+
+**Standing finding**:
+A drift finding that is present on every run against the live API (unknown criterion kinds, rule patterns this server cannot interpret). With a baseline it counts as drift only when its count changes.
+
+**Live read check**:
+A manual run of the read tools against a real environment that prints shapes and counts only, so its output can be shared.
+
+**Integration suite**:
+Tests that run the real server and client against a local stand-in for the vendor API, with the same transport security (ADR 0019).
+_Avoid_: end-to-end tests, live tests
 
 ## Quality
 
