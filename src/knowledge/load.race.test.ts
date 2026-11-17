@@ -1,17 +1,18 @@
 // Loader TOCTOU (plan 04-02, AC-7): the file is read through one opened handle with a bounded read, so a file
 // that grew after the size check is still caught. The seam is a wrapped fs `open` whose handle reports a stale size.
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const opened = vi.hoisted(() => ({ calls: 0, staleSize: undefined as number | undefined }));
+const opened = vi.hoisted(() => ({ calls: 0, staleSize: undefined as number | undefined, beforeOpen: undefined as ((path: string) => Promise<void>) | undefined }));
 vi.mock('node:fs/promises', async (orig) => {
   const actual = await orig<typeof import('node:fs/promises')>();
   return {
     ...actual,
     open: async (...args: Parameters<typeof actual.open>) => {
       opened.calls++;
+      await opened.beforeOpen?.(String(args[0]));
       const fh = await actual.open(...args);
       if (opened.staleSize === undefined) return fh;
       const size = opened.staleSize;
@@ -33,6 +34,7 @@ beforeEach(async () => {
   await mkdir(join(root, 'pub'));
   opened.calls = 0;
   opened.staleSize = undefined;
+  opened.beforeOpen = undefined;
 });
 afterEach(() => rm(root, { recursive: true, force: true }));
 
@@ -71,5 +73,21 @@ describe('file grown between the size check and the read', () => {
     const r = await loadKnowledge({ publicDir: join(root, 'pub'), overlayDirs: [] });
     expect(r.docs).toEqual([]);
     expect(r.warnings.map((w) => w.text)).toEqual(['skipped edge.md: file too large']);
+  });
+});
+
+describe('file swapped for a symlink between the containment check and the open', () => {
+  it.skipIf(process.platform === 'win32')('is not followed: the outside document is not loaded and the file is reported unreadable', async () => {
+    await mkdir(join(root, 'outside'));
+    await writeFile(join(root, 'outside', 'secret.md'), doc('secret', 10));
+    await writeFile(join(root, 'pub', 'a.md'), doc('a', 10));
+    opened.beforeOpen = async (path) => {
+      if (!path.endsWith('a.md')) return;
+      await rename(path, `${path}.orig`);
+      await symlink(join(root, 'outside', 'secret.md'), path);
+    };
+    const r = await loadKnowledge({ publicDir: join(root, 'pub'), overlayDirs: [] });
+    expect(r.docs.map((d) => d.id)).not.toContain('secret');
+    expect(r.warnings).toContainEqual({ source: 'public', text: 'skipped a.md: unreadable' });
   });
 });

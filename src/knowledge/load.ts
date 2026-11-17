@@ -1,3 +1,4 @@
+import { constants } from 'node:fs';
 import { lstat, open, readdir, realpath } from 'node:fs/promises';
 import { basename, join, sep } from 'node:path';
 import { ConfigError } from '../stralfors/errors.ts';
@@ -43,7 +44,8 @@ const walk = async (root: string, warn: (text: string) => void): Promise<{ path:
 
 // undefined: not a regular file; null: over the size cap. One opened handle: stat and read cannot be split by a swap, and the read is bounded whatever the size said.
 const readBounded = async (path: string): Promise<string | null | undefined> => {
-  const fh = await open(path, 'r');
+  // O_NOFOLLOW: the path is already a realpath, so a final component swapped for a symlink after the check fails to open (ELOOP, reported as unreadable) instead of being followed. A swapped ancestor directory is not covered; that needs a writer inside the overlay mount.
+  const fh = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
   try {
     if (!(await fh.stat()).isFile()) return undefined;
     const buf = Buffer.alloc(MAX_FILE_BYTES + 1);
