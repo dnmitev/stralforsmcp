@@ -48,7 +48,7 @@ A human name given to an agreement id in configuration so reports and logs can r
 _Avoid_: profile label
 
 **Channel**:
-A delivery route for a document, named by the API as a string (`eInvoice`, `EDI`, `Kivra`, ...). The API may return names this server has not seen before.
+A delivery route for a document (`eInvoice`, `EDI`, `Kivra`, ...). The vendor can add new ones at any time.
 _Avoid_: channel (unqualified) when a lookup channel or tracking channel is also meant; say delivery channel then
 
 **Client catalogue** (`channels()` without an agreement id):
