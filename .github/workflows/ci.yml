@@ -14,6 +14,50 @@ permissions:
   contents: read
 
 jobs:
+  # Two cheap path checks over the whole pull request (renames count by old and new path; any doubt means "not skipped"):
+  # - docs only (docs/, README.md, GLOSSARY.md and similar project docs, LICENSE): mutation is skipped and review/confidence is posted as not applicable.
+  # - docs or pipeline/deploy files only (.github/, charts/, Dockerfile, ignore and scanner configs): mutation is skipped;
+  #   the review gate stays, because CI and deploy changes still deserve a review.
+  scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+      statuses: write
+    outputs:
+      mutation: ${{ steps.scope.outputs.mutation }}
+    steps:
+      - id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          echo "mutation=run" >> "$GITHUB_OUTPUT"
+          [ "$EVENT" = pull_request ] || exit 0
+          # One listing gives filename, count and old path together; the PR head and its file count are checked after it.
+          rows=$(gh api --paginate "repos/$REPO/pulls/$PR/files" -q '.[] | [.filename, (.previous_filename // "")] | @tsv') || exit 0
+          [ -n "$rows" ] || exit 0
+          # The files endpoint stops at 3,000 entries; the head must still be the event commit, the count the PR's own.
+          meta=$(gh api "repos/$REPO/pulls/$PR" -q '.changed_files, .head.sha') || exit 0
+          [ "$(printf '%s\n' "$rows" | wc -l | tr -d ' ')" = "$(printf '%s\n' "$meta" | sed -n 1p)" ] || exit 0
+          [ "$(printf '%s\n' "$meta" | sed -n 2p)" = "$HEAD_SHA" ] || exit 0
+          # A rename counts as both its old and new path (a rename out of .claude/ into docs/ is not docs-only).
+          paths=$(printf '%s\n' "$rows" | tr '\t' '\n' | grep -v '^$' || true)
+          docs='^docs/|^(README|GLOSSARY|CHANGELOG|CONTRIBUTING|SECURITY)\.md$|^LICENSE$'
+          ops='^\.github/|^charts/|^Dockerfile$|^\.dockerignore$|^\.trivyignore\.yaml$|^\.gitleaks\.toml$|^\.coderabbit\.yaml$'
+          other=$(printf '%s\n' "$paths" | grep -vE "$docs|$ops" || true)
+          [ -z "$other" ] || exit 0
+          echo "mutation=skip" >> "$GITHUB_OUTPUT"
+          notdocs=$(printf '%s\n' "$paths" | grep -vE "$docs" || true)
+          [ -z "$notdocs" ] || exit 0
+          [ "$SAME_REPO" = true ] || exit 0
+          gh api "repos/$REPO/statuses/$HEAD_SHA" -f state=success -f context=review/confidence \
+            -f description="docs only: no review needed"
+
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -71,6 +115,8 @@ jobs:
           retention-days: 14
 
   mutation:
+    needs: scope
+    if: ${{ !cancelled() && needs.scope.outputs.mutation != 'skip' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     # Full --force run on main took 19m40s at Phase 2 close (green) and 20m+ afterwards (cancelled): leave headroom.
