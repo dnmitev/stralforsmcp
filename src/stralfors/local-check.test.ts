@@ -121,6 +121,7 @@ describe('localCheck certainty (never a false invalid)', () => {
     const slow = (p: string, b: string) => localCheck({ a: { b } }, [L('1', P, [`ExpectedPattern: ${p}`])]);
     expect(slow('^a*a*a*a*a*a*a*a*a*a*$', `${'a'.repeat(499)}!`)).toEqual([]);
     expect(slow('^(a+){30}$', `${'a'.repeat(60)}!`)).toEqual([]);
+    expect(slow('^(a?a?)+$', `${'a'.repeat(40)}!`)).toEqual([]); // optional elements in a repeated group
     expect(slow('^a*a*a*a*a*a*a*a*a*a*$', `${'a'.repeat(499)}!`)).toEqual([]); // the pattern is remembered as undecidable
     expect(slow('^a+$', 'b').map((f) => f.kind)).toEqual(['pattern']); // other patterns still work afterwards
   });
