@@ -238,7 +238,7 @@ describe('walk limits', () => {
     await put(o, 'a/b/c/d/e/no.md', md('no'));
     expect(ids((await loadKnowledge({ publicDir: pub, overlayDirs: [o] })).docs)).toEqual(['ok']);
   });
-  it.skipIf(process.getuid?.() === 0)('an unreadable subdirectory is a warning naming only its base name; the other docs still load', async () => {
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('an unreadable subdirectory is a warning naming only its base name; the other docs still load', async () => {
     await put(pub, 'ok.md', md('ok'));
     await put(pub, 'locked/inner.md', md('inner'));
     await chmod(join(pub, 'locked'), 0o000);
