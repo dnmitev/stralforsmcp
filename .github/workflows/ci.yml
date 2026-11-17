@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   # Two cheap path checks over the whole pull request (renames count by old and new path; any doubt means "not skipped"):
-  # - docs only (docs/, top-level *.md, LICENSE): mutation is skipped and review/confidence is posted as not applicable.
+  # - docs only (docs/, README.md, GLOSSARY.md and similar project docs, LICENSE): mutation is skipped and review/confidence is posted as not applicable.
   # - docs or pipeline/deploy files only (.github/, charts/, Dockerfile, ignore and scanner configs): mutation is skipped;
   #   the review gate stays, because CI and deploy changes still deserve a review.
   scope:
@@ -38,17 +38,16 @@ jobs:
         run: |
           echo "mutation=run" >> "$GITHUB_OUTPUT"
           [ "$EVENT" = pull_request ] || exit 0
-          files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" -q '.[].filename') || exit 0
-          [ -n "$files" ] || exit 0
-          # The files endpoint stops at 3,000 entries: trust the list only when it matches the PR's own file count.
-          # The list describes the PR's current head: a run for an older commit must not classify it.
+          # One listing gives filename, count and old path together; the PR head and its file count are checked after it.
+          rows=$(gh api --paginate "repos/$REPO/pulls/$PR/files" -q '.[] | [.filename, (.previous_filename // "")] | @tsv') || exit 0
+          [ -n "$rows" ] || exit 0
+          # The files endpoint stops at 3,000 entries; the head must still be the event commit, the count the PR's own.
           meta=$(gh api "repos/$REPO/pulls/$PR" -q '.changed_files, .head.sha') || exit 0
-          total=$(printf '%s\n' "$meta" | sed -n 1p)
+          [ "$(printf '%s\n' "$rows" | wc -l | tr -d ' ')" = "$(printf '%s\n' "$meta" | sed -n 1p)" ] || exit 0
           [ "$(printf '%s\n' "$meta" | sed -n 2p)" = "$HEAD_SHA" ] || exit 0
-          [ "$(printf '%s\n' "$files" | wc -l | tr -d ' ')" = "$total" ] || exit 0
           # A rename counts as both its old and new path (a rename out of .claude/ into docs/ is not docs-only).
-          paths=$(gh api --paginate "repos/$REPO/pulls/$PR/files" -q '.[] | .filename, (.previous_filename // empty)') || exit 0
-          docs='^docs/|^[^/]+\.md$|^LICENSE$'
+          paths=$(printf '%s\n' "$rows" | tr '\t' '\n' | grep -v '^$' || true)
+          docs='^docs/|^(README|GLOSSARY|CHANGELOG|CONTRIBUTING|SECURITY)\.md$|^LICENSE$'
           ops='^\.github/|^charts/|^Dockerfile$|^\.dockerignore$|^\.trivyignore\.yaml$|^\.gitleaks\.toml$|^\.coderabbit\.yaml$'
           other=$(printf '%s\n' "$paths" | grep -vE "$docs|$ops" || true)
           [ -z "$other" ] || exit 0
@@ -117,7 +116,7 @@ jobs:
 
   mutation:
     needs: scope
-    if: needs.scope.outputs.mutation != 'skip'
+    if: ${{ !cancelled() && needs.scope.outputs.mutation != 'skip' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     # Full --force run on main took 19m40s at Phase 2 close (green) and 20m+ afterwards (cancelled): leave headroom.
