@@ -42,7 +42,9 @@ jobs:
           # The files endpoint stops at 3,000 entries: trust the list only when it matches the PR's own file count.
           total=$(gh api "repos/$REPO/pulls/$PR" -q .changed_files) || exit 0
           [ "$(printf '%s\n' "$files" | wc -l | tr -d ' ')" = "$total" ] || exit 0
-          code=$(printf '%s\n' "$files" | grep -vE '^docs/|^[^/]+\.md$|^LICENSE$' || true)
+          # A rename counts as both its old and new path (a rename out of .claude/ into docs/ is not docs-only).
+          paths=$(gh api --paginate "repos/$REPO/pulls/$PR/files" -q '.[] | .filename, (.previous_filename // empty)') || exit 0
+          code=$(printf '%s\n' "$paths" | grep -vE '^docs/|^[^/]+\.md$|^LICENSE$' || true)
           [ -z "$code" ] || exit 0
           echo "docs=true" >> "$GITHUB_OUTPUT"
           [ "$SAME_REPO" = true ] || exit 0
