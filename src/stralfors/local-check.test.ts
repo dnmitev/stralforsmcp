@@ -1,4 +1,5 @@
 // Synthetic documents and rules only (ADR 0004). The first path segment "document" names the document passed in.
+import { Script } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
 import { localCheck } from './local-check.ts';
 import { parseCriterion, type LocalRule } from './rules.ts';
@@ -128,9 +129,24 @@ describe('localCheck certainty (never a false invalid)', () => {
   it('runs at most 500 timed pattern matches per call and leaves the rest to the dry run', () => {
     const rules = [L('1', 'document.a[].b', ['ExpectedPattern: ^a$'])];
     const items = (bad: number) => Array.from({ length: 501 }, (_, n) => ({ b: n === bad ? 'z' : 'a' }));
-    expect(localCheck({ a: items(499) }, rules)).toHaveLength(1); // the 500th element is still checked
-    expect(localCheck({ a: items(500) }, rules)).toEqual([]); // the 501st is not
-    expect(localCheck({ a: items(0) }, rules)).toHaveLength(1); // the budget starts fresh on every call
+    // The timed execution is replaced by a plain match, so the count is tested without any real VM timing.
+    const run = vi.spyOn(Script.prototype, 'runInContext').mockImplementation((ctx: unknown) => (ctx as { s: string }).s === 'a');
+    try {
+      expect(localCheck({ a: items(499) }, rules)).toHaveLength(1); // the 500th element is still checked
+      expect(run).toHaveBeenCalledTimes(500);
+      run.mockClear();
+      expect(localCheck({ a: items(500) }, rules)).toEqual([]); // the 501st is not
+      expect(run).toHaveBeenCalledTimes(500);
+      expect(localCheck({ a: items(0) }, rules)).toHaveLength(1); // the budget starts fresh on every call
+    } finally { run.mockRestore(); }
+  });
+  it('treats an interrupted match as undecided and does not retry that pattern', () => {
+    const rules = [L('1', 'document.a[].b', ['ExpectedPattern: ^slow$'])];
+    const run = vi.spyOn(Script.prototype, 'runInContext').mockImplementation(() => { throw new Error('Script execution timed out.'); });
+    try {
+      expect(localCheck({ a: [{ b: 'x' }, { b: 'y' }] }, rules)).toEqual([]);
+      expect(run).toHaveBeenCalledTimes(1);
+    } finally { run.mockRestore(); }
   });
   it('skips groups nested deeper than five levels and checks five', () => {
     const check = (p: string) => localCheck({ a: { b: 'z' } }, [L('1', P, [`ExpectedPattern: ${p}`])]).map((f) => f.kind);
