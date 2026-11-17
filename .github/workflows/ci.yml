@@ -41,7 +41,10 @@ jobs:
           files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" -q '.[].filename') || exit 0
           [ -n "$files" ] || exit 0
           # The files endpoint stops at 3,000 entries: trust the list only when it matches the PR's own file count.
-          total=$(gh api "repos/$REPO/pulls/$PR" -q .changed_files) || exit 0
+          # The list describes the PR's current head: a run for an older commit must not classify it.
+          meta=$(gh api "repos/$REPO/pulls/$PR" -q '.changed_files, .head.sha') || exit 0
+          total=$(printf '%s\n' "$meta" | sed -n 1p)
+          [ "$(printf '%s\n' "$meta" | sed -n 2p)" = "$HEAD_SHA" ] || exit 0
           [ "$(printf '%s\n' "$files" | wc -l | tr -d ' ')" = "$total" ] || exit 0
           # A rename counts as both its old and new path (a rename out of .claude/ into docs/ is not docs-only).
           paths=$(gh api --paginate "repos/$REPO/pulls/$PR/files" -q '.[] | .filename, (.previous_filename // empty)') || exit 0
