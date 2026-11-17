@@ -11,11 +11,11 @@ status: accepted
 2. **The PROD read allowlist grows by exactly two paths**: the document lookup and one document's delivery history (document id of one to ten letters and digits, matched on the parsed path). File endpoints, other sub-paths and every other method stay refused.
 3. **The output is built from an allowlist of fields.** Recipient data, customer numbers, file ids, additional data and comment text are never picked, so a field the vendor adds later cannot leak. A history event message is kept only if it is exactly one of the known status names (the exact names of the channel status table, not its prefix groups, which would let "Printing for <name>" through); otherwise the event keeps its time and loses the message.
 4. **The outcome is a fixed mapping of our own.** Per channel it is looked up from the raw status (case and whitespace ignored, a few prefix groups); anything unknown is `unknown` and the status is returned beside it only when it is exactly a known status name (at most 64 characters); any other status becomes `other`, because prefix statuses such as "Printing for <name>" may carry names. The document outcome is derived from its channels: delivered wins, in progress or unknown beats refused, refused beats failed. A history that reports all delivery documents delivered forces `delivered`.
-5. **404 is `not_found` until the maintainer's TEST check (V-8) shows whether it means "no match".** If it does, a 404 on the lookup becomes an empty list. A gateway 404 for an unknown route stays `route_not_found`. The audit line shows reason `bad_input` for a 404 for now, because the client classifies a JSON 404 as an agreement problem and the shared tool wrapper is unchanged.
+5. **404 is `not_found` until the maintainer's TEST check (V-8) shows whether it means "no match".** If it does, a 404 on the lookup becomes an empty list. A gateway 404 for an unknown route stays `route_not_found`. The audit line shows reason `not_found`: the tool turns the client's JSON-404 (agreement) error into a refusal that carries that reason.
 6. **One read per call, no polling, no caching.** Status changes take hours to days; the answer carries `checkedAt` so the reader knows how fresh it is. Keys, cursors and ids are never logged, traced or audited.
 
 ## Consequences
 
 - The outcome table can disagree with the vendor's wording; unknown statuses stay `unknown` rather than guessed.
 - Several documents can match one invoice number, so the result is a list with a cursor.
-- A dedicated `not_found` error kind replaces the `bad_input` audit reason once V-8 settles what a 404 means.
+- Whether a 404 means "no match" is still open (V-8); the audit reason stays `not_found` either way.

@@ -65,6 +65,14 @@ describe('ToolInputError', () => {
     expect(e.message).toBe('m');
   });
 
+  it('carries its own audit reason, the text stays as given', async () => {
+    for (const reason of ['not_found', 'timeout', 'agreement_not_found'] as const) {
+      const { s, deps } = setup();
+      const r = await callTool(thrower(new ToolInputError('fixed', reason)), {}, pm, deps);
+      expect(r).toEqual({ isError: true, content: [{ type: 'text', text: 'fixed' }] });
+      expect(s.lines()[0]).toMatchObject({ outcome: 'error', reason });
+    }
+  });
   it('a subclass is still bad_input; a StralforsError is never bad_input or error', async () => {
     class Sub extends ToolInputError {}
     const a = setup();

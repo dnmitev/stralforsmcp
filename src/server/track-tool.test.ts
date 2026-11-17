@@ -304,6 +304,12 @@ describe('AC-7 bodies and errors', () => {
     expect(text(r)).toBe(expected);
     expect(JSON.stringify(r)).not.toContain('UPSTREAM-TEXT-CANARY');
   });
+  it('a JSON 404 is audited as not_found, not bad_input', async () => {
+    const x = await world();
+    x.serve(DOCS, 404, { message: 'x', compositeFault: { faults: [] } });
+    await x.callOnly({ invoiceNumber: 'INV-1' });
+    expect(x.audit.lines()[0]).toMatchObject({ outcome: 'error', reason: 'not_found' });
+  });
   it('the gateway text 404 (no such route) is not reported as not_found', async () => {
     const x = await world(); // no route served: 404 text/plain
     expect(text(await x.callOnly({ invoiceNumber: 'INV-1' }))).toBe('tool failed: route_not_found');

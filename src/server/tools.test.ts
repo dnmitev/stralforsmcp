@@ -148,7 +148,7 @@ describe('registerAll', () => {
     expect((await (await listed(server)).listTools()).tools).toHaveLength(1);
   });
 
-  it('SDK input validation happens before the wrapper: isError and no audit line (documented gap)', async () => {
+  it('SDK input validation happens before the wrapper: isError, one invalid_input audit line', async () => {
     const { s, deps } = setup();
     const def: ToolDef = { ...okTool, inputSchema: z.object({ n: z.int() }) as never };
     const server = new McpServer({ name: 'x', version: '1' });
@@ -156,7 +156,8 @@ describe('registerAll', () => {
     const c = await listed(server);
     const r = await c.callTool({ name: 'okTool', arguments: { n: 'x' } });
     expect(r.isError).toBe(true);
-    expect(s.lines()).toEqual([]);
+    expect(s.lines()).toHaveLength(1);
+    expect(s.lines()[0]).toMatchObject({ outcome: 'error', reason: 'invalid_input', tool: 'okTool' });
   });
 
   it('a thrown error through the SDK stays sanitised', async () => {

@@ -332,14 +332,14 @@ describe('error outcomes: tool failed: <kind>, audit reason = kind', () => {
     const x = await world({ serverCert: 'selfSigned' });
     expect(text(await x.callOnly({ document: doc() }))).toBe('tool failed: tls');
   });
-  it('404 ErrorResponse -> "agreement not found for this profile", audit bad_input (documented deviation), ids nowhere', async () => {
+  it('404 ErrorResponse -> "agreement not found for this profile", audit agreement_not_found, ids nowhere', async () => {
     const x = await world();
     const identity = randomId();
     x.routes[VALIDATE] = (_q, r) => json(r, 404, { message: `Action id '${x.uuid.b}' not found for identity '${identity}'` });
     const r = await x.callOnly({ document: doc() });
     expect(r.isError).toBe(true);
     expect(text(r)).toBe('agreement not found for this profile');
-    expect(x.audit.lines()[0]).toMatchObject({ outcome: 'error', reason: 'bad_input' });
+    expect(x.audit.lines()[0]).toMatchObject({ outcome: 'error', reason: 'agreement_not_found' });
     for (const n of [x.uuid.b, identity, 'letters']) expect(JSON.stringify(r) + x.audit.text()).not.toContain(n);
   });
   it('a missing key, a 400 without compositeFault and local-only errors never reach callTool as errors', async () => {

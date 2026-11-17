@@ -3,7 +3,7 @@ import { AgreementNotFoundError, StralforsError, UpstreamError } from '../stralf
 import { ERAS, connect, handlerFetch, principal, sink, toAuth } from '../../test/helpers/server.ts';
 import { dump, memTelemetry } from '../../test/helpers/telemetry.ts';
 import { buildMcp } from './mcp.ts';
-import { ToolInputError } from './tools.ts';
+import { callTool, ToolInputError } from './tools.ts';
 import { createChannelLookup, STILL_RUNNING } from './lookup-tool.ts';
 import { whoami } from './whoami.ts';
 
@@ -169,6 +169,15 @@ describe.each(ERAS)('through the registry and the SDK (%s)', (era) => {
       const all = s.text() + dump(m.spans()) + (await m.text()) + JSON.stringify(r);
       for (const v of [...CAND, CORR, 'CANARY-org', 'CANARY-err']) expect(all, v).not.toContain(v);
     }
+  });
+  it('a lookup that outlives the budget is audited as timeout', async () => {
+    const f = fakeClient({ results: [notReady] });
+    const s = sink();
+    const c = clock();
+    const tool = createChannelLookup({ clients: new Map([['p', f.client]]), ...c });
+    const r = await callTool(tool as never, { channels: ['K'], candidates: CAND }, principal('qa', ['test']), { env: 'test', allowWrite: false, prodValidateEnabled: false, audit: s.audit });
+    expect(r).toMatchObject({ isError: true, content: [{ text: STILL_RUNNING }] });
+    expect(s.lines()[0]).toMatchObject({ outcome: 'error', reason: 'timeout' });
   });
   it('schema-invalid input is refused before the client is touched', async () => {
     const { c, f } = await setup('test');
