@@ -35,8 +35,16 @@
   },
   "tools": [
     { "name": "whoami", "description": "Show who the token belongs to." },
-    { "name": "list_channels", "description": "List the channels available to you." }
+    { "name": "list_channels", "description": "List the channels available to you." },
+    { "name": "get_rules", "description": "Show the validation rules of a channel in readable form." },
+    { "name": "get_example_invoice", "description": "Show the example invoice payload for one or more channels." },
+    { "name": "validate_invoice", "description": "Dry-run an invoice document and explain the findings. Creates nothing." },
+    { "name": "track_document", "description": "Read the delivery status of an invoice." },
+    { "name": "channel_lookup", "description": "Check which lookup channels can reach a recipient (test environment only)." },
+    { "name": "search_docs", "description": "Search the knowledge notes about the Stralfors API." }
   ],
+  "tools_generated": true,
+  "prompts_generated": true,
   "privacy_policies": ["https://github.com/dnmitev/stralforsmcp#readme"],
   "compatibility": {
     "platforms": ["darwin", "win32"],

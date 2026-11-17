@@ -32,6 +32,9 @@ export const createIndex = (docs: KnowledgeDoc[]): Index => {
   return { entries, df, avg: entries.reduce((n, e) => n + e.len, 0) / (entries.length || 1) };
 };
 
+const isHigh = (s: string, i: number) => (s.charCodeAt(i) & 0xfc00) === 0xd800;
+const isLow = (s: string, i: number) => (s.charCodeAt(i) & 0xfc00) === 0xdc00;
+
 const snippet = (flat: string, terms: Set<string>) => {
   if (flat.length <= SNIPPET) return flat;
   let at = 0;
@@ -40,9 +43,15 @@ const snippet = (flat: string, terms: Set<string>) => {
       at = m.index;
       break;
     }
-  const start = Math.max(0, Math.min(at - 60, flat.length - SNIPPET));
-  return flat.slice(start, start + SNIPPET);
+  let start = Math.max(0, Math.min(at - 60, flat.length - SNIPPET));
+  let end = start + SNIPPET;
+  if (isLow(flat, start)) start++; // never begin on the second half of a pair
+  if (isHigh(flat, end - 1)) end--; // never end on the first half of a pair
+  return flat.slice(start, end);
 };
+
+// A doc without the field is general and matches any filter value.
+const general = (want: string | undefined, have: string | undefined) => !want || !have || want === have;
 
 // ponytail: linear scan of at most a few hundred docs; move to a real engine only past a few thousand.
 export const search = (index: Index, q: SearchQuery): SearchResult => {
@@ -52,7 +61,7 @@ export const search = (index: Index, q: SearchQuery): SearchResult => {
   const scored: { e: Entry; score: number }[] = [];
   for (const e of index.entries) {
     const d = e.doc;
-    if ((q.country && d.country !== q.country) || (q.channel && d.channel !== q.channel) || (q.source && d.source !== q.source)) continue;
+    if (!general(q.country, d.country) || !general(q.channel, d.channel) || (q.source && d.source !== q.source)) continue;
     let score = 0;
     for (const t of terms) {
       const f = e.tf.get(t);

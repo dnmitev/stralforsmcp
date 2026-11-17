@@ -1,4 +1,4 @@
-// Knowledge wiring: KNOWLEDGE_PUBLIC_DIR / KNOWLEDGE_DIRS are loaded once in start() and search_docs is registered.
+// Knowledge wiring: StartDeps.knowledgePublicDir / KNOWLEDGE_DIRS are loaded once in start(); search_docs, resources and prompts are wired.
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -41,10 +41,10 @@ const dir = (name: string, files: Record<string, string>) => {
   return d;
 };
 const md = (id: string, word: string) => `---\nid: ${id}\ntitle: ${word} note\ntags: ${word}\n---\nAbout ${word}.\n`;
-const go = async (env: Record<string, string | undefined>) => {
+const go = async (env: Record<string, string | undefined>, knowledgePublicDir?: string) => {
   const f = fixture();
   const err: string[] = [];
-  const s = await start({ ...base, ...env }, { readFile: (p) => (p === 'x' ? f.text() : readFileSync(p, 'utf8')), stderr: { write: (x) => void err.push(x) }, audit: sink().audit, now: () => T, onSignal: () => undefined });
+  const s = await start({ ...base, ...env }, { readFile: (p) => (p === 'x' ? f.text() : readFileSync(p, 'utf8')), stderr: { write: (x) => void err.push(x) }, audit: sink().audit, now: () => T, onSignal: () => undefined, ...(knowledgePublicDir === undefined ? {} : { knowledgePublicDir }) });
   started.push(s);
   return err.join('');
 };
@@ -66,7 +66,7 @@ describe('knowledge wiring', () => {
     const pub = dir('pub1', { 'a.md': md('shared', 'alpha'), 'b.md': md('only-public', 'bravo') });
     const o1 = dir('ov1', { 'a.md': md('shared', 'charlie') });
     const o2 = dir('ov2', { 'c.md': md('extra', 'delta') });
-    await go({ KNOWLEDGE_PUBLIC_DIR: pub, KNOWLEDGE_DIRS: `:${o1}::${o2}:` });
+    await go({ KNOWLEDGE_DIRS: `:${o1}::${o2}:` }, pub);
     expect(await query('charlie')).toMatchObject({ hits: [{ id: 'shared', source: 'private' }] });
     expect((await query('alpha')).hits).toEqual([]);
     expect(await query('delta')).toMatchObject({ hits: [{ id: 'extra', source: 'private' }] });
@@ -74,7 +74,7 @@ describe('knowledge wiring', () => {
   });
   it('KNOWLEDGE_DIRS of only separators means no overlay', async () => {
     const pub = dir('pub2', { 'a.md': md('p', 'alpha') });
-    await go({ KNOWLEDGE_PUBLIC_DIR: pub, KNOWLEDGE_DIRS: '::' });
+    await go({ KNOWLEDGE_DIRS: '::' }, pub);
     expect((await query('alpha')).hits.map((h) => h.source)).toEqual(['public']);
   });
   it('a bad overlay dir refuses to start with fixed text and no path', async () => {
@@ -84,20 +84,48 @@ describe('knowledge wiring', () => {
     expect((e as Error).message).toBe('KNOWLEDGE_DIRS is not readable');
   });
   it('a bad public dir refuses to start with fixed text and no path', async () => {
-    const e = await go({ KNOWLEDGE_PUBLIC_DIR: join(tmp, 'CANARYPATH-nope') }).then(() => undefined, (x: unknown) => x);
+    const e = await go({}, join(tmp, 'CANARYPATH-nope')).then(() => undefined, (x: unknown) => x);
     expect(e).toBeInstanceOf(ConfigError);
     expect((e as Error).message).toBe('knowledge directory is not readable');
   });
   it('stays quiet at the default level when nothing was skipped', async () => {
     const pub = dir('pub4', { 'a.md': md('p', 'alpha') });
-    expect(await go({ KNOWLEDGE_PUBLIC_DIR: pub })).toBe('');
-    expect(await go({ KNOWLEDGE_PUBLIC_DIR: pub, MCP_LOG_LEVEL: 'debug' })).toContain('knowledge loaded: 1 docs, 0 warnings');
+    expect(await go({}, pub)).toBe('');
+    expect(await go({ MCP_LOG_LEVEL: 'debug' }, pub)).toContain('knowledge loaded: 1 docs, 0 warnings');
   });
-  it('logs counts and warning counts only, never file names or paths', async () => {
+  it('logs a count only for skipped private files, never their names or paths', async () => {
     const pub = dir('pub3', { 'a.md': md('p', 'alpha') });
     const ov = dir('ov3', { 'CANARYNAME.md': 'not a doc', 'ok.md': md('q', 'bravo') });
-    const out = await go({ KNOWLEDGE_PUBLIC_DIR: pub, KNOWLEDGE_DIRS: ov, });
+    const out = await go({ KNOWLEDGE_DIRS: ov }, pub);
     expect(out).toContain('knowledge loaded: 2 docs, 1 warnings');
     expect(out).not.toMatch(/CANARYNAME|ov3|pub3/);
+  });
+  it('names skipped public files in the log, but never a path or content', async () => {
+    const pub = dir('pub5', { 'a.md': md('p', 'alpha'), 'PUBBAD.md': 'not a doc CANARYCONTENT' });
+    const out = await go({}, pub);
+    expect(out).toContain('PUBBAD.md');
+    expect(out).toContain('knowledge loaded: 1 docs,');
+    expect(out).not.toMatch(/CANARYCONTENT|pub5|smcp-know/);
+  });
+  it('public names are logged while private names in the same load are not', async () => {
+    const pub = dir('pub6', { 'a.md': md('p', 'alpha'), 'PUBBAD.md': 'x' });
+    const ov = dir('ov6', { 'PRIVBAD.md': 'y', 'ok.md': md('q', 'bravo') });
+    const out = await go({ KNOWLEDGE_DIRS: ov }, pub);
+    expect(out).toContain('PUBBAD.md');
+    expect(out).not.toContain('PRIVBAD.md');
+    expect(out).toContain('knowledge loaded: 2 docs, 2 warnings');
+  });
+  it('the old KNOWLEDGE_PUBLIC_DIR environment variable is ignored: the shipped docs load', async () => {
+    const shipped = readdirSync(join(import.meta.dirname, '../../knowledge/public')).filter((f) => f.endsWith('.md')).length;
+    const pub = dir('pub7', { 'a.md': md('only-env', 'alpha') });
+    const out = await go({ KNOWLEDGE_PUBLIC_DIR: pub, MCP_LOG_LEVEL: 'debug' });
+    expect(out).toContain(`knowledge loaded: ${shipped} docs,`);
+  });
+  it('the loaded docs reach buildMcp as knowledge.docs for resources and prompts', async () => {
+    const pub = dir('pub8', { 'a.md': md('wired', 'alpha') });
+    const ov = dir('ov8', { 'b.md': md('wired-private', 'bravo') });
+    await go({ KNOWLEDGE_DIRS: ov }, pub);
+    const deps = vi.mocked(mcp.buildMcp).mock.calls[0]![0] as unknown as { knowledge?: { docs: { id: string; source: string }[] } };
+    expect(deps.knowledge?.docs.map((d) => [d.id, d.source]).sort()).toEqual([['wired', 'public'], ['wired-private', 'private']]);
   });
 });

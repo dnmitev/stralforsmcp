@@ -67,8 +67,11 @@ describe('run', () => {
   });
   it('filters narrow the result', async () => {
     expect((await tool.run({ query: 'mandate', source: 'private' }, ctx)).hits.map((h) => h.id)).toEqual(['secret-note']);
-    expect((await tool.run({ query: 'mandate', country: 'NO' }, ctx)).hits.map((h) => h.id)).toEqual(['mandate']);
-    expect((await tool.run({ query: 'mandate', channel: 'AvtaleGiro' }, ctx)).total).toBe(1);
+    // secret-note has no country or channel: general docs match any filter value (04-02, D5)
+    expect((await tool.run({ query: 'mandate', country: 'NO' }, ctx)).hits.map((h) => h.id).sort()).toEqual(['mandate', 'secret-note']);
+    expect((await tool.run({ query: 'mandate', country: 'SE' }, ctx)).hits.map((h) => h.id)).toEqual(['secret-note']);
+    expect((await tool.run({ query: 'mandate', channel: 'AvtaleGiro' }, ctx)).total).toBe(2);
+    expect((await tool.run({ query: 'mandate', channel: 'Print' }, ctx)).hits.map((h) => h.id)).toEqual(['secret-note']);
   });
   it('a stop-word-only query returns nothing, not the corpus', async () => {
     expect(await tool.run({ query: 'the and of' }, ctx)).toEqual({ hits: [], total: 0, truncated: false });

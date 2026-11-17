@@ -34,6 +34,8 @@ export interface StartDeps {
   monotonic?: () => number;
   onSignal?: (fn: () => void) => void;
   clientFactory?: (o: CreateClientOptions) => StralforsClient;
+  /** directory of the shipped public docs; defaults to knowledge/public in the package (a test seam, not configuration) */
+  knowledgePublicDir?: string;
   /** prebuilt telemetry (in-memory seams in tests); start() still owns its shutdown */
   telemetry?: Telemetry;
   /** test seam for the telemetry flush bound */
@@ -166,15 +168,16 @@ export async function start(env: Record<string, string | undefined>, deps: Start
     }
     const profiles = Object.values(config.profiles).map((p) => ({ id: p.id, country: p.country }));
     const cache = createRulesCache({ ttlMs: rulesCacheS * 1000, now });
-    const { docs, warnings } = await loadKnowledge({ publicDir: env.KNOWLEDGE_PUBLIC_DIR ? resolve(env.KNOWLEDGE_PUBLIC_DIR) : PUBLIC_DIR, overlayDirs: overlayDirs(env.KNOWLEDGE_DIRS).map((d) => resolve(d)) });
-    logger[warnings.length ? 'warn' : 'debug']({}, `knowledge loaded: ${docs.length} docs, ${warnings.length} warnings`); // silent unless a doc was skipped; counts in the message (the logger drops unlisted keys); warnings name files, private ones must not reach logs
+    const { docs, warnings } = await loadKnowledge({ publicDir: deps.knowledgePublicDir ? resolve(deps.knowledgePublicDir) : PUBLIC_DIR, overlayDirs: overlayDirs(env.KNOWLEDGE_DIRS).map((d) => resolve(d)) });
+    const skipped = warnings.filter((w) => w.source === 'public').map((w) => w.text); // public file names are safe to log; private ones are counted only
+    logger[warnings.length ? 'warn' : 'debug']({}, `knowledge loaded: ${docs.length} docs, ${warnings.length} warnings${skipped.length ? ` (${skipped.join('; ')})` : ''}`); // silent unless a doc was skipped; the logger drops unlisted keys, so everything is in the message
     const tools = [createWhoami(profiles), createListChannels({ clients, config }), createGetRules({ clients, cache }), createGetExampleInvoice({ clients }), createValidateInvoice({ clients, config, cache }), createTrackDocument({ clients, now }), createChannelLookup({ clients }), createSearchDocs({ index: createIndex(docs) })];
     const limiter = createRateLimiter({ perMinute, burst, now: deps.monotonic ?? (() => performance.now()) });
     metricsListening = await new Promise<number>((resolve, reject) => {
       metrics.once('error', () => reject(new ConfigError('metrics listener failed (port in use or not permitted; see MCP_METRICS_PORT)'))); // the OS error carries the address: not forwarded
       metrics.listen(metricsPort, metricsHost, () => resolve((metrics.address() as { port: number }).port));
     });
-    srv = createHttpServer({ store, audit, telemetry, monotonic: deps.monotonic, env: deploy, hosts, origins, maxBodyBytes, drainMs, now, limiter, factory: buildMcp({ env: deploy, allowWrite, prodValidateEnabled: config.prodValidateEnabled, audit, tools, now, telemetry, maxOutputBytes }) });
+    srv = createHttpServer({ store, audit, telemetry, monotonic: deps.monotonic, env: deploy, hosts, origins, maxBodyBytes, drainMs, now, limiter, factory: buildMcp({ env: deploy, allowWrite, prodValidateEnabled: config.prodValidateEnabled, audit, tools, now, telemetry, maxOutputBytes, knowledge: { docs } }) });
     listening = await srv.listen(port, env.MCP_LISTEN_HOST ?? '0.0.0.0').catch(() => { // the OS error carries the address: not forwarded
       throw new ConfigError('HTTP listener failed (port in use or not permitted; see MCP_PORT)');
     });

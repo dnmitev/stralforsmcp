@@ -193,6 +193,10 @@ describe('AC-5 the bundle', () => {
     expect(manifest.user_config.server_url).toMatchObject({ type: 'string', required: true });
     expect(manifest.user_config.server_url.sensitive).not.toBe(true);
     expect(manifest.user_config.token).toMatchObject({ type: 'string', required: true, sensitive: true });
+    // The server owns its tool and prompt lists; Desktop refuses a prompt the manifest does not declare ("attempted undeclared prompt"), so the lists are marked as generated at run time.
+    expect(manifest.tools.map((t: { name: string }) => t.name).sort()).toEqual(['channel_lookup', 'get_example_invoice', 'get_rules', 'list_channels', 'search_docs', 'track_document', 'validate_invoice', 'whoami']); // the detail page lists these
+    expect(manifest.tools_generated).toBe(true);
+    expect(manifest.prompts_generated).toBe(true);
     expect(manifest.privacy_policies.length).toBeGreaterThan(0);
     for (const u of manifest.privacy_policies) expect(new URL(u).protocol).toBe('https:');
     expect([...manifest.compatibility.platforms].sort()).toEqual(['darwin', 'win32']);

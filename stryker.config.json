@@ -33,6 +33,8 @@
     "src/knowledge/doc.ts",
     "src/knowledge/load.ts",
     "src/knowledge/search.ts",
+    "src/server/resources.ts",
+    "src/server/prompts.ts",
     "src/server/rules-load.ts",
     "src/server/main.ts",
     "src/server/rate-limit.ts",
