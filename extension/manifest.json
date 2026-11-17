@@ -37,6 +37,8 @@
     { "name": "whoami", "description": "Show who the token belongs to." },
     { "name": "list_channels", "description": "List the channels available to you." }
   ],
+  "tools_generated": true,
+  "prompts_generated": true,
   "privacy_policies": ["https://github.com/dnmitev/stralforsmcp#readme"],
   "compatibility": {
     "platforms": ["darwin", "win32"],
