@@ -15,7 +15,7 @@ export type LoadWarning = { source: 'public' | 'private'; text: string };
 export type LoadResult = { docs: KnowledgeDoc[]; warnings: LoadWarning[] };
 
 // Sorted depth-first walk; the cut-offs are silent (a log line per skipped file would be a flood).
-// An unreadable nested directory is a warning, like an unreadable file; only the root failing is fatal. A directory is re-checked with lstat before descent so one swapped for a symlink after the listing is not followed (a small gap remains; the per-file realpath check still keeps content inside the root).
+// An unreadable nested directory is a warning, like an unreadable file; only the root failing is fatal. A directory is re-checked with lstat before descent so one swapped for a symlink after the listing is not followed (a small gap remains: the per-file realpath check and O_NOFOLLOW narrow it but do not close it if a writer can also swap an ancestor directory, so the overlay mount must not be writable by untrusted parties).
 const isDir = (path: string) => lstat(path).then((st) => st.isDirectory(), () => false);
 const walk = async (root: string, warn: (text: string) => void): Promise<{ path: string; name: string }[]> => {
   const out: { path: string; name: string }[] = [];
