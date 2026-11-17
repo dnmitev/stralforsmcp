@@ -69,7 +69,7 @@ One validation requirement the API publishes for a channel: a parameter path, cr
 One requirement text of a rule, such as "required", "one of these values" or "must match a pattern". Parsed into a criterion kind and parameters; text the parser does not know becomes the `unknown` kind.
 
 **Rule pattern** (`pattern` criterion, `expectedPattern`):
-A regular expression a rule publishes for a value. It is written in the vendor's own (.NET) dialect, so some patterns do not compile in JavaScript; such a pattern never produces a local finding and only the dry run decides.
+A regular expression a rule publishes for a value. It follows the vendor's own regular-expression dialect, which this server cannot always interpret; such a pattern never produces a local finding and only the dry run decides.
 _Avoid_: regex (unqualified), format
 
 **Criterion kind** (`Criterion.kind`):
@@ -240,14 +240,14 @@ _Avoid_: group, permission
 The internal reason a token was refused: `malformed`, `unknown`, `expired` or `revoked`. Reaches the audit event, never the caller.
 
 **Access level** (`ToolSpec.access`, `Access`):
-What a tool may do upstream: `read`, `validate` (the dry run), `lookup` (a channel lookup: TEST only, no write flag or scope needed) or `write`. The policy decides on this, never on the tool name.
+What a tool may do upstream: `read`, `validate` (the dry run), `lookup` (a channel lookup: TEST only, no write flag needed; a required scope still applies if the tool declares one) or `write`. The policy decides on this, never on the tool name.
 _Avoid_: permission, verb, method
 
 **Tool spec** (`ToolSpec`):
 The static description of a tool the policy needs: name, access level and an optional required scope.
 
 **Decision** (`decide`, `Decision`):
-The pure result of the policy for one principal and one tool: the environment, role, write, validate and scope rules checked in that fixed order, so a denial carries exactly the first failing reason code (`env`, `role`, `write`, `validate`, `lookup`, `scope`). The validate rule denies a validate-level tool in `prod` unless the prod-validate setting is on. A write in `prod` is denied whatever the role or configuration.
+The pure result of the policy for one principal and one tool: the environment, role, write, validate, lookup and scope rules checked in that fixed order, so a denial carries exactly the first failing reason code (`env`, `role`, `write`, `validate`, `lookup`, `scope`). The validate rule denies a validate-level tool in `prod` unless the prod-validate setting is on. A write in `prod` is denied whatever the role or configuration.
 _Avoid_: authorization (ambiguous with the header), check, policy (the module, not its result)
 
 **Tool visibility** (`visibleTools`):
@@ -542,7 +542,7 @@ _Avoid_: test token, default token
 
 ## Live and contract checks
 
-**Drift check** (`npm run drift`, `scripts/drift/`):
+**Drift check**:
 A manual, read-only comparison of what one environment's API publishes (version, channels, templates, rules) with what this server's code understands. Its output is counts per check name, never vendor text.
 _Avoid_: drift test, contract test, monitoring
 
@@ -555,11 +555,11 @@ The private record of a previous drift check (names, ids, version, counts and ha
 **Standing finding**:
 A drift finding that is present on every run against the live API (unknown criterion kinds, rule patterns JavaScript cannot compile). With a baseline it counts as drift only when its count changes.
 
-**Live read check** (`npm run live:read-check`):
+**Live read check**:
 A manual run of the read tools against a real environment that prints shapes and counts only, so its output can be shared.
 
-**Integration suite** (`test/integration/`):
-Tests that run the real server and client against a local stub of the vendor API that speaks the same mutual TLS (ADR 0019).
+**Integration suite**:
+Tests that run the real server and client against a local stand-in for the vendor API, with the same transport security (ADR 0019).
 _Avoid_: end-to-end tests, live tests
 
 ## Quality
