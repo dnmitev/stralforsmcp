@@ -9,7 +9,7 @@ import { generateToken, hashToken } from '../auth/index.ts';
 const catalogue = [whoami, okTool, writeTool];
 const run = async (era: (typeof ERAS)[number], p: ReturnType<typeof principal>, env: 'test' | 'prod' = 'test', allowWrite = false) => {
   const s = sink();
-  const { fetch } = handlerFetch(buildMcp({ env, allowWrite, prodValidateEnabled: false, claims: { hasScope: () => false }, audit: s.audit, tools: catalogue }), toAuth(p));
+  const { fetch } = handlerFetch(buildMcp({ env, allowWrite, prodValidateEnabled: false, claimsFor: () => ({ hasScope: () => false }), audit: s.audit, tools: catalogue }), toAuth(p));
   const c = await connect(era, fetch);
   return { c, s, call: () => c.callTool({ name: 'whoami', arguments: {} }) };
 };
@@ -63,7 +63,7 @@ describe.each(ERAS)('whoami over the SDK (%s era)', (era) => {
     const raw = generateToken();
     const p = principal('dev', ['test']);
     const s = sink();
-    const { fetch } = handlerFetch(buildMcp({ env: 'test', allowWrite: false, prodValidateEnabled: false, claims: { hasScope: () => false }, audit: s.audit, tools: catalogue }), { ...toAuth(p), token: '' });
+    const { fetch } = handlerFetch(buildMcp({ env: 'test', allowWrite: false, prodValidateEnabled: false, claimsFor: () => ({ hasScope: () => false }), audit: s.audit, tools: catalogue }), { ...toAuth(p), token: '' });
     const c = await connect(era, fetch);
     const r = await c.callTool({ name: 'whoami', arguments: {} });
     const text = JSON.stringify(r);
@@ -111,7 +111,7 @@ describe('profiles (R24)', () => {
 
   it.each(ERAS)('over the SDK (%s): structured content carries the profiles and nothing else about them', async (era) => {
     const s = sink();
-    const { fetch } = handlerFetch(buildMcp({ env: 'test', allowWrite: false, prodValidateEnabled: false, claims: { hasScope: () => false }, audit: s.audit, tools: [createWhoami(profiles)] }), toAuth(principal('qa', ['test'])));
+    const { fetch } = handlerFetch(buildMcp({ env: 'test', allowWrite: false, prodValidateEnabled: false, claimsFor: () => ({ hasScope: () => false }), audit: s.audit, tools: [createWhoami(profiles)] }), toAuth(principal('qa', ['test'])));
     const c = await connect(era, fetch);
     const r = await c.callTool({ name: 'whoami', arguments: {} });
     expect(r.structuredContent).toMatchObject({ profiles });

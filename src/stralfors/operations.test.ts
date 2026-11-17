@@ -292,6 +292,9 @@ describe('channel lookup operations', () => {
     for (const bad of [{ channels: [], candidates: ['a'] }, { channels: ['K'], candidates: [] }, { channels: ['a', 'b', 'c', 'd', 'e'], candidates: ['a'] }, { channels: ['K'], candidates: Array.from({ length: 1001 }, (_, i) => `c${i}`) }]) {
       expect(await rejection(client.channelLookup(bad))).toBeInstanceOf(RequestValidationError);
     }
+    for (const bad of [{ channels: ['bad channel!'], candidates: ['a'] }, { channels: ['K'], candidates: ['x'.repeat(41)] }]) {
+      expect(await rejection(client.channelLookup(bad))).toBeInstanceOf(RequestValidationError); // the tool's limits, one shared schema
+    }
     expect(fake.requests).toHaveLength(0);
     await expect(client.channelLookup({ channels: ['K'], candidates: Array.from({ length: 1000 }, (_, i) => `c${i}`) })).resolves.toMatchObject({ correlationId: cid });
   });

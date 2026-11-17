@@ -22,7 +22,7 @@ describe('buildMcp (registry factory) claims guard', () => {
     expect(() => buildMcp({ ...base(), tools: [scoped] })).toThrow(ConfigError);
   });
   it('registers when claims are supplied', () => {
-    expect(() => buildMcp({ ...base(), tools: [okTool, scoped, writeTool], claims } as never)).not.toThrow();
+    expect(() => buildMcp({ ...base(), tools: [okTool, scoped, writeTool], claimsFor: () => claims } as never)).not.toThrow();
   });
   it('read tools without a scope are unaffected', () => {
     expect(() => buildMcp({ ...base(), tools: [okTool] })).not.toThrow();

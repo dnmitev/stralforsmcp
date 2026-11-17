@@ -33,10 +33,10 @@ export interface TrackDeps {
   now?: () => number;
 }
 
-// ponytail: a JSON 404 is classified agreement_not_found by the client and shown as bad_input in the audit; a text 404 stays route_not_found.
-// Revisit with V-8 (does 404 mean "no match"?) and a dedicated not_found kind.
+// ponytail: a JSON 404 is classified agreement_not_found by the client and shown as not_found; a text 404 stays route_not_found.
+// Revisit with V-8 (does 404 mean "no match"?).
 const notFound = async <T>(p: Promise<T>): Promise<T> => p.catch((e: unknown) => {
-  throw e instanceof AgreementNotFoundError ? new ToolInputError('tool failed: not_found') : e;
+  throw e instanceof AgreementNotFoundError ? new ToolInputError('tool failed: not_found', 'not_found') : e;
 });
 
 export function createTrackDocument(deps: TrackDeps): ToolDef<typeof trackInput, typeof trackOutput> {

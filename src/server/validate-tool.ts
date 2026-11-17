@@ -105,7 +105,7 @@ export function createValidateInvoice(deps: ValidateDeps): ToolDef<typeof valida
         if (e instanceof ValidationFailedError) return result('dry_run', [...rejected(fromViolations(e.violations)), ...unavailable]);
         if (e instanceof BadRequestError) return result('dry_run', [...rejected(fromBadRequest(e.errors ?? {})), ...unavailable]);
         if (e instanceof RequestValidationError) return result('dry_run', [...fromFields(e.fields), ...unavailable]);
-        if (e instanceof AgreementNotFoundError) throw new ToolInputError('agreement not found for this profile'); // ponytail: audit reason is bad_input, not agreement_not_found; callTool is out of scope
+        if (e instanceof AgreementNotFoundError) throw new ToolInputError('agreement not found for this profile', 'agreement_not_found');
         throw e;
       }
       return unavailable.length > 0 ? result('dry_run', unavailable) : { valid: true, stage: 'passed', findings: [], moreMayFollow: false };

@@ -1,7 +1,7 @@
 import { SpanKind, SpanStatusCode, type Span } from '@opentelemetry/api';
 import type { CallToolResult, McpServer } from '@modelcontextprotocol/server';
 import type * as z from 'zod/v4';
-import type { Audit, AuditInput } from '../audit/index.ts';
+import type { Audit, AuditInput, AuditReason } from '../audit/index.ts';
 import type { Env, Principal } from '../auth/index.ts';
 import { withPrincipal } from './context.ts';
 import { ConfigError, StralforsError, type StralforsErrorKind } from '../stralfors/errors.ts';
@@ -20,7 +20,7 @@ export interface ToolDef<I extends z.ZodObject = z.ZodObject, O extends z.ZodObj
   run(args: z.infer<I>, ctx: ToolContext): Promise<z.infer<O>>;
 }
 
-export interface RegistryDeps { env: Env; allowWrite: boolean; prodValidateEnabled: boolean; audit: Audit; now?: () => number; claims?: ScopeHolder; telemetry?: Telemetry; maxOutputBytes?: number }
+export interface RegistryDeps { env: Env; allowWrite: boolean; prodValidateEnabled: boolean; audit: Audit; now?: () => number; /** The claims of the caller this registry serves; resolved per request by buildMcp, never process-wide. */ claims?: ScopeHolder; telemetry?: Telemetry; maxOutputBytes?: number }
 
 export const DENIED_TEXT = (reason: DenyReason) => `not allowed: ${reason}`;
 export const ERROR_TEXT = 'tool failed';
@@ -29,8 +29,19 @@ export const DEFAULT_MAX_OUTPUT_BYTES = 262_144;
 
 export const KIND_TEXT = (kind: StralforsErrorKind) => `tool failed: ${kind}`;
 
+/** What a tool may put on its own refusal: fixed codes only. `invalid_input` is reserved for SDK schema rejection (auditInvalid). */
+export type InputReason = Extract<AuditReason, 'bad_input' | 'not_found' | 'timeout' | 'agreement_not_found'>;
+
 /** A tool refusing its own arguments before any upstream call. message is a fixed text, never the argument value. */
-export class ToolInputError extends Error { override readonly name = 'ToolInputError' }
+export class ToolInputError extends Error {
+  override readonly name = 'ToolInputError';
+  /** The audit reason: a fixed code, never an argument value. */
+  readonly reason: InputReason;
+  constructor(message: string, reason: InputReason = 'bad_input') {
+    super(message);
+    this.reason = reason;
+  }
+}
 
 const fail = (text: string): CallToolResult => ({ isError: true, content: [{ type: 'text', text }] });
 
@@ -71,7 +82,7 @@ async function run(def: ToolDef, args: unknown, principal: Principal, deps: Regi
     return { content: [{ type: 'text', text: body }], structuredContent: out };
   } catch (e) {
     if (e instanceof ToolInputError) {
-      record({ outcome: 'error', reason: 'bad_input' });
+      record({ outcome: 'error', reason: e.reason });
       return fail(e.message);
     }
     if (e instanceof StralforsError) {
@@ -84,8 +95,9 @@ async function run(def: ToolDef, args: unknown, principal: Principal, deps: Regi
 }
 
 /** A scoped or write tool without claims would be denied on every call; fail at construction instead. Names only in the message. */
-export function assertClaimsWired(tools: ToolDef[], claims?: ScopeHolder): void {
-  for (const { spec } of tools) if (!claims && (spec.requiredScope !== undefined || spec.access === 'write')) throw new ConfigError(`tool ${spec.name} needs a scope but claims are not wired`);
+export const needsScope = (spec: ToolSpec): boolean => spec.requiredScope !== undefined || spec.access === 'write';
+export function assertClaimsWired(tools: ToolDef[], claims?: unknown): void {
+  for (const { spec } of tools) if (!claims && needsScope(spec)) throw new ConfigError(`tool ${spec.name} needs a scope but claims are not wired`);
 }
 
 /** Registers every tool visibleTools() allows, each wrapped by callTool. */
@@ -94,7 +106,26 @@ export function registerAll(server: McpServer, principal: Principal, tools: Tool
   const visible = visibleTools({ principal, env: deps.env, allowWrite: deps.allowWrite, prodValidateEnabled: deps.prodValidateEnabled, claims: deps.claims }, tools.map((t) => t.spec));
   const shown = tools.filter((t) => visible.includes(t.spec));
   for (const def of shown) {
-    server.registerTool(def.spec.name, { title: def.title, description: def.description, inputSchema: def.inputSchema, outputSchema: def.outputSchema, annotations: def.annotations }, (args) => callTool(def, args, principal, deps, visible));
+    server.registerTool(def.spec.name, { title: def.title, description: def.description, inputSchema: auditInvalid(def, principal, deps), outputSchema: def.outputSchema, annotations: def.annotations }, (args) => callTool(def, args, principal, deps, visible));
   }
   return visible;
+}
+
+/**
+ * The SDK validates input before the handler, so a schema failure never reaches callTool. This wraps the schema's own
+ * Standard Schema `validate` (a public interface) and audits a failure as error/invalid_input; the issues and the
+ * arguments are not looked at, and the SDK still produces the same rejection.
+ */
+function auditInvalid(def: ToolDef, principal: Principal, deps: RegistryDeps): ToolDef['inputSchema'] {
+  const failed = () => {
+    deps.audit.record({ principal, tool: def.spec.name, env: deps.env, outcome: 'error', reason: 'invalid_input', durationMs: 0 });
+    deps.telemetry?.instruments.toolCalls.add(1, { tool: def.spec.name, outcome: 'error', env: deps.env });
+  };
+  const std = def.inputSchema['~standard'];
+  const check = <R extends { issues?: unknown }>(r: R): R => {
+    if (r.issues) failed();
+    return r;
+  };
+  const wrapped = new Proxy(std, { get: (t, k) => (k === 'validate' ? (v: unknown) => { const r = t.validate(v); return r instanceof Promise ? r.then(check) : check(r) } : Reflect.get(t, k)) });
+  return new Proxy(def.inputSchema, { get: (t, k) => (k === '~standard' ? wrapped : Reflect.get(t, k)) });
 }
