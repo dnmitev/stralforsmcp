@@ -132,7 +132,8 @@ jobs:
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: reports/stryker-incremental.json
-          key: stryker-${{ github.sha }}
+          # A key that never exists, so the newest stryker- cache always wins (an exact same-commit hit would skip a newer full baseline).
+          key: stryker-restore-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: stryker-
       # Every ref runs incrementally without static mutants (~19% of mutants, ~87% of test time). The full --force run took
       # over 45 min on main and timed out on every push, so it moved to mutation-full.yml (weekly, 90 min).
