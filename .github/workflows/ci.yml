@@ -14,6 +14,38 @@ permissions:
   contents: read
 
 jobs:
+  # A pull request whose every file is documentation (docs/, top-level *.md, LICENSE) needs neither mutation testing nor a
+  # principal review: mutation is skipped and the review/confidence status is posted as not applicable for the head commit.
+  # The file list covers the whole PR, so one code file anywhere keeps both gates. Any doubt (API error) means "not docs".
+  scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+      statuses: write
+    outputs:
+      docs: ${{ steps.scope.outputs.docs }}
+    steps:
+      - id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          echo "docs=false" >> "$GITHUB_OUTPUT"
+          [ "$EVENT" = pull_request ] || exit 0
+          files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" -q '.[].filename') || exit 0
+          [ -n "$files" ] || exit 0
+          code=$(printf '%s\n' "$files" | grep -vE '^docs/|^[^/]+\.md$|^LICENSE$' || true)
+          [ -z "$code" ] || exit 0
+          echo "docs=true" >> "$GITHUB_OUTPUT"
+          [ "$SAME_REPO" = true ] || exit 0
+          gh api "repos/$REPO/statuses/$HEAD_SHA" -f state=success -f context=review/confidence \
+            -f description="docs only: no review needed"
+
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -71,6 +103,8 @@ jobs:
           retention-days: 14
 
   mutation:
+    needs: scope
+    if: needs.scope.outputs.docs != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     # Full --force run on main took 19m40s at Phase 2 close (green) and 20m+ afterwards (cancelled): leave headroom.
