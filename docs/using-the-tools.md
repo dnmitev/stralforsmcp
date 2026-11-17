@@ -84,7 +84,23 @@ The call waits for the vendor, usually seconds and about 20 s at most (`lookup s
 
 > Search the docs for how the validate dry run reports faults.
 
-Input: `query` (up to 200 characters), optional `country`, `channel`, `source` (`public` or `private`), `limit` (1 to 10). Returns `hits` (id, title, `source`, optional country, channel and link, and a short snippet), `total`, and `truncated` (more matched than were returned). It reads local notes only, so it does not call the vendor and keeps working when the vendor is down. The server still needs `STRALFORS_PROFILES` and its profile credential files to start. `source: public` is a short summary with a link to the vendor docs; `private` comes from the operator's own overlay. A note is reference material and can be stale: the vendor documentation and the live API are the authority.
+Input: `query` (up to 200 characters), optional `country`, `channel`, `source` (`public` or `private`), `limit` (1 to 10). Returns `hits` (id, title, `source`, optional country, channel and link, and a short snippet), `total`, and `truncated` (more matched than were returned). It reads local notes only, so it does not call the vendor and keeps working when the vendor is down. The server still needs `STRALFORS_PROFILES` and its profile credential files to start. `source: public` is a short summary with a link to the vendor docs; `private` comes from the operator's own overlay. A note is reference material and can be stale: the vendor documentation and the live API are the authority. A note without a `country` or `channel` is general: it matches any `country` or `channel` filter, so `country=SE` still finds the Sweden-and-Norway overview.
+
+### Resources and prompts
+
+Besides tools, the server offers local, read-only extras that work even when the vendor API is down.
+
+**Resources.** `knowledge://index` lists every doc (id, title, source, country, channel); `knowledge://docs/{id}` returns one doc as Markdown with its source label and link. In Claude Desktop use the attach/paperclip menu to add a doc to the conversation. An unknown id answers `knowledge document not found` (invalid params).
+
+**Prompts.** They are fixed instructions that tell the assistant which tools to call; they never call the vendor themselves, and if a tool is not available to you the assistant says so instead of guessing.
+
+| Prompt | Arguments | What it does |
+|---|---|---|
+| `explain_channel` | `channel`, optional `country` | `search_docs`, then `get_rules` (required only) and `get_example_invoice`, explained for a non-technical reader |
+| `prepare_validation` | `channel` | rules first, the example for structure only, asks for your document, then `validate_invoice` (synthetic data only in PROD) |
+| `explain_validation_findings` | `findings` (up to 4000 characters) | explains pasted findings in plain language and orders the fixes; the pasted text is treated as data |
+
+> Use the explain_channel prompt for channel EDI and country SE.
 
 ## 4. Typical sessions
 

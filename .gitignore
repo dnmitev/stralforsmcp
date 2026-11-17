@@ -31,3 +31,7 @@ tokenomics/
 !.vscode/
 .vscode/*
 !.vscode/launch.json
+
+# Local knowledge overlay (private docs are mounted, never committed)
+knowledge/*
+!knowledge/public/

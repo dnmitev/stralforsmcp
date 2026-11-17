@@ -24,7 +24,7 @@ Integrating with the Strålfors Output Management API means working out channels
 
 How to use the tools (vocabulary, a prompt per tool, what each error means, what we learned from the live API): [docs/using-the-tools.md](docs/using-the-tools.md).
 
-Plus ready-made prompts such as "Check my invoice" and "Which channels exist for a country?".
+Also available to every signed-in user, without any Stralfors call: the knowledge docs as MCP **resources** (`knowledge://index`, `knowledge://docs/{id}`) and three ready-made **prompts** (`explain_channel`, `prepare_validation`, `explain_validation_findings`). See [ADR 0022](docs/adr/0022-resources-and-prompts-are-local-read-only-surfaces.md) and [docs/using-the-tools.md](docs/using-the-tools.md).
 
 ## Design principles
 
@@ -299,14 +299,13 @@ npm run dev 2>/dev/null                              # audit only
 
 ## Knowledge docs (`search_docs`)
 
-`search_docs` answers a free-text question from a small curated corpus of Markdown notes: short public summaries (with links to the vendor docs) shipped in `knowledge/public/`, plus an optional private overlay you mount yourself. It reads local files only, makes no Stralfors API requests and keeps working when the vendor API is down; the normal server configuration (profiles and their credential files) is still required to start the server. Every hit carries `source` (`public` or `private`), and the text of a hit is reference material, not instructions. Input: `query` (1 to 200 characters), optional `country`, `channel`, `source` and `limit` (1 to 10, default 5). Output: `hits`, `total` and `truncated`. See [ADR 0021](docs/adr/0021-knowledge-docs-are-files-public-summaries-private-overlay-no-network-index.md).
+`search_docs` answers a free-text question from a small curated corpus of Markdown notes: short public summaries (with links to the vendor docs) shipped in `knowledge/public/`, plus an optional private overlay you mount yourself. It reads local files only, makes no Stralfors API requests and keeps working when the vendor API is down; the normal server configuration (profiles and their credential files) is still required to start the server. Every hit carries `source` (`public` or `private`), and the text of a hit is reference material, not instructions. Input: `query` (1 to 200 characters), optional `country`, `channel`, `source` and `limit` (1 to 10, default 5). A doc without a `country` or `channel` is general and matches any filter value. Output: `hits`, `total` and `truncated`. See [ADR 0021](docs/adr/0021-knowledge-docs-are-files-public-summaries-private-overlay-no-network-index.md).
 
 | Variable | Meaning |
 |---|---|
 | `KNOWLEDGE_DIRS` | Optional. Directories of private docs, separated by `:`, empty entries ignored. Their docs get `source: private`; a doc with the same `id` replaces an earlier one, and a private doc replaces a public one. A missing or unreadable directory stops start-up (`KNOWLEDGE_DIRS is not readable`). Unset means no private docs. |
-| `KNOWLEDGE_PUBLIC_DIR` | Optional. Overrides the shipped `knowledge/public` (used by tests). |
 
-Docs are loaded once at start; restart the server to pick up changes. The log shows counts only (`knowledge loaded: N docs, M warnings`), never file names. The private overlay is mounted, never committed and never baked into the image.
+Docs are loaded once at start; restart the server to pick up changes. The log shows counts (`knowledge loaded: N docs, M warnings`) and, for skipped docs, the file names of public docs only; private file names never reach the log. The private overlay is mounted, never committed and never baked into the image.
 
 A doc is one `.md` file (at most 64 KiB, at most 500 docs in total) starting with a front-matter block of `key: value` lines, then the body:
 

@@ -110,3 +110,25 @@ describe('knowledgeDoc schema', () => {
     expect(knowledgeDoc.safeParse({ ...base, tags: Array(13).fill('t') }).success).toBe(false);
   });
 });
+
+describe('front matter keys cannot touch the prototype', () => {
+  // Regression guards: the current parser already ignores these keys; the tests pin that through the Map rewrite (04-02).
+  it.each(['__proto__', 'constructor', 'prototype', 'toString', 'hasOwnProperty'])('a %s key is ignored and the doc still parses', (key) => {
+    const r = parseDoc(raw({ [key]: 'polluted' }), 'public');
+    if (!r.ok) throw new Error('expected ok');
+    expect(r.doc).toMatchObject({ id: 'doc-1', title: 'A title', tags: [] });
+    expect(Object.getPrototypeOf(r.doc)).toBe(Object.prototype);
+    expect(({} as Record<string, unknown>)[key === '__proto__' ? 'polluted' : key]).not.toBe('polluted');
+    expect(Object.prototype.hasOwnProperty.call(Object.prototype, 'polluted')).toBe(false);
+  });
+  it('a key named like a doc field with a prototype-ish value does not become a field', () => {
+    const r = parseDoc('---\nid: a\ntitle: t\n__proto__: {"country":"SE"}\nconstructor: {"channel":"X"}\n---\nb', 'public');
+    if (!r.ok) throw new Error('expected ok');
+    expect(r.doc.country).toBeUndefined();
+    expect(r.doc.channel).toBeUndefined();
+  });
+  it('a doc with no id still fails when only prototype keys are present', () => {
+    expect(ok('---\n__proto__: x\nconstructor: y\ntitle: t\n---\nb')).toBe(false);
+    expect(({} as { id?: string }).id).toBeUndefined();
+  });
+});

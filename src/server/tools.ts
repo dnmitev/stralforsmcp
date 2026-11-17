@@ -117,15 +117,19 @@ export function registerAll(server: McpServer, principal: Principal, tools: Tool
  * arguments are not looked at, and the SDK still produces the same rejection.
  */
 function auditInvalid(def: ToolDef, principal: Principal, deps: RegistryDeps): ToolDef['inputSchema'] {
-  const failed = () => {
+  return onInvalid(def.inputSchema, () => {
     deps.audit.record({ principal, tool: def.spec.name, env: deps.env, outcome: 'error', reason: 'invalid_input', durationMs: 0 });
     deps.telemetry?.instruments.toolCalls.add(1, { tool: def.spec.name, outcome: 'error', env: deps.env });
-  };
-  const std = def.inputSchema['~standard'];
+  });
+}
+
+/** Calls `failed` whenever the schema rejects a value; the value and the issues are never passed on. Shared with the prompt schemas. */
+export function onInvalid<S extends { '~standard': { validate: (v: unknown) => unknown } }>(schema: S, failed: () => void): S {
+  const std = schema['~standard'];
   const check = <R extends { issues?: unknown }>(r: R): R => {
     if (r.issues) failed();
     return r;
   };
-  const wrapped = new Proxy(std, { get: (t, k) => (k === 'validate' ? (v: unknown) => { const r = t.validate(v); return r instanceof Promise ? r.then(check) : check(r) } : Reflect.get(t, k)) });
-  return new Proxy(def.inputSchema, { get: (t, k) => (k === '~standard' ? wrapped : Reflect.get(t, k)) });
+  const wrapped = new Proxy(std, { get: (t, k) => (k === 'validate' ? (v: unknown) => { const r = t.validate(v) as { issues?: unknown } | Promise<{ issues?: unknown }>; return r instanceof Promise ? r.then(check) : check(r) } : Reflect.get(t, k)) });
+  return new Proxy(schema, { get: (t, k) => (k === '~standard' ? wrapped : Reflect.get(t, k)) });
 }
