@@ -48,7 +48,7 @@ A human name given to an agreement id in configuration so reports and logs can r
 _Avoid_: profile label
 
 **Channel**:
-A delivery route for a document, named by the API as a string (`eInvoice`, `EDI`, `Kivra`, ...). The set of names the client knows at build time is `KNOWN_CHANNELS`; the API may return others.
+A delivery route for a document (`eInvoice`, `EDI`, `Kivra`, ...). The vendor can add new ones at any time.
 _Avoid_: channel (unqualified) when a lookup channel or tracking channel is also meant; say delivery channel then
 
 **Client catalogue** (`channels()` without an agreement id):
@@ -98,7 +98,7 @@ A reference payload the API generates for a set of channels, used as a starting 
 
 **Consignment id** (`consignmentId`):
 A caller-supplied idempotency key for one document, 10 to 50 characters, unique per agreement. A repeat is answered with a conflict.
-_Avoid_: correlation id, batch id, run id
+_Avoid_: batch id, run id; "correlation id" (that is the lookup handle, a different thing)
 
 **Dry run** (`validateInvoice()`, `PUT .../validate?test=true`):
 A validation request that is checked by the API as if it were a send but creates nothing. It is the authority: a document is valid only when the dry run accepts it. The client can only issue dry runs; there is no way to turn the test flag off from this code.
@@ -396,7 +396,7 @@ The fixed template `/mcp` on every measured request on the MCP port, whatever th
 
 **Trace id and span id** (`trace_id`, `span_id`, `activeIds`):
 The 32- and 16-hex identifiers of the active span, copied onto log lines and, the trace id only, onto audit lines, sampled or not. They correlate lines of one request and are never a metric label. Not secret, not an identity.
-_Avoid_: traceId (the vendor trace id), request id, correlation id
+_Avoid_: traceId (the vendor trace id), request id; "correlation id" (that is the lookup handle)
 
 **Log mixin** (`logMixin`):
 The function that adds `trace_id` and `span_id` to every log line written inside a span. It runs after the log key allowlist, so it is the one path that can add keys the allowlist does not see.
