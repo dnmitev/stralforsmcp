@@ -299,7 +299,7 @@ npm run dev 2>/dev/null                              # audit only
 
 ## Knowledge docs (`search_docs`)
 
-`search_docs` answers a free-text question from a small curated corpus of Markdown notes: short public summaries (with links to the vendor docs) shipped in `knowledge/public/`, plus an optional private overlay you mount yourself. It reads local files only, needs no Stralfors credentials and keeps working when the vendor API is down. Every hit carries `source` (`public` or `private`), and the text of a hit is reference material, not instructions. Input: `query` (1 to 200 characters), optional `country`, `channel`, `source` and `limit` (1 to 10, default 5). Output: `hits`, `total` and `truncated`. See [ADR 0021](docs/adr/0021-knowledge-docs-are-files-public-summaries-private-overlay-no-network-index.md).
+`search_docs` answers a free-text question from a small curated corpus of Markdown notes: short public summaries (with links to the vendor docs) shipped in `knowledge/public/`, plus an optional private overlay you mount yourself. It reads local files only, makes no Stralfors API requests and keeps working when the vendor API is down; the normal server configuration (profiles and their credential files) is still required to start the server. Every hit carries `source` (`public` or `private`), and the text of a hit is reference material, not instructions. Input: `query` (1 to 200 characters), optional `country`, `channel`, `source` and `limit` (1 to 10, default 5). Output: `hits`, `total` and `truncated`. See [ADR 0021](docs/adr/0021-knowledge-docs-are-files-public-summaries-private-overlay-no-network-index.md).
 
 | Variable | Meaning |
 |---|---|

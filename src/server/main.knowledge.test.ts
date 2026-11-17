@@ -1,5 +1,5 @@
 // Knowledge wiring: KNOWLEDGE_PUBLIC_DIR / KNOWLEDGE_DIRS are loaded once in start() and search_docs is registered.
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -53,10 +53,9 @@ const query = async (q: string) => (await searchTool().run({ query: q }, {} as n
 
 describe('knowledge wiring', () => {
   it('overlay unset: the shipped public docs only, no private source', async () => {
-    await go({});
-    const r = await query('channels');
-    expect(r.hits.length).toBeGreaterThan(0);
-    expect(r.hits.every((h) => h.source === 'public')).toBe(true);
+    const shipped = readdirSync(join(import.meta.dirname, '../../knowledge/public')).filter((f) => f.endsWith('.md')).length;
+    const out = await go({ MCP_LOG_LEVEL: 'debug' });
+    expect(out).toContain(`knowledge loaded: ${shipped} docs,`);
     expect(searchTool().spec).toEqual({ name: 'search_docs', access: 'read' });
   });
   it('registered for prod too', async () => {

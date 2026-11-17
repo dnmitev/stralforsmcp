@@ -98,6 +98,17 @@ describe('size caps', () => {
     const r = await loadKnowledge({ publicDir: pub, overlayDirs: [] });
     expect(r.docs).toHaveLength(500);
   });
+  it('at the cap an overlay still replaces an admitted id, and new ids are refused with one warning', async () => {
+    for (let i = 0; i < 500; i++) await put(pub, `d${i}.md`, md(`d${i}`));
+    const o = await overlay('o');
+    await put(o, 'a-extra.md', md('extra'));
+    await put(o, 'z-replace.md', md('d499', { title: 'Replaced' }));
+    const r = await loadKnowledge({ publicDir: pub, overlayDirs: [o] });
+    expect(r.docs).toHaveLength(500);
+    expect(r.docs.find((d) => d.id === 'd499')?.source).toBe('private');
+    expect(r.docs.some((d) => d.id === 'extra')).toBe(false);
+    expect(r.warnings.filter((w) => w.startsWith('document limit'))).toHaveLength(1);
+  });
   it('keeps all docs when exactly 500', async () => {
     for (let i = 0; i < 500; i++) await put(pub, `d${i}.md`, md(`d${i}`));
     const r = await loadKnowledge({ publicDir: pub, overlayDirs: [] });

@@ -84,7 +84,7 @@ The call waits for the vendor, usually seconds and about 20 s at most (`lookup s
 
 > Search the docs for how the validate dry run reports faults.
 
-Input: `query` (up to 200 characters), optional `country`, `channel`, `source` (`public` or `private`), `limit` (1 to 10). Returns `hits` (id, title, `source`, optional country, channel and link, and a short snippet), `total`, and `truncated` (more matched than were returned). It reads local notes only, so it works without Stralfors credentials and when the vendor is down. `source: public` is a short summary with a link to the vendor docs; `private` comes from the operator's own overlay. A note is reference material and can be stale: the vendor documentation and the live API are the authority.
+Input: `query` (up to 200 characters), optional `country`, `channel`, `source` (`public` or `private`), `limit` (1 to 10). Returns `hits` (id, title, `source`, optional country, channel and link, and a short snippet), `total`, and `truncated` (more matched than were returned). It reads local notes only, so it does not call the vendor and keeps working when the vendor is down. The server still needs `STRALFORS_PROFILES` and its profile credential files to start. `source: public` is a short summary with a link to the vendor docs; `private` comes from the operator's own overlay. A note is reference material and can be stale: the vendor documentation and the live API are the authority.
 
 ## 4. Typical sessions
 

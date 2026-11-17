@@ -85,13 +85,13 @@ describe('query handling', () => {
 
 describe('ranking', () => {
   it('weights title over tags over body', () => {
+    // equal token counts, so only the field weights differ; ids sort opposite to the expected ranking, so the id tie-break cannot pass this
     const docs = [
-      d('c-body', { title: 'other body', body: 'zebra' }),
-      d('b-tag', { title: 'other tag', tags: ['zebra'] }),
-      d('a-title', { title: 'zebra' }),
+      d('a-body', { title: 'alpha beta', body: 'zebra' }),
+      d('b-tag', { title: 'alpha beta', tags: ['zebra'], body: '' }),
+      d('c-title', { title: 'zebra beta', body: 'alpha' }),
     ];
-    // ids chosen so the id tie-break would give the reverse order
-    expect(idsOf(run(docs.reverse(), { query: 'zebra' }))).toEqual(['a-title', 'b-tag', 'c-body']);
+    expect(idsOf(run(docs, { query: 'zebra' }))).toEqual(['c-title', 'b-tag', 'a-body']);
   });
   it('title outranks several body mentions', () => {
     const docs = [d('a-body', { body: 'zebra zebra zebra zebra' }), d('z-title', { title: 'zebra' })];
