@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -238,9 +238,22 @@ describe('walk limits', () => {
     await put(o, 'a/b/c/d/e/no.md', md('no'));
     expect(ids((await loadKnowledge({ publicDir: pub, overlayDirs: [o] })).docs)).toEqual(['ok']);
   });
+  it.skipIf(process.getuid?.() === 0)('an unreadable subdirectory is a warning naming only its base name; the other docs still load', async () => {
+    await put(pub, 'ok.md', md('ok'));
+    await put(pub, 'locked/inner.md', md('inner'));
+    await chmod(join(pub, 'locked'), 0o000);
+    try {
+      const r = await loadKnowledge({ publicDir: pub, overlayDirs: [] });
+      expect(ids(r.docs)).toEqual(['ok']);
+      expect(r.warnings).toEqual([{ source: 'public', text: 'skipped locked: unreadable' }]);
+    } finally {
+      await chmod(join(pub, 'locked'), 0o755);
+    }
+  });
   // The walk must visit entries in sorted order for the last name to be the one cut off.
   const flat = async (dir: string, total: number) => {
-    await Promise.all(Array.from({ length: total - 1 }, (_, i) => writeFile(join(dir, `a${String(i).padStart(5, '0')}.txt`), 'x')));
+    const names = Array.from({ length: total - 1 }, (_, i) => `a${String(i).padStart(5, '0')}.txt`);
+    for (let i = 0; i < names.length; i += 100) await Promise.all(names.slice(i, i + 100).map((name) => writeFile(join(dir, name), 'x'))); // batches keep the open-file count low
     await writeFile(join(dir, 'zz-last.md'), md('last'));
   };
   it('exactly 5000 scanned entries: the last one is still read', async () => {

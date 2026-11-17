@@ -1,5 +1,5 @@
-import { open, readdir, realpath } from 'node:fs/promises';
-import { join, sep } from 'node:path';
+import { lstat, open, readdir, realpath } from 'node:fs/promises';
+import { basename, join, sep } from 'node:path';
 import { ConfigError } from '../stralfors/errors.ts';
 import { parseDoc, type KnowledgeDoc } from './doc.ts';
 
@@ -14,15 +14,25 @@ export type LoadWarning = { source: 'public' | 'private'; text: string };
 export type LoadResult = { docs: KnowledgeDoc[]; warnings: LoadWarning[] };
 
 // Sorted depth-first walk; the cut-offs are silent (a log line per skipped file would be a flood).
-const walk = async (root: string): Promise<{ path: string; name: string }[]> => {
+// An unreadable nested directory is a warning, like an unreadable file; only the root failing is fatal. A directory is re-checked with lstat before descent so one swapped for a symlink after the listing is not followed (a small gap remains; the per-file realpath check still keeps content inside the root).
+const isDir = (path: string) => lstat(path).then((st) => st.isDirectory(), () => false);
+const walk = async (root: string, warn: (text: string) => void): Promise<{ path: string; name: string }[]> => {
   const out: { path: string; name: string }[] = [];
   let scanned = 0;
   const go = async (dir: string, depth: number): Promise<void> => {
-    for (const e of (await readdir(dir, { withFileTypes: true })).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch (e) {
+      if (depth === 0) throw e;
+      warn(`skipped ${basename(dir)}: unreadable`);
+      return;
+    }
+    for (const e of entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
       if (++scanned > MAX_SCANNED) return;
       const path = join(dir, e.name);
       if (e.isDirectory()) {
-        if (depth < MAX_DEPTH) await go(path, depth + 1);
+        if (depth < MAX_DEPTH && (await isDir(path))) await go(path, depth + 1);
       } else if (e.name.endsWith('.md')) out.push({ path, name: e.name });
       if (scanned > MAX_SCANNED) return;
     }
@@ -38,7 +48,11 @@ const readBounded = async (path: string): Promise<string | null | undefined> => 
     if (!(await fh.stat()).isFile()) return undefined;
     const buf = Buffer.alloc(MAX_FILE_BYTES + 1);
     let n = 0;
-    for (let r = 1; r > 0 && n < buf.length; n += r) r = (await fh.read(buf, n, buf.length - n, n)).bytesRead;
+    while (n < buf.length) {
+      const { bytesRead } = await fh.read(buf, n, buf.length - n, n);
+      if (bytesRead === 0) break;
+      n += bytesRead;
+    }
     return n > MAX_FILE_BYTES ? null : buf.toString('utf8', 0, n);
   } finally {
     await fh.close();
@@ -48,17 +62,17 @@ const readBounded = async (path: string): Promise<string | null | undefined> => 
 // Warnings are fixed text plus the base file name: never content, never a directory path.
 // Admission to the 500-doc limit happens here, before a body is kept, so a huge overlay cannot fill memory: a known id is always replaced, a new id only while there is room.
 const readDir = async (dir: string, source: 'public' | 'private', unreadable: string, all: Map<string, KnowledgeDoc>) => {
+  const warnings: LoadWarning[] = [];
+  const warn = (text: string) => warnings.push({ source, text });
   let root: string;
   let files: { path: string; name: string }[];
   try {
     root = await realpath(dir);
-    files = await walk(root);
+    files = await walk(root, warn);
   } catch {
     throw new ConfigError(unreadable);
   }
   const seen = new Set<string>(); // first sorted file wins inside one directory
-  const warnings: LoadWarning[] = [];
-  const warn = (text: string) => warnings.push({ source, text });
   let capped = false;
   for (const { path, name } of files) {
     try {
