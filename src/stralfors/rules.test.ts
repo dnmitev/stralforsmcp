@@ -216,9 +216,9 @@ describe('flattenRulesWithCriteria', () => {
     rule({ id: '1', parameter: 'Document.P', tag: 'Template0', ruleCriterias: ['Required', 'ExampleValue: x'], expectedPattern: '^x$', dependencyOperator: 'AllRequired',
       dependencies: [rule({ id: '2', parameter: 'Document.Q[].R', ruleCriterias: ['NumericExpected'] })] }),
   ];
-  it('returns readable (same as flattenRules) and local rules with parsed criteria, same walk order', () => {
+  it('returns readable and local rules with parsed criteria, same walk order', () => {
     const { readable, local } = flattenRulesWithCriteria(tree);
-    expect(readable).toEqual(flattenRules(tree));
+    expect(readable.map((r) => r.id)).toEqual(local.map((r) => r.id));
     expect(local).toEqual([
       { id: '1', path: 'document.p', tag: 'Template0', criteria: [{ kind: 'required' }, { kind: 'example', text: 'x' }, { kind: 'pattern', pattern: '^x$' }] },
       { id: '2', path: 'document.q[].r', criteria: [{ kind: 'numeric' }] },

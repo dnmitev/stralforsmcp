@@ -35,15 +35,41 @@ const plain = (v: unknown): string | undefined => {
 };
 const today10 = (d: Date): string => d.toISOString().slice(0, 10);
 
-// A quantified group whose body itself holds a quantifier or an alternation: the shapes that backtrack exponentially, e.g. (a+)+ (.*)* (a|aa)+
-// ponytail: conservative textual detector; it may skip a safe pattern (left to the dry run) but never lets these shapes run
-const RISKY = /\((?:\?:)?[^()]*(?:[+*|]|\{\d*,\d*\})[^()]*\)(?:[+*]|\{\d*,\d*\})/;
+const MAX_DEPTH = 5;
+const QUANT = /^\{\d*,\d*\}/;
+/**
+ * True for the shapes that backtrack exponentially: a quantified group whose body holds a quantifier or an alternation at any depth,
+ * e.g. (a+)+ ((a+))+ (.*)* (a|aa)+, and for groups nested deeper than MAX_DEPTH.
+ * ponytail: conservative textual scan (escapes and character classes skipped); it may skip a safe pattern (left to the dry run) but never lets these shapes run.
+ */
+function risky(p: string): boolean {
+  const stack: boolean[] = []; // one flag per open group: its body holds a quantifier or an alternation
+  let inClass = false;
+  for (let i = 0; i < p.length; i++) {
+    const ch = p[i]!;
+    if (ch === '\\') { i++; continue; }
+    if (inClass) { if (ch === ']') inClass = false; continue; }
+    if (ch === '[') { inClass = true; continue; }
+    if (ch === '(') { if (stack.length >= MAX_DEPTH) return true; stack.push(false); continue; }
+    if (ch === ')') {
+      const inner = stack.pop();
+      if (inner === undefined) continue; // unbalanced: RegExp rejects it
+      const next = p[i + 1];
+      if (inner && (next === '+' || next === '*' || (next === '{' && QUANT.test(p.slice(i + 1))))) return true;
+      if (inner && stack.length > 0) stack[stack.length - 1] = true;
+      continue;
+    }
+    if (stack.length > 0 && (ch === '+' || ch === '*' || ch === '|' || (ch === '{' && QUANT.test(p.slice(i))))) stack[stack.length - 1] = true;
+  }
+  return false;
+}
 const compiled = new Map<string, RegExp | undefined>();
 /** Compiles a vendor pattern once; undefined when it is too long, unparseable or risky. */
 function compile(pattern: string): RegExp | undefined {
+  if (pattern.length > MAX_PATTERN) return undefined; // not cached: the cache bounds entries, not key size
   if (compiled.has(pattern)) return compiled.get(pattern);
   let re: RegExp | undefined;
-  if (pattern.length <= MAX_PATTERN && !RISKY.test(pattern)) try { re = new RegExp(pattern); } catch { /* unparseable: dry run decides */ }
+  if (!risky(pattern)) try { re = new RegExp(pattern); } catch { /* unparseable: dry run decides */ }
   if (compiled.size >= 1000) compiled.clear(); // ponytail: patterns come from the cached rules of a few channels; the cap only bounds memory
   compiled.set(pattern, re);
   return re;

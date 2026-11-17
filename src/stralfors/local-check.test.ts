@@ -1,5 +1,5 @@
 // Synthetic documents and rules only (ADR 0004). The first path segment "document" names the document passed in.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { localCheck } from './local-check.ts';
 import { parseCriterion, type LocalRule } from './rules.ts';
 
@@ -105,14 +105,27 @@ describe('localCheck certainty (never a false invalid)', () => {
     expect(localCheck({ a: { b: 'b'.repeat(500) } }, rules)).toHaveLength(1);
     expect(localCheck({ a: { b: 'b'.repeat(501) } }, rules)).toEqual([]);
   });
-  it('leaves patterns with nested quantifiers to the dry run, and returns fast on a ReDoS shape', () => {
+  it('leaves patterns with nested quantifiers to the dry run: they never reach regex execution', () => {
     const evil = { a: { b: `${'a'.repeat(30)}!` } };
-    for (const p of ['^(a+)+$', '^(.*)*$', '^(a|aa)+$', '^(\\d+)*x$', '^([a-z]+)+$', '^(?:a+)+$', '^(a*){2,}$']) {
-      const t = Date.now();
-      expect(localCheck(evil, [L('1', P, [`ExpectedPattern: ${p}`])]), p).toEqual([]);
-      expect(Date.now() - t, p).toBeLessThan(200);
-    }
+    const evilPatterns = ['^(a+)+$', '^(.*)*$', '^(a|aa)+$', '^(\\d+)*x$', '^([a-z]+)+$', '^(?:a+)+$', '^(a*){2,}$', '^((a+))+$', '^(((b)|(c))+)+$'];
+    const executed: string[] = [];
+    const orig = RegExp.prototype.test;
+    const spy = vi.spyOn(RegExp.prototype, 'test').mockImplementation(function (this: RegExp, s: string) { executed.push(this.source); return orig.call(this, s); });
+    try {
+      for (const p of evilPatterns) expect(localCheck(evil, [L('1', P, [`ExpectedPattern: ${p}`])]), p).toEqual([]);
+    } finally { spy.mockRestore(); }
+    expect(executed.filter((src) => evilPatterns.includes(src))).toEqual([]);
     expect(localCheck({ a: { b: 'x' } }, [L('1', P, ['ExpectedPattern: ^(ab)+$'])]).map((f) => f.kind)).toEqual(['pattern']); // plain group quantifier is still checked
+  });
+  it('skips groups nested deeper than five levels and checks five', () => {
+    const check = (p: string) => localCheck({ a: { b: 'z' } }, [L('1', P, [`ExpectedPattern: ${p}`])]).map((f) => f.kind);
+    expect(check('^(((((x)))))$')).toEqual(['pattern']);
+    expect(check('^((((((x))))))$')).toEqual([]);
+  });
+  it('treats an escaped parenthesis and a character class as plain text', () => {
+    const check = (p: string) => localCheck({ a: { b: 'z' } }, [L('1', P, [`ExpectedPattern: ${p}`])]).map((f) => f.kind);
+    expect(check('^\\(a+\\)+$')).toEqual(['pattern']);
+    expect(check('^[(a+)]+$')).toEqual(['pattern']);
   });
   it('compiles each pattern once across array elements', () => {
     const real = globalThis.RegExp;
