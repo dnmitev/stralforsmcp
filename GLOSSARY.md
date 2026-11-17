@@ -553,7 +553,7 @@ One check name with a count from a drift check. Distinct from a validation findi
 The private record of a previous drift check (names, ids, version, counts and hashes of free-text criteria) that later runs compare against.
 
 **Standing finding**:
-A drift finding that is present on every run against the live API (unknown criterion kinds, rule patterns JavaScript cannot compile). With a baseline it counts as drift only when its count changes.
+A drift finding that is present on every run against the live API (unknown criterion kinds, rule patterns this server cannot interpret). With a baseline it counts as drift only when its count changes.
 
 **Live read check**:
 A manual run of the read tools against a real environment that prints shapes and counts only, so its output can be shared.
