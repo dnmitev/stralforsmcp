@@ -3,7 +3,7 @@ export interface RulesCache {
   get<T>(profile: string, channel: string, templateStandardId: number, fetch: () => Promise<T>): Promise<T>;
 }
 
-export const MAX_ENTRIES = 256; // a caller-chosen templateStandardId is part of the key: bound the map regardless of TTL
+export const MAX_ENTRIES = 64; // a caller-chosen templateStandardId is part of the key: bound the map regardless of TTL
 
 /**
  * A pending fetch is never evicted or expired, so concurrent callers always share it; the TTL starts when it settles.

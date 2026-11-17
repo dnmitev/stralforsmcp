@@ -10,6 +10,9 @@ const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: 
 export const DEFAULT_LIMIT = 100;
 export const MAX_LIMIT = 200;
 
+const CHANNEL = z.string().regex(/^[A-Za-z0-9]{1,40}$/, 'a channel name is 1 to 40 letters or digits'); // also the rules-cache key: keep it bounded
+const TEMPLATE_ID = z.number().int().min(0).max(1_000_000);
+
 const ruleSchema = z.strictObject({
   id: z.string(),
   path: z.string(),
@@ -23,8 +26,8 @@ const ruleSchema = z.strictObject({
 
 export const getRulesInput = z.object({
   profile: z.string().min(1).optional(),
-  channel: z.string().min(1),
-  templateStandardId: z.number().int().min(0).optional(),
+  channel: CHANNEL,
+  templateStandardId: TEMPLATE_ID.optional(),
   requiredOnly: z.boolean().optional(),
   pathPrefix: z.string().min(1).optional(),
   offset: z.number().int().min(0).optional(),
@@ -86,9 +89,9 @@ export const EXAMPLE_NOTES: readonly string[] = [
 
 export const getExampleInput = z.object({
   profile: z.string().min(1).optional(),
-  channels: z.array(z.string().min(1).regex(/^[^,]+$/, 'a channel name cannot contain a comma')).min(1).max(5), // joined with commas upstream: a comma inside a name would add channels
-  defaultChannel: z.string().min(1).optional(),
-  templateStandardId: z.number().int().min(0).optional(),
+  channels: z.array(CHANNEL).min(1).max(5), // joined with commas upstream: the pattern keeps a comma out of a name
+  defaultChannel: CHANNEL.optional(),
+  templateStandardId: TEMPLATE_ID.optional(),
 });
 export const getExampleOutput = z.object({
   profile: z.string(),

@@ -12,6 +12,8 @@ import { ToolInputError, type ToolDef } from './tools.ts';
 
 const MAX_FINDINGS = 100;
 const MAX_CHANNELS = 5;
+const CHANNEL_NAME = /^[A-Za-z0-9]{1,40}$/;
+const MAX_TEMPLATE_ID = 1_000_000;
 const CHANNEL_PATH = 'document.documentHeader.channelPriority';
 
 const part = z.record(z.string(), z.unknown()).optional();
@@ -82,8 +84,9 @@ export function createValidateInvoice(deps: ValidateDeps): ToolDef<typeof valida
       const channels = [...new Set((Array.isArray(cp) ? cp : []).filter((c): c is string => typeof c === 'string'))];
       if (channels.length === 0) return result('local', [{ source: 'local', path: CHANNEL_PATH, kind: 'required', message: `${CHANNEL_PATH} is required.` }]);
       if (channels.length > MAX_CHANNELS) return result('local', [{ source: 'local', path: CHANNEL_PATH, kind: 'shape', message: `${CHANNEL_PATH} may list at most ${MAX_CHANNELS} channels.` }]);
+      if (channels.some((c) => !CHANNEL_NAME.test(c))) return result('local', [{ source: 'local', path: CHANNEL_PATH, kind: 'shape', message: `${CHANNEL_PATH} entries must be 1 to 40 letters or digits.` }]);
       const sid = (documentHeader.templateParameter as { standardId?: unknown } | undefined)?.standardId;
-      const templateStandardId = typeof sid === 'number' && Number.isInteger(sid) && sid >= 0 ? sid : 0;
+      const templateStandardId = typeof sid === 'number' && Number.isInteger(sid) && sid >= 0 && sid <= MAX_TEMPLATE_ID ? sid : 0;
 
       const settled = await Promise.allSettled(channels.map((c) => loadRules(deps.cache, client, profile, c, templateStandardId)));
       const unavailable: Finding[] = [];
@@ -91,7 +94,8 @@ export function createValidateInvoice(deps: ValidateDeps): ToolDef<typeof valida
       for (const s of settled) {
         if (s.status === 'fulfilled') local.push(...s.value.local);
         else if (s.reason instanceof StralforsError) unavailable.push({ ...RULES_UNAVAILABLE });
-        else throw s.reason;      }
+        else throw s.reason;
+      }
       const found = localCheck(args.document, local);
       if (found.length > 0) return result('local', [...found, ...unavailable]);
 

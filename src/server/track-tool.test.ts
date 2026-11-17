@@ -153,14 +153,14 @@ describe('AC-2 exactly one key, before any request', () => {
 });
 
 describe('AC-3 statuses through the tool', () => {
-  it('maps five statuses, keeps raw strings', async () => {
+  it('maps five statuses, keeps known status names, masks others', async () => {
     const x = await world();
     const c = receiverCanaries();
     const statuses = ['Verified Delivered', 'rejected', 'Production file created', 'Cancelled', 'SomethingNew'];
     x.serve(DOCS, 200, page(statuses.map((s, i) => rawDoc(c, { documentId: `D${i}`, channels: [channel(s)] }))));
     const r = (await x.run({ invoiceNumber: 'a' })) as Out;
     expect(r.documents.map((d) => [d.channels[0]!.status, d.channels[0]!.outcome])).toEqual([
-      ['Verified Delivered', 'delivered'], ['rejected', 'refused'], ['Production file created', 'in_progress'], ['Cancelled', 'failed'], ['SomethingNew', 'unknown'],
+      ['Verified Delivered', 'delivered'], ['rejected', 'refused'], ['Production file created', 'in_progress'], ['Cancelled', 'failed'], ['other', 'unknown'],
     ]);
   });
 });

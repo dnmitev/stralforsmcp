@@ -47,9 +47,9 @@ describe('required, array, list, pattern, numeric', () => {
   });
   it('pattern ignores a non-string and an oversize text or pattern', () => {
     expect(kinds(5, ['ExpectedPattern: ^\\d{3}$'])).toEqual([]);
-    expect(kinds('x'.repeat(10_001), ['ExpectedPattern: ^y$'])).toEqual([]);
+    expect(kinds('x'.repeat(501), ['ExpectedPattern: ^y$'])).toEqual([]);
     expect(kinds('x', [`ExpectedPattern: ^${'y'.repeat(500)}$`])).toEqual([]);
-    expect(kinds('x'.repeat(10_000), ['ExpectedPattern: ^y$'])).toEqual(['pattern']);
+    expect(kinds('x'.repeat(500), ['ExpectedPattern: ^y$'])).toEqual(['pattern']);
     expect(kinds('x', [`ExpectedPattern: ^${'y'.repeat(497)}$`])).toEqual(['pattern']);
     expect(kinds('x', ['ExpectedPattern: ([unclosed'])).toEqual([]);
   });

@@ -1,10 +1,11 @@
 /** Pure: checks a document against parsed rules. Emits only findings it is certain of; anything uncertain is left to the dry run. */
+import { createContext, Script } from 'node:vm';
 import type { Finding } from './findings.ts';
 import { hintFor, type Criterion, type LocalRule } from './rules.ts';
 
 const MAX_FINDINGS = 200;
 const MAX_PATTERN = 500;
-const MAX_TEXT = 10_000;
+const MAX_TEXT = 500; // ponytail: a longer value is left to the dry run; with the nested-quantifier skip this bounds regex work
 const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 const PLAIN = /^-?\d+(\.\d+)?$/;
 const ABSENT = Symbol('absent');
@@ -35,6 +36,58 @@ const plain = (v: unknown): string | undefined => {
 };
 const today10 = (d: Date): string => d.toISOString().slice(0, 10);
 
+const MAX_DEPTH = 5;
+const QUANT = /^\{\d*,\d*\}/;
+/**
+ * True for the shapes that backtrack exponentially: a quantified group whose body holds a quantifier or an alternation at any depth,
+ * e.g. (a+)+ ((a+))+ (.*)* (a|aa)+, and for groups nested deeper than MAX_DEPTH.
+ * ponytail: conservative textual scan (escapes and character classes skipped); it may skip a safe pattern (left to the dry run) but never lets these shapes run.
+ */
+function risky(p: string): boolean {
+  const stack: boolean[] = []; // one flag per open group: its body holds a quantifier or an alternation
+  let inClass = false;
+  for (let i = 0; i < p.length; i++) {
+    const ch = p[i]!;
+    if (ch === '\\') { i++; continue; }
+    if (inClass) { if (ch === ']') inClass = false; continue; }
+    if (ch === '[') { inClass = true; continue; }
+    if (ch === '(') { if (stack.length >= MAX_DEPTH) return true; stack.push(false); continue; }
+    if (ch === ')') {
+      const inner = stack.pop();
+      if (inner === undefined) continue; // unbalanced: RegExp rejects it
+      const next = p[i + 1];
+      if (inner && (next === '+' || next === '*' || (next === '{' && QUANT.test(p.slice(i + 1))))) return true;
+      if (inner && stack.length > 0) stack[stack.length - 1] = true;
+      continue;
+    }
+    if (stack.length > 0 && (ch === '+' || ch === '*' || ch === '|' || (ch === '{' && QUANT.test(p.slice(i))))) stack[stack.length - 1] = true;
+  }
+  return false;
+}
+// The scan above cannot be complete, so every match also runs under a hard time budget: the engine is interrupted when it overruns.
+const sandbox = createContext({ re: null, s: '' });
+const probe = new Script('re.test(s)');
+const REGEX_BUDGET_MS = 20;
+const MAX_TIMED_MATCHES = 500; // per localCheck call: each timed match costs a watchdog thread, and a large array must not stretch the call
+let timedLeft = MAX_TIMED_MATCHES;
+/** Runs one match; undefined when it overran the budget (left to the dry run). */
+function matches(re: RegExp, v: string): boolean | undefined {
+  sandbox['re'] = re;
+  sandbox['s'] = v;
+  try { return probe.runInContext(sandbox, { timeout: REGEX_BUDGET_MS }) as boolean; } catch { return undefined; }
+}
+const compiled = new Map<string, RegExp | undefined>();
+/** Compiles a vendor pattern once; undefined when it is too long, unparseable or risky. */
+function compile(pattern: string): RegExp | undefined {
+  if (pattern.length > MAX_PATTERN) return undefined; // not cached: the cache bounds entries, not key size
+  if (compiled.has(pattern)) return compiled.get(pattern);
+  let re: RegExp | undefined;
+  if (!risky(pattern)) try { re = new RegExp(pattern); } catch { /* unparseable: dry run decides */ }
+  if (compiled.size >= 1000) compiled.clear(); // ponytail: patterns come from the cached rules of a few channels; the cap only bounds memory
+  compiled.set(pattern, re);
+  return re;
+}
+
 /** True when the value certainly violates the criterion. `parent` serves exclusive. */
 function violates(c: Criterion, v: unknown, parent: Obj, today: string): boolean {
   if (c.kind === 'exclusive') return v !== null && v !== ABSENT && (() => { const o = get(parent, camel(c.field)); return o !== ABSENT && o !== null; })();
@@ -45,8 +98,14 @@ function violates(c: Criterion, v: unknown, parent: Obj, today: string): boolean
     case 'array': return !Array.isArray(v);
     case 'valid_items': case 'valid_templates': return scalar && !c.values.some((x) => x.toLowerCase() === String(v).toLowerCase()); // ponytail: case-insensitive, never a false invalid; exact casing is the dry run's
     case 'pattern': {
-      if (typeof v !== 'string' || v.length > MAX_TEXT || c.pattern.length > MAX_PATTERN) return false;
-      try { return !new RegExp(c.pattern).test(v); } catch { return false; }
+      if (typeof v !== 'string' || v.length > MAX_TEXT) return false;
+      const re = compile(c.pattern);
+      if (re === undefined) return false;
+      if (timedLeft <= 0) return false; // over the budget: left to the dry run
+      timedLeft--;
+      const ok = matches(re, v);
+      if (ok === undefined) { compiled.set(c.pattern, undefined); return false; } // overran: never try this pattern again
+      return !ok;
     }
     case 'numeric': return typeof v === 'string' ? !/^\d+$/.test(v) : typeof v === 'number' && !(Number.isInteger(v) && v >= 0);
     case 'decimal': return typeof v === 'string' ? !DECIMAL.test(v) : false;
@@ -67,6 +126,7 @@ function violates(c: Criterion, v: unknown, parent: Obj, today: string): boolean
 
 export function localCheck(document: unknown, rules: readonly LocalRule[], today: Date = new Date()): Finding[] {
   if (!isObj(document)) return [];
+  timedLeft = MAX_TIMED_MATCHES;
   const day = today10(today);
   const optional = new Set(rules.filter((r) => r.criteria.some((c) => c.kind === 'optional_when')).map((r) => r.path));
   const seen = new Set<string>();

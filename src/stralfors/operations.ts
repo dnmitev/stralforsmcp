@@ -5,10 +5,6 @@ const V = '/rest/outputmanagement/apiomni/v2/invoices';
 const TT = '/rest/outputmanagement/tracktrace/v1';
 const CL = '/rest/outputmanagement/channellookup/v1';
 
-export const KNOWN_CHANNELS = ['AvtaleGiro', 'Custom', 'Digipost', 'eBrevWeMail', 'EDI', 'eInvoice', 'eMail', 'Kivra', 'SMS', 'WeMailNO'] as const;
-export type KnownChannel = (typeof KNOWN_CHANNELS)[number];
-export const isKnownChannel = (s: string): s is KnownChannel => (KNOWN_CHANNELS as readonly string[]).includes(s);
-
 // The API sometimes double-encodes a JSON body as a JSON string; unwrap it before validating.
 const unwrap = <T extends z.ZodType>(schema: T) =>
   z.preprocess((v) => {

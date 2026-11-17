@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createRulesCache } from './rules-cache.ts';
+import { MAX_ENTRIES, createRulesCache } from './rules-cache.ts';
 
 const setup = (ttlMs = 3_600_000) => {
   let t = 1000;
@@ -96,15 +96,15 @@ describe('size bound', () => {
     await cache.get('p', 'a', 0, f);
     expect(calls).toBe(6); // a was evicted
   });
-  it('defaults to 256 entries', async () => {
+  it('defaults to 64 entries (older test)', async () => {
     const { MAX_ENTRIES } = await import('./rules-cache.ts');
-    expect(MAX_ENTRIES).toBe(256);
+    expect(MAX_ENTRIES).toBe(64);
     const cache = createRulesCache({ ttlMs: 3_600_000 });
     let calls = 0;
-    for (let i = 0; i < 257; i++) await cache.get('p', `c${i}`, 0, () => (calls++, Promise.resolve(i)));
+    for (let i = 0; i < 65; i++) await cache.get('p', `c${i}`, 0, () => (calls++, Promise.resolve(i)));
     await cache.get('p', 'c0', 0, () => (calls++, Promise.resolve(0))); // evicted
-    await cache.get('p', 'c256', 0, () => (calls++, Promise.resolve(0))); // kept
-    expect(calls).toBe(258);
+    await cache.get('p', 'c64', 0, () => (calls++, Promise.resolve(0))); // kept
+    expect(calls).toBe(66);
   });
 });
 
@@ -193,4 +193,15 @@ describe('rules cache', () => {
       spy.mockRestore();
     }
   });
+});
+
+it('default capacity is 64 entries', async () => {
+  const { cache, fetcher } = setup();
+  expect(MAX_ENTRIES).toBe(64);
+  for (let i = 0; i < 100; i++) await cache.get('p', 'c', i, fetcher());
+  const again = vi.fn(() => Promise.resolve('r'));
+  await cache.get('p', 'c', 0, again);
+  expect(again).toHaveBeenCalledOnce(); // oldest was evicted
+  await cache.get('p', 'c', 99, again);
+  expect(again).toHaveBeenCalledOnce(); // newest still cached
 });

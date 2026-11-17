@@ -164,4 +164,3 @@ export function flattenRulesWithCriteria(tree: readonly RuleNode[]): { readable:
   return { readable, local };
 }
 
-export const flattenRules = (tree: readonly RuleNode[]): ReadableRule[] => flattenRulesWithCriteria(tree).readable;

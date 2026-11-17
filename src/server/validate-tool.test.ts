@@ -108,11 +108,20 @@ describe('stage order and short circuit', () => {
     expect(x.requests(RULES).map((r) => queryOf(r.url).get('channel')).sort()).toEqual(['X', 'Y']);
   });
   it.each([
-    [{ standardId: 3 }, '3'], [{ standardId: 0 }, '0'], [{ standardId: -1 }, '0'], [{ standardId: 1.5 }, '0'], [{ standardId: '2' }, '0'], [undefined, '0'],
+    [{ standardId: 3 }, '3'], [{ standardId: 0 }, '0'], [{ standardId: -1 }, '0'], [{ standardId: 1.5 }, '0'], [{ standardId: 1_000_000 }, '1000000'], [{ standardId: 1_000_001 }, '0'], [{ standardId: '2' }, '0'], [undefined, '0'],
   ])('templateParameter %j requests templateStandardId %s', async (tp, expected) => {
     const x = await world();
     await x.run({ document: doc(['X'], {}, tp === undefined ? {} : { templateParameter: tp }) });
     expect(queryOf(x.requests(RULES)[0]!.url).get('templateStandardId')).toBe(expected);
+  });
+  it('a channel name outside [A-Za-z0-9]{1,40}: shape finding on channelPriority, stage local, no upstream call', async () => {
+    const x = await world();
+    for (const bad of ['a b', 'x/../y', 'A'.repeat(41), 'é']) {
+      const r = await x.run({ document: doc(['X', bad]) });
+      expect(r).toMatchObject({ valid: false, stage: 'local' });
+      expect(r.findings).toEqual([expect.objectContaining({ source: 'local', kind: 'shape', path: 'document.documentHeader.channelPriority' })]);
+    }
+    expect(x.fake.apiRequests).toHaveLength(0);
   });
   it('more than 5 channels: shape finding on channelPriority, stage local, no upstream call; exactly 5 is fine', async () => {
     const x = await world();
@@ -249,11 +258,11 @@ describe('rules_unavailable', () => {
   it('a failed rules fetch alone: dry run still runs, result invalid at dry_run with a fixed finding that does not name the channel', async () => {
     const x = await world();
     x.routes[RULES] = (_q, res) => json(res, 403, { message: 'nope' });
-    const r = await x.run({ document: doc(['CHAN-CANARY']) });
+    const r = await x.run({ document: doc(['CHANCANARY']) });
     expect(x.requests(VALIDATE)).toHaveLength(1);
     expect(r).toMatchObject({ valid: false, stage: 'dry_run', moreMayFollow: true });
     expect(r.findings).toEqual([expect.objectContaining({ source: 'local', kind: 'rules_unavailable' })]);
-    expect(JSON.stringify(r)).not.toContain('CHAN-CANARY');
+    expect(JSON.stringify(r)).not.toContain('CHANCANARY');
   });
   it('one finding per failing channel; the other channel is still checked and its findings stop the run at local', async () => {
     const x = await world({ rules: { Y: [REQ_HEADER] } });

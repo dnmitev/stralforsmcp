@@ -119,7 +119,6 @@ jobs:
     if: ${{ !cancelled() && needs.scope.outputs.mutation != 'skip' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    # Full --force run on main took 19m40s at Phase 2 close (green) and 20m+ afterwards (cancelled): leave headroom.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -133,19 +132,15 @@ jobs:
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: reports/stryker-incremental.json
-          key: stryker-${{ github.sha }}
+          # A key that never exists, so the newest stryker- cache always wins (an exact same-commit hit would skip a newer full baseline).
+          key: stryker-restore-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: stryker-
-      # PRs reuse main's incremental file (fast). Stryker's incremental mode does not re-run old survivors against newly
-      # added tests, so main recomputes everything and saves a fresh baseline.
+      # Every ref runs incrementally without static mutants (~19% of mutants, ~87% of test time). The full --force run took
+      # over 45 min on main and timed out on every push, so it moved to mutation-full.yml (weekly, 90 min).
       - name: Mutation tests (incremental)
-        if: github.ref != 'refs/heads/main'
-        # Static mutants are ~19% of mutants but ~87% of test time; main's full run still covers them.
         run: npm run mutation -- --ignoreStatic
-      - name: Mutation tests (full)
-        if: github.ref == 'refs/heads/main'
-        run: npm run mutation -- --force
       - name: Save incremental file
-        if: always() && github.ref == 'refs/heads/main'
+        if: success() && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: reports/stryker-incremental.json
@@ -171,7 +166,7 @@ jobs:
             echo "dashboard key not set, skipped"
             exit 0
           fi
-          npx stryker run --reporters clear-text,dashboard
+          npx stryker run --ignoreStatic --reporters clear-text,dashboard
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

@@ -1,4 +1,4 @@
-/** Pure: maps Stralfors validation failures to findings. Every message is a fixed template; vendor text never survives. */
+/** Pure: maps Stralfors validation failures to findings. Messages are fixed templates; the only vendor text that passes through is rule content ADR 0016 and 0017 allow (patterns, examples, allowed values, *When expressions). */
 import { hintFor, parseCriterion, toJsonPath, type Criterion } from './rules.ts';
 import type { Violation } from './errors.ts';
 

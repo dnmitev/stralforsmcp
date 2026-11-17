@@ -1,6 +1,6 @@
 // Synthetic criteria in the documented grammar (ADR 0004): one case per row of the criterion table.
 import { describe, expect, it } from 'vitest';
-import { criteriaOf, flattenRules, flattenRulesWithCriteria, hintFor, hintsFor, parseCriterion, toJsonPath, type RuleNode } from './rules.ts';
+import { criteriaOf, flattenRulesWithCriteria, hintFor, hintsFor, parseCriterion, toJsonPath, type RuleNode } from './rules.ts';
 
 const P = 'document.a.b';
 const rule = (over: Partial<RuleNode> = {}): RuleNode => ({ id: '7', parameter: 'Document.A.B', ...over });
@@ -118,6 +118,8 @@ describe('criteriaOf / hintsFor', () => {
   });
 });
 
+const flattenRules = (t: readonly RuleNode[]) => flattenRulesWithCriteria(t).readable;
+
 describe('flattenRules', () => {
   it('flattens children, keeps dependsOn, resolves paths', () => {
     const tree: RuleNode[] = [
@@ -214,9 +216,9 @@ describe('flattenRulesWithCriteria', () => {
     rule({ id: '1', parameter: 'Document.P', tag: 'Template0', ruleCriterias: ['Required', 'ExampleValue: x'], expectedPattern: '^x$', dependencyOperator: 'AllRequired',
       dependencies: [rule({ id: '2', parameter: 'Document.Q[].R', ruleCriterias: ['NumericExpected'] })] }),
   ];
-  it('returns readable (same as flattenRules) and local rules with parsed criteria, same walk order', () => {
+  it('returns readable and local rules with parsed criteria, same walk order', () => {
     const { readable, local } = flattenRulesWithCriteria(tree);
-    expect(readable).toEqual(flattenRules(tree));
+    expect(readable.map((r) => r.id)).toEqual(local.map((r) => r.id));
     expect(local).toEqual([
       { id: '1', path: 'document.p', tag: 'Template0', criteria: [{ kind: 'required' }, { kind: 'example', text: 'x' }, { kind: 'pattern', pattern: '^x$' }] },
       { id: '2', path: 'document.q[].r', criteria: [{ kind: 'numeric' }] },

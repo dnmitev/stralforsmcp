@@ -136,6 +136,17 @@ describe('only scalar values are picked', () => {
   });
 });
 
+describe('status masking', () => {
+  it('a status that is not an exact known name, or is over-long, becomes the placeholder everywhere', () => {
+    const long = 'Delivered'.padEnd(65, ' ');
+    const doc = minimiseDocument({ channels: [{ status: 'Printing for Alice', statusComments: [{ status: 'Printing for Alice' }, { status: long }] }] });
+    const hist = minimiseHistory({ status: 'Printing for Alice', channels: [{ status: long }] });
+    expect(JSON.stringify([doc, hist])).not.toMatch(/Alice|\s{5}/);
+    expect(doc.channels[0]).toMatchObject({ status: 'other', outcome: 'in_progress', comments: [{ status: 'other' }, { status: 'other' }] });
+    expect(hist).toMatchObject({ status: 'other', channels: [{ status: 'other', outcome: 'delivered' }] });
+  });
+});
+
 describe('minimiseDocument', () => {
   it('keeps only the allowed shape and never a receiver value or an unknown field', () => {
     const c = receiverCanaries();
@@ -163,7 +174,7 @@ describe('minimiseDocument', () => {
   it('maps each channel and derives the document outcome', () => {
     const c = receiverCanaries();
     const m = minimiseDocument(rawDoc(c, { channels: [channel('Rejected'), channel('SomethingNew', { channelId: 3 })] })) as { outcome: string; channels: { outcome: string; status: string }[] };
-    expect(m.channels.map((x) => [x.status, x.outcome])).toEqual([['Rejected', 'refused'], ['SomethingNew', 'unknown']]);
+    expect(m.channels.map((x) => [x.status, x.outcome])).toEqual([['Rejected', 'refused'], ['other', 'unknown']]);
     expect(m.outcome).toBe('in_progress');
   });
   it('a document without channels is unknown with an empty list', () => {

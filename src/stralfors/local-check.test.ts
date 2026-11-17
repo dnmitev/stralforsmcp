@@ -1,5 +1,6 @@
 // Synthetic documents and rules only (ADR 0004). The first path segment "document" names the document passed in.
-import { describe, expect, it } from 'vitest';
+import { Script } from 'node:vm';
+import { describe, expect, it, vi } from 'vitest';
 import { localCheck } from './local-check.ts';
 import { parseCriterion, type LocalRule } from './rules.ts';
 
@@ -100,10 +101,71 @@ describe('localCheck certainty (never a false invalid)', () => {
   it('an unknown kind does not hide a known one in the same rule', () => {
     expect(localCheck({ a: {} }, [L('1', P, ['Frobnicate', 'Required'])]).map((f) => f.kind)).toEqual(['required']);
   });
-  it('does not test strings over 10000 characters against a pattern', () => {
+  it('does not test strings over 500 characters against a pattern', () => {
     const rules = [L('1', P, ['ExpectedPattern: ^a*$'])];
-    expect(localCheck({ a: { b: 'b'.repeat(10_000) } }, rules)).toHaveLength(1);
-    expect(localCheck({ a: { b: 'b'.repeat(10_001) } }, rules)).toEqual([]);
+    expect(localCheck({ a: { b: 'b'.repeat(500) } }, rules)).toHaveLength(1);
+    expect(localCheck({ a: { b: 'b'.repeat(501) } }, rules)).toEqual([]);
+  });
+  it('leaves patterns with nested quantifiers to the dry run: they never reach regex execution', () => {
+    const evil = { a: { b: `${'a'.repeat(30)}!` } };
+    const evilPatterns = ['^(a+)+$', '^(.*)*$', '^(a|aa)+$', '^(\\d+)*x$', '^([a-z]+)+$', '^(?:a+)+$', '^(a*){2,}$', '^((a+))+$', '^(((b)|(c))+)+$'];
+    const executed: string[] = [];
+    const orig = RegExp.prototype.test;
+    const spy = vi.spyOn(RegExp.prototype, 'test').mockImplementation(function (this: RegExp, s: string) { executed.push(this.source); if (evilPatterns.includes(this.source)) throw new Error('risky pattern reached the engine'); return orig.call(this, s); });
+    try {
+      for (const p of evilPatterns) expect(localCheck(evil, [L('1', P, [`ExpectedPattern: ${p}`])]), p).toEqual([]);
+    } finally { spy.mockRestore(); }
+    expect(executed.filter((src) => evilPatterns.includes(src))).toEqual([]);
+    expect(localCheck({ a: { b: 'x' } }, [L('1', P, ['ExpectedPattern: ^(ab)+$'])]).map((f) => f.kind)).toEqual(['pattern']); // plain group quantifier is still checked
+  });
+  it('interrupts a match that the scan misses (many adjacent quantifiers, exact-count groups) and leaves it to the dry run', () => {
+    const slow = (p: string, b: string) => localCheck({ a: { b } }, [L('1', P, [`ExpectedPattern: ${p}`])]);
+    expect(slow('^a*a*a*a*a*a*a*a*a*a*$', `${'a'.repeat(499)}!`)).toEqual([]);
+    expect(slow('^(a+){30}$', `${'a'.repeat(60)}!`)).toEqual([]);
+    expect(slow('^(a?a?)+$', `${'a'.repeat(40)}!`)).toEqual([]); // optional elements in a repeated group
+    expect(slow('^a*a*a*a*a*a*a*a*a*a*$', `${'a'.repeat(499)}!`)).toEqual([]); // the pattern is remembered as undecidable
+    expect(slow('^a+$', 'b').map((f) => f.kind)).toEqual(['pattern']); // other patterns still work afterwards
+  });
+  it('runs at most 500 timed pattern matches per call and leaves the rest to the dry run', () => {
+    const rules = [L('1', 'document.a[].b', ['ExpectedPattern: ^a$'])];
+    const items = (bad: number) => Array.from({ length: 501 }, (_, n) => ({ b: n === bad ? 'z' : 'a' }));
+    // The timed execution is replaced by a plain match, so the count is tested without any real VM timing.
+    const run = vi.spyOn(Script.prototype, 'runInContext').mockImplementation((ctx: unknown) => (ctx as { s: string }).s === 'a');
+    try {
+      expect(localCheck({ a: items(499) }, rules)).toHaveLength(1); // the 500th element is still checked
+      expect(run).toHaveBeenCalledTimes(500);
+      run.mockClear();
+      expect(localCheck({ a: items(500) }, rules)).toEqual([]); // the 501st is not
+      expect(run).toHaveBeenCalledTimes(500);
+      expect(localCheck({ a: items(0) }, rules)).toHaveLength(1); // the budget starts fresh on every call
+    } finally { run.mockRestore(); }
+  });
+  it('treats an interrupted match as undecided and does not retry that pattern', () => {
+    const rules = [L('1', 'document.a[].b', ['ExpectedPattern: ^slow$'])];
+    const run = vi.spyOn(Script.prototype, 'runInContext').mockImplementation(() => { throw new Error('Script execution timed out.'); });
+    try {
+      expect(localCheck({ a: [{ b: 'x' }, { b: 'y' }] }, rules)).toEqual([]);
+      expect(run).toHaveBeenCalledTimes(1);
+    } finally { run.mockRestore(); }
+  });
+  it('skips groups nested deeper than five levels and checks five', () => {
+    const check = (p: string) => localCheck({ a: { b: 'z' } }, [L('1', P, [`ExpectedPattern: ${p}`])]).map((f) => f.kind);
+    expect(check('^(((((x)))))$')).toEqual(['pattern']);
+    expect(check('^((((((x))))))$')).toEqual([]);
+  });
+  it('treats an escaped parenthesis and a character class as plain text', () => {
+    const check = (p: string) => localCheck({ a: { b: 'z' } }, [L('1', P, [`ExpectedPattern: ${p}`])]).map((f) => f.kind);
+    expect(check('^\\(a+\\)+$')).toEqual(['pattern']);
+    expect(check('^[(a+)]+$')).toEqual(['pattern']);
+  });
+  it('compiles each pattern once across array elements', () => {
+    const real = globalThis.RegExp;
+    let n = 0;
+    globalThis.RegExp = new Proxy(real, { construct: (t, a) => (a[0] === '^zz$' && n++, Reflect.construct(t, a)) });
+    try {
+      localCheck({ a: [{ b: 'x' }, { b: 'y' }, { b: 'z' }] }, [L('1', 'document.a[].b', ['ExpectedPattern: ^zz$'])]);
+    } finally { globalThis.RegExp = real; }
+    expect(n).toBe(1);
   });
   it('unparseable numbers and non-scalar values are skipped for numeric kinds', () => {
     for (const v of [{}, [1], true, null, 'abc']) expect(localCheck({ a: { b: v } }, [L('1', P, ['MinValue: 5', 'MaxValue: 3'])])).toEqual([]);

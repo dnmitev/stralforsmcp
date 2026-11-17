@@ -10,13 +10,12 @@
  *         - always PUT .../v2/invoices/validate?test=true; no way to send test=false
  *         - local request check throws RequestValidationError (fields: ['actionId'|'consignmentId']) before any I/O
  *         - 200 body is a JSON string -> parsed; 204/empty -> { ok: true }
- *   operations.ts exports: schemas (lenient: extra keys kept), `rulesResponseSchema` (zod, recursive Rule),
- *     `isKnownChannel(s: string): boolean`, `KnownChannel` (the 10 observed values).
+ *   operations.ts exports: schemas (lenient: extra keys kept), `rulesResponseSchema` (zod, recursive Rule).
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { AgreementNotFoundError, RequestValidationError, ValidationFailedError, mapHttpError } from './errors.ts';
-import { isKnownChannel, rulesResponseSchema } from './operations.ts';
+import { rulesResponseSchema } from './operations.ts';
 import { canary, fixture, fixtureJson, json, memoryLogger, startFakeApi, testClient, type FakeApi } from '../../test/helpers/api.ts';
 import { generatePki, type Pki } from '../../test/helpers/mtls.ts';
 
@@ -85,13 +84,6 @@ describe('R6 schemas', () => {
     expect(parsed.rules[0]!.dependencyOperator).toBe('AnyRequired');
     expect(parsed.rules[0]!.dependencies[0]!.ruleCriterias ?? []).toEqual([]);
   });
-
-  it('isKnownChannel', () => {
-    for (const c of ['AvtaleGiro', 'Custom', 'Digipost', 'eBrevWeMail', 'EDI', 'eInvoice', 'eMail', 'Kivra', 'SMS', 'WeMailNO']) {
-      expect(isKnownChannel(c)).toBe(true);
-    }
-    expect(isKnownChannel('FutureChannel')).toBe(false);
-  });
 });
 
 describe('R6 channels and validate behaviour', () => {
@@ -100,7 +92,6 @@ describe('R6 channels and validate behaviour', () => {
     const { client } = testClient(pki, fake);
     const result = await client.channels();
     expect(result).toEqual(['eBrevWeMail', 'FutureChannel']);
-    expect(isKnownChannel('FutureChannel')).toBe(false);
   });
 
   it('channels(actionId) sends the agreement id as query', async () => {
