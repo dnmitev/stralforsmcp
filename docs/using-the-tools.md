@@ -80,6 +80,12 @@ Input: 1 to 4 lookup `channels`, 1 to 1000 `candidates` (each up to 40 character
 
 The call waits for the vendor, usually seconds and about 20 s at most (`lookup still running; try again`). Candidates are personal identifiers: they are sent to the vendor and nowhere else, never stored, logged, audited, traced or returned. PROD is not available (see section 6).
 
+### `search_docs`
+
+> Search the docs for how the validate dry run reports faults.
+
+Input: `query` (up to 200 characters), optional `country`, `channel`, `source` (`public` or `private`), `limit` (1 to 10). Returns `hits` (id, title, `source`, optional country, channel and link, and a short snippet), `total`, and `truncated` (more matched than were returned). It reads local notes only, so it works without Stralfors credentials and when the vendor is down. `source: public` is a short summary with a link to the vendor docs; `private` comes from the operator's own overlay. A note is reference material and can be stale: the vendor documentation and the live API are the authority.
+
 ## 4. Typical sessions
 
 **"What can I send for this customer?"** `whoami` → `list_channels` for each agreement label → `get_rules` for the channel you will use (filter with `requiredOnly`) → `get_example_invoice`.

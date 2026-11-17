@@ -52,15 +52,22 @@ describe('Dockerfile', () => {
     expect(ins.filter((l) => l.startsWith('CMD ') || l.startsWith('ENTRYPOINT '))).toEqual(['CMD ["src/server/main.ts"]']);
   });
 
-  it('copies only package.json, src and prod node_modules into the final stage', () => {
+  it('copies only package.json, src, knowledge/public and prod node_modules into the final stage', () => {
     const copies = final.filter((l) => l.startsWith('COPY '));
     expect(copies.join('\n')).not.toMatch(/package-lock\.json/);
     expect(copies.every((l) => l.includes('--chown=65532:65532'))).toBe(true);
     expect(ins.some((l) => /^(COPY|ADD) (--\S+ )*\. /.test(l))).toBe(false);
     expect(ins.filter((l) => /^(COPY|ADD) /.test(l)).join('\n')).not.toMatch(/\.git|\.paul|docs|scripts|CLAUDE/);
     expect(copies.map((l) => l.split(' ').slice(-2).join(' ')).sort()).toEqual(
-      ['/app/node_modules ./node_modules', 'package.json ./', 'src ./src'].sort(),
+      ['/app/node_modules ./node_modules', 'knowledge/public ./knowledge/public', 'package.json ./', 'src ./src'].sort(),
     );
+  });
+
+  it('ships knowledge/public and no private overlay or KNOWLEDGE_DIRS default', () => {
+    const all = ins.join('\n');
+    expect(final).toContain('COPY --chown=65532:65532 knowledge/public ./knowledge/public');
+    expect(all).not.toMatch(/KNOWLEDGE_DIRS|KNOWLEDGE_PUBLIC_DIR/);
+    expect(ins.filter((l) => /^(COPY|ADD) /.test(l) && /knowledge/.test(l))).toEqual(['COPY --chown=65532:65532 knowledge/public ./knowledge/public']);
   });
 
   it('only ENV is NODE_ENV=production; nothing secret-like in ARG/ENV/LABEL', () => {
@@ -92,9 +99,9 @@ describe('.dockerignore', () => {
     .map((l) => l.trim())
     .filter((l) => l && !l.startsWith('#'));
 
-  it('is an allow-list: * first, exactly three re-includes', () => {
+  it('is an allow-list: * first, exactly four re-includes', () => {
     expect(lines[0]).toBe('*');
-    expect(lines.filter((l) => l.startsWith('!'))).toEqual(['!package.json', '!package-lock.json', '!src/**']);
+    expect(lines.filter((l) => l.startsWith('!'))).toEqual(['!package.json', '!package-lock.json', '!src/**', '!knowledge/public/**']);
   });
   it('re-excludes tests after the src allow-entry', () => {
     expect(lines.indexOf('src/**/*.test.ts')).toBeGreaterThan(lines.indexOf('!src/**'));

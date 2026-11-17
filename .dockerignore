@@ -3,6 +3,7 @@
 !package.json
 !package-lock.json
 !src/**
+!knowledge/public/**
 # Re-exclude non-runtime files under src.
 src/**/*.test.ts
 src/**/*.md
