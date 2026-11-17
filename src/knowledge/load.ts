@@ -35,7 +35,6 @@ const walk = async (root: string, warn: (text: string) => void): Promise<{ path:
       if (e.isDirectory()) {
         if (depth < MAX_DEPTH && (await isDir(path))) await go(path, depth + 1);
       } else if (e.name.endsWith('.md')) out.push({ path, name: e.name });
-      if (scanned > MAX_SCANNED) return;
     }
   };
   await go(root, 0);
@@ -44,8 +43,8 @@ const walk = async (root: string, warn: (text: string) => void): Promise<{ path:
 
 // undefined: not a regular file; null: over the size cap. One opened handle: stat and read cannot be split by a swap, and the read is bounded whatever the size said.
 const readBounded = async (path: string): Promise<string | null | undefined> => {
-  // O_NOFOLLOW: the path is already a realpath, so a final component swapped for a symlink after the check fails to open (ELOOP, reported as unreadable) instead of being followed. A swapped ancestor directory is not covered; that needs a writer inside the overlay mount.
-  const fh = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  // O_NOFOLLOW: the path is already a realpath, so a final component swapped for a symlink after the check fails to open (ELOOP, reported as unreadable) instead of being followed. A swapped ancestor directory is not covered; that needs a writer inside the overlay mount. O_NONBLOCK: a FIFO named *.md would otherwise block open() until a writer appears and hang start-up; with it the open returns at once and the isFile check below skips it.
+  const fh = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
   try {
     if (!(await fh.stat()).isFile()) return undefined;
     const buf = Buffer.alloc(MAX_FILE_BYTES + 1);

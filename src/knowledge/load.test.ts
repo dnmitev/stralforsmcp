@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -250,6 +251,13 @@ describe('walk limits', () => {
       await chmod(join(pub, 'locked'), 0o755);
     }
   });
+  it.skipIf(process.platform === 'win32')('a FIFO named .md does not block start-up and is skipped', async () => {
+    await put(pub, 'ok.md', md('ok'));
+    execFileSync('mkfifo', [join(pub, 'pipe.md')]);
+    const r = await loadKnowledge({ publicDir: pub, overlayDirs: [] });
+    expect(ids(r.docs)).toEqual(['ok']);
+    expect(r.warnings).toEqual([]);
+  }, 5000);
   // The walk must visit entries in sorted order for the last name to be the one cut off.
   const flat = async (dir: string, total: number) => {
     const names = Array.from({ length: total - 1 }, (_, i) => `a${String(i).padStart(5, '0')}.txt`);

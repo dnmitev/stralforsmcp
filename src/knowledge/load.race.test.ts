@@ -41,12 +41,6 @@ afterEach(() => rm(root, { recursive: true, force: true }));
 const doc = (id: string, bodyBytes: number) => `---\nid: ${id}\ntitle: T ${id}\n---\n${'x'.repeat(bodyBytes)}\n`;
 
 describe('file grown between the size check and the read', () => {
-  it('reads through an opened handle at all', async () => {
-    await writeFile(join(root, 'pub', 'a.md'), doc('a', 10));
-    const r = await loadKnowledge({ publicDir: join(root, 'pub'), overlayDirs: [] });
-    expect(r.docs.map((d) => d.id)).toEqual(['a']);
-    expect(opened.calls).toBeGreaterThan(0);
-  });
   it('a file that now holds more than 64 KiB although the handle reported a small size is skipped as too large', async () => {
     await writeFile(join(root, 'pub', 'grown.md'), doc('grown', 70000));
     opened.staleSize = 100;

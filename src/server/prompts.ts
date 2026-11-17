@@ -23,7 +23,7 @@ const prepareValidation = (a: { channel: string }) =>
 2. Call get_example_invoice for this channel, and use it for structure only: it is an example, not valid data for my document.
 3. Ask me for my document; do not invent one.
 4. Then call validate_invoice with my document and explain the result.
-Use synthetic data only when the environment is PROD. ${UNAVAILABLE}`;
+When the environment is PROD, use synthetic data only. ${UNAVAILABLE}`;
 
 // The fence is longer than any backtick run inside the findings, so pasted text cannot close the block early.
 const fenceFor = (text: string) => '`'.repeat(Math.max(3, ...(text.match(/`+/g) ?? []).map((m) => m.length + 1)));
