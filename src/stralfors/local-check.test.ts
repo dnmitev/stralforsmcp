@@ -125,6 +125,13 @@ describe('localCheck certainty (never a false invalid)', () => {
     expect(slow('^a*a*a*a*a*a*a*a*a*a*$', `${'a'.repeat(499)}!`)).toEqual([]); // the pattern is remembered as undecidable
     expect(slow('^a+$', 'b').map((f) => f.kind)).toEqual(['pattern']); // other patterns still work afterwards
   });
+  it('runs at most 500 timed pattern matches per call and leaves the rest to the dry run', () => {
+    const rules = [L('1', 'document.a[].b', ['ExpectedPattern: ^a$'])];
+    const items = (bad: number) => Array.from({ length: 501 }, (_, n) => ({ b: n === bad ? 'z' : 'a' }));
+    expect(localCheck({ a: items(499) }, rules)).toHaveLength(1); // the 500th element is still checked
+    expect(localCheck({ a: items(500) }, rules)).toEqual([]); // the 501st is not
+    expect(localCheck({ a: items(0) }, rules)).toHaveLength(1); // the budget starts fresh on every call
+  });
   it('skips groups nested deeper than five levels and checks five', () => {
     const check = (p: string) => localCheck({ a: { b: 'z' } }, [L('1', P, [`ExpectedPattern: ${p}`])]).map((f) => f.kind);
     expect(check('^(((((x)))))$')).toEqual(['pattern']);

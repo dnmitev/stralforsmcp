@@ -68,6 +68,8 @@ function risky(p: string): boolean {
 const sandbox = createContext({ re: null, s: '' });
 const probe = new Script('re.test(s)');
 const REGEX_BUDGET_MS = 20;
+const MAX_TIMED_MATCHES = 500; // per localCheck call: each timed match costs a watchdog thread, and a large array must not stretch the call
+let timedLeft = MAX_TIMED_MATCHES;
 /** Runs one match; undefined when it overran the budget (left to the dry run). */
 function matches(re: RegExp, v: string): boolean | undefined {
   sandbox['re'] = re;
@@ -99,6 +101,8 @@ function violates(c: Criterion, v: unknown, parent: Obj, today: string): boolean
       if (typeof v !== 'string' || v.length > MAX_TEXT) return false;
       const re = compile(c.pattern);
       if (re === undefined) return false;
+      if (timedLeft <= 0) return false; // over the budget: left to the dry run
+      timedLeft--;
       const ok = matches(re, v);
       if (ok === undefined) { compiled.set(c.pattern, undefined); return false; } // overran: never try this pattern again
       return !ok;
@@ -122,6 +126,7 @@ function violates(c: Criterion, v: unknown, parent: Obj, today: string): boolean
 
 export function localCheck(document: unknown, rules: readonly LocalRule[], today: Date = new Date()): Finding[] {
   if (!isObj(document)) return [];
+  timedLeft = MAX_TIMED_MATCHES;
   const day = today10(today);
   const optional = new Set(rules.filter((r) => r.criteria.some((c) => c.kind === 'optional_when')).map((r) => r.path));
   const seen = new Set<string>();
