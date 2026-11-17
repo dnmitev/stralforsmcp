@@ -110,12 +110,19 @@ describe('localCheck certainty (never a false invalid)', () => {
     const evilPatterns = ['^(a+)+$', '^(.*)*$', '^(a|aa)+$', '^(\\d+)*x$', '^([a-z]+)+$', '^(?:a+)+$', '^(a*){2,}$', '^((a+))+$', '^(((b)|(c))+)+$'];
     const executed: string[] = [];
     const orig = RegExp.prototype.test;
-    const spy = vi.spyOn(RegExp.prototype, 'test').mockImplementation(function (this: RegExp, s: string) { executed.push(this.source); return orig.call(this, s); });
+    const spy = vi.spyOn(RegExp.prototype, 'test').mockImplementation(function (this: RegExp, s: string) { executed.push(this.source); if (evilPatterns.includes(this.source)) throw new Error('risky pattern reached the engine'); return orig.call(this, s); });
     try {
       for (const p of evilPatterns) expect(localCheck(evil, [L('1', P, [`ExpectedPattern: ${p}`])]), p).toEqual([]);
     } finally { spy.mockRestore(); }
     expect(executed.filter((src) => evilPatterns.includes(src))).toEqual([]);
     expect(localCheck({ a: { b: 'x' } }, [L('1', P, ['ExpectedPattern: ^(ab)+$'])]).map((f) => f.kind)).toEqual(['pattern']); // plain group quantifier is still checked
+  });
+  it('interrupts a match that the scan misses (many adjacent quantifiers, exact-count groups) and leaves it to the dry run', () => {
+    const slow = (p: string, b: string) => localCheck({ a: { b } }, [L('1', P, [`ExpectedPattern: ${p}`])]);
+    expect(slow('^a*a*a*a*a*a*a*a*a*a*$', `${'a'.repeat(499)}!`)).toEqual([]);
+    expect(slow('^(a+){30}$', `${'a'.repeat(60)}!`)).toEqual([]);
+    expect(slow('^a*a*a*a*a*a*a*a*a*a*$', `${'a'.repeat(499)}!`)).toEqual([]); // the pattern is remembered as undecidable
+    expect(slow('^a+$', 'b').map((f) => f.kind)).toEqual(['pattern']); // other patterns still work afterwards
   });
   it('skips groups nested deeper than five levels and checks five', () => {
     const check = (p: string) => localCheck({ a: { b: 'z' } }, [L('1', P, [`ExpectedPattern: ${p}`])]).map((f) => f.kind);

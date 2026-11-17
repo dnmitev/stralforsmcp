@@ -1,4 +1,5 @@
 /** Pure: checks a document against parsed rules. Emits only findings it is certain of; anything uncertain is left to the dry run. */
+import { createContext, Script } from 'node:vm';
 import type { Finding } from './findings.ts';
 import { hintFor, type Criterion, type LocalRule } from './rules.ts';
 
@@ -63,6 +64,16 @@ function risky(p: string): boolean {
   }
   return false;
 }
+// The scan above cannot be complete, so every match also runs under a hard time budget: the engine is interrupted when it overruns.
+const sandbox = createContext({ re: null, s: '' });
+const probe = new Script('re.test(s)');
+const REGEX_BUDGET_MS = 20;
+/** Runs one match; undefined when it overran the budget (left to the dry run). */
+function matches(re: RegExp, v: string): boolean | undefined {
+  sandbox['re'] = re;
+  sandbox['s'] = v;
+  try { return probe.runInContext(sandbox, { timeout: REGEX_BUDGET_MS }) as boolean; } catch { return undefined; }
+}
 const compiled = new Map<string, RegExp | undefined>();
 /** Compiles a vendor pattern once; undefined when it is too long, unparseable or risky. */
 function compile(pattern: string): RegExp | undefined {
@@ -87,7 +98,10 @@ function violates(c: Criterion, v: unknown, parent: Obj, today: string): boolean
     case 'pattern': {
       if (typeof v !== 'string' || v.length > MAX_TEXT) return false;
       const re = compile(c.pattern);
-      return re !== undefined && !re.test(v);
+      if (re === undefined) return false;
+      const ok = matches(re, v);
+      if (ok === undefined) { compiled.set(c.pattern, undefined); return false; } // overran: never try this pattern again
+      return !ok;
     }
     case 'numeric': return typeof v === 'string' ? !/^\d+$/.test(v) : typeof v === 'number' && !(Number.isInteger(v) && v >= 0);
     case 'decimal': return typeof v === 'string' ? !DECIMAL.test(v) : false;

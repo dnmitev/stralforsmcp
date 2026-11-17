@@ -1,7 +1,8 @@
 name: mutation-full
 
 # The full Stryker run (static mutants included, --force) takes over 45 min, too long for every push to main.
-# It runs weekly and on demand, and saves a fresh incremental baseline (a run-unique cache key, caches are immutable) that PR and main runs restore through the `stryker-` prefix.
+# It runs weekly and on demand and gates on the break threshold. Its results are not cached: reusing them in incremental runs would
+# carry static mutants into runs that ignore them.
 on:
   schedule:
     - cron: '17 3 * * 1'
@@ -29,12 +30,6 @@ jobs:
       - run: npm ci
       - name: Mutation tests (full)
         run: npm run mutation -- --force
-      - name: Save incremental file
-        if: success()
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: reports/stryker-incremental.json
-          key: stryker-full-${{ github.run_id }}
       - name: Summary
         if: always()
         run: |
