@@ -100,10 +100,28 @@ describe('localCheck certainty (never a false invalid)', () => {
   it('an unknown kind does not hide a known one in the same rule', () => {
     expect(localCheck({ a: {} }, [L('1', P, ['Frobnicate', 'Required'])]).map((f) => f.kind)).toEqual(['required']);
   });
-  it('does not test strings over 10000 characters against a pattern', () => {
+  it('does not test strings over 500 characters against a pattern', () => {
     const rules = [L('1', P, ['ExpectedPattern: ^a*$'])];
-    expect(localCheck({ a: { b: 'b'.repeat(10_000) } }, rules)).toHaveLength(1);
-    expect(localCheck({ a: { b: 'b'.repeat(10_001) } }, rules)).toEqual([]);
+    expect(localCheck({ a: { b: 'b'.repeat(500) } }, rules)).toHaveLength(1);
+    expect(localCheck({ a: { b: 'b'.repeat(501) } }, rules)).toEqual([]);
+  });
+  it('leaves patterns with nested quantifiers to the dry run, and returns fast on a ReDoS shape', () => {
+    const evil = { a: { b: `${'a'.repeat(30)}!` } };
+    for (const p of ['^(a+)+$', '^(.*)*$', '^(a|aa)+$', '^(\\d+)*x$', '^([a-z]+)+$', '^(?:a+)+$', '^(a*){2,}$']) {
+      const t = Date.now();
+      expect(localCheck(evil, [L('1', P, [`ExpectedPattern: ${p}`])]), p).toEqual([]);
+      expect(Date.now() - t, p).toBeLessThan(200);
+    }
+    expect(localCheck({ a: { b: 'x' } }, [L('1', P, ['ExpectedPattern: ^(ab)+$'])]).map((f) => f.kind)).toEqual(['pattern']); // plain group quantifier is still checked
+  });
+  it('compiles each pattern once across array elements', () => {
+    const real = globalThis.RegExp;
+    let n = 0;
+    globalThis.RegExp = new Proxy(real, { construct: (t, a) => (a[0] === '^zz$' && n++, Reflect.construct(t, a)) });
+    try {
+      localCheck({ a: [{ b: 'x' }, { b: 'y' }, { b: 'z' }] }, [L('1', 'document.a[].b', ['ExpectedPattern: ^zz$'])]);
+    } finally { globalThis.RegExp = real; }
+    expect(n).toBe(1);
   });
   it('unparseable numbers and non-scalar values are skipped for numeric kinds', () => {
     for (const v of [{}, [1], true, null, 'abc']) expect(localCheck({ a: { b: v } }, [L('1', P, ['MinValue: 5', 'MaxValue: 3'])])).toEqual([]);

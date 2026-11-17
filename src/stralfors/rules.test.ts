@@ -1,6 +1,6 @@
 // Synthetic criteria in the documented grammar (ADR 0004): one case per row of the criterion table.
 import { describe, expect, it } from 'vitest';
-import { criteriaOf, flattenRules, flattenRulesWithCriteria, hintFor, hintsFor, parseCriterion, toJsonPath, type RuleNode } from './rules.ts';
+import { criteriaOf, flattenRulesWithCriteria, hintFor, hintsFor, parseCriterion, toJsonPath, type RuleNode } from './rules.ts';
 
 const P = 'document.a.b';
 const rule = (over: Partial<RuleNode> = {}): RuleNode => ({ id: '7', parameter: 'Document.A.B', ...over });
@@ -117,6 +117,8 @@ describe('criteriaOf / hintsFor', () => {
     expect(hintsFor(rule({ ruleCriterias: ['Required', 'Required', 'ExampleValue: 1', 'NumericExpected'] }))).toEqual([`${P} is required.`, `${P} must contain digits only.`]);
   });
 });
+
+const flattenRules = (t: readonly RuleNode[]) => flattenRulesWithCriteria(t).readable;
 
 describe('flattenRules', () => {
   it('flattens children, keeps dependsOn, resolves paths', () => {

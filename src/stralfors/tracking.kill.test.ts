@@ -41,6 +41,6 @@ describe('minimiser is an allowlist', () => {
   it('history keeps raw counts and never an unknown field', () => {
     const c = receiverCanaries();
     const h = minimiseHistory({ status: 'S', arrivalTime: 'A', deliveryDocumentsDelivered: 4, deliveryDocumentsTotal: 5, surprise: c.fileId, channels: [{ channelId: 1, channelName: 'n', status: 'Rejected', surprise: c.fileId, deliveryDocuments: [{ deliveryDocumentId: 'Z', surprise: c.fileId, statusHistory: [{ dateTime: 'd', message: 'Delivered', paymentMethod: 'P', surprise: c.fileId }] }] }] });
-    expect(h).toEqual({ status: 'S', arrivalTime: 'A', deliveryDocumentsDelivered: 4, deliveryDocumentsTotal: 5, channels: [{ channelId: 1, channelName: 'n', status: 'Rejected', outcome: 'refused', deliveryDocuments: [{ deliveryDocumentId: 'Z', events: [{ dateTime: 'd', message: 'Delivered' }] }] }] });
+    expect(h).toEqual({ status: 'other', arrivalTime: 'A', deliveryDocumentsDelivered: 4, deliveryDocumentsTotal: 5, channels: [{ channelId: 1, channelName: 'n', status: 'Rejected', outcome: 'refused', deliveryDocuments: [{ deliveryDocumentId: 'Z', events: [{ dateTime: 'd', message: 'Delivered' }] }] }] });
   });
 });

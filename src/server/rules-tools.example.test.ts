@@ -32,6 +32,16 @@ async function world(body: unknown = example(), type = 'application/json') {
   return { ...api, one: createGetExampleInvoice({ clients: new Map([['a', clients.get('a')!]]) }), two: createGetExampleInvoice({ clients }) };
 }
 
+describe('get_example_invoice input bounds', () => {
+  it('rejects bad channel names, defaultChannel and an oversize templateStandardId', () => {
+    expect(getExampleInput.safeParse({ channels: ['a b'] }).success).toBe(false);
+    expect(getExampleInput.safeParse({ channels: ['A'.repeat(41)] }).success).toBe(false);
+    expect(getExampleInput.safeParse({ channels: ['EDI'], defaultChannel: 'x y' }).success).toBe(false);
+    expect(getExampleInput.safeParse({ channels: ['EDI'], templateStandardId: 1_000_001 }).success).toBe(false);
+    expect(getExampleInput.safeParse({ channels: ['EDI'], defaultChannel: 'EDI', templateStandardId: 1_000_000 }).success).toBe(true);
+  });
+});
+
 describe('get_example_invoice [fake-api]', () => {
   it('drops the agreement id, keeps the rest, fixed notes', async () => {
     const w = await world();
@@ -93,8 +103,9 @@ describe('input schema', () => {
   it.each([[{ channels: [] }], [{ channels: ['A', 'B', 'C', 'D', 'E', 'F'] }], [{ channels: [''] }], [{ channels: ['A', ''] }], [{}], [{ channels: ['A'], defaultChannel: '' }], [{ channels: ['A'], templateStandardId: -1 }], [{ channels: 'A' }], [{ channels: ['A,B,C,D,E,F'] }], [{ channels: [',A'] }], [{ channels: ['A,'] }], [{ channels: ['A', 'B,C'] }]])('refuses %j', (input) => {
     expect(getExampleInput.safeParse(input).success).toBe(false);
   });
-  it('a name with other punctuation is still a name', () => {
-    expect(getExampleInput.safeParse({ channels: ['eBrev/WeMail', 'e-Invoice B2C', 'A_b.c'] }).success).toBe(true);
+  it('a name with punctuation is refused (names are letters and digits only)', () => {
+    expect(getExampleInput.safeParse({ channels: ['eBrev/WeMail'] }).success).toBe(false);
+    expect(getExampleInput.safeParse({ channels: ['A_b.c'] }).success).toBe(false);
   });
   it('accepts 1 and 5 channels', () => {
     expect(getExampleInput.safeParse({ channels: ['A'] }).success).toBe(true);

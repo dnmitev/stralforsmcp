@@ -1,7 +1,7 @@
 /* get_rules against the in-process mTLS fake (synthetic rule trees, every criterion kind in the documented grammar). */
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { createRulesCache } from './rules-cache.ts';
-import { createGetRules, getRulesOutput, type RulesToolDeps } from './rules-tools.ts';
+import { createGetRules, getRulesInput, getRulesOutput, type RulesToolDeps } from './rules-tools.ts';
 import { ToolInputError, type ToolContext } from './tools.ts';
 import { json } from '../../test/helpers/api.ts';
 import { INVOICES, loadConfig, realClients, startRoutesApi, twoProfiles } from '../../test/helpers/boot.ts';
@@ -38,6 +38,15 @@ async function world(rules: unknown[] = tree(), ttlS = 3600, profiles: 'one' | '
   const tool = createGetRules({ clients: used, cache: createRulesCache({ ttlMs: ttlS * 1000 }) });
   return { ...api, tool };
 }
+
+describe('get_rules input bounds', () => {
+  it.each([['a b'], ['A'.repeat(41)], [''], ['x,y']])('rejects channel %j', (channel) => expect(getRulesInput.safeParse({ channel }).success).toBe(false));
+  it('accepts a 40 character alphanumeric channel and templateStandardId up to 1000000 only', () => {
+    expect(getRulesInput.safeParse({ channel: 'eBrevWeMail', templateStandardId: 1_000_000 }).success).toBe(true);
+    expect(getRulesInput.safeParse({ channel: 'A'.repeat(40) }).success).toBe(true);
+    expect(getRulesInput.safeParse({ channel: 'EDI', templateStandardId: 1_000_001 }).success).toBe(false);
+  });
+});
 
 describe('get_rules [fake-api]', () => {
   it('first page: readable, paginated, no raw vendor keys', async () => {

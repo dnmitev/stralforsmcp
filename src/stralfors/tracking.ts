@@ -24,14 +24,16 @@ export function documentOutcome(channels: { outcome: Outcome }[], hist?: { deliv
 }
 
 /** A history message is kept only when it is exactly one of the known status names (no prefix groups: "Printing for <name>" must not pass); anything else may carry recipient text. */
-export const safeMessage = (s: string): string | undefined => (Object.hasOwn(EXACT, s.replace(/\s+/g, '').toLowerCase()) ? s : undefined);
+export const safeMessage = (s: string): string | undefined => (s.length <= MAX_STATUS && Object.hasOwn(EXACT, s.replace(/\s+/g, '').toLowerCase()) ? s : undefined);
+const MAX_STATUS = 64;
+export const OTHER_STATUS = 'other'; // shown instead of a status that is not an exact known name
 
 type Rec = Record<string, unknown>;
 const rec = (v: unknown): Rec => (typeof v === 'object' && v !== null ? (v as Rec) : {});
 const list = (v: unknown): Rec[] => (Array.isArray(v) ? v.map(rec) : []);
 const scalar = (v: unknown) => ['string', 'number', 'boolean'].includes(typeof v);
-/** Copies the named keys that hold a string, number or boolean; objects and arrays are dropped. */
-const pick = (o: Rec, keys: string[]): Rec => Object.fromEntries(keys.filter((k) => scalar(o[k])).map((k) => [k, o[k]]));
+/** Copies the named keys that hold a string, number or boolean; objects and arrays are dropped. A status is kept only as an exact known name, else masked. */
+const pick = (o: Rec, keys: string[]): Rec => Object.fromEntries(keys.filter((k) => scalar(o[k])).map((k) => [k, k === 'status' ? (typeof o[k] === 'string' ? safeMessage(o[k]) ?? OTHER_STATUS : OTHER_STATUS) : o[k]]));
 const status = (o: Rec) => (typeof o['status'] === 'string' ? o['status'] : '');
 
 export interface TrackedChannel { outcome: Outcome; status?: string; [k: string]: unknown }

@@ -63,7 +63,7 @@ Input: `document` (`documentHeader` and `invoice`), `agreement`, optional `consi
 
 > Track invoice number `INV-123`.
 
-Input: **exactly one** of `invoiceNumber`, `extDocumentId`, `documentId`; optional `history: true` (needs a single document), `cursor`, `channelId`. Returns an outcome (`delivered`, `in_progress`, `refused`, `failed`, `unknown`) per document and per channel, plus the raw status. Status lags by hours to days, so one call is a snapshot (`checkedAt`), not a stream. Recipient data is never returned. A document id is the short id (at most 10 letters or digits), not an agreement id.
+Input: **exactly one** of `invoiceNumber`, `extDocumentId`, `documentId`; optional `history: true` (needs a single document), `cursor`, `channelId`. Returns an outcome (`delivered`, `in_progress`, `refused`, `failed`, `unknown`) per document and per channel, plus the status when it is exactly a known status name (any other status is shown as `other`, because it could carry recipient text). Status lags by hours to days, so one call is a snapshot (`checkedAt`), not a stream. Recipient data is never returned. A document id is the short id (at most 10 letters or digits), not an agreement id.
 
 ### `channel_lookup` (TEST only)
 

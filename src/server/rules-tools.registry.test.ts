@@ -7,7 +7,7 @@ import { createGetExampleInvoice, createGetRules, getExampleOutput, getRulesOutp
 import { whoami } from './whoami.ts';
 import { ERAS, connect, handlerFetch, principal, sink, toAuth } from '../../test/helpers/server.ts';
 
-const CANARY = 'CANARY-CHANNEL';
+const CANARY = 'CANARYCHANNEL';
 const stub = (over: Partial<Record<'rules' | 'documentExample', () => Promise<unknown>>> = {}) =>
   ({
     rules: async () => ({ channel: CANARY, rules: [{ id: '7', parameter: 'Document.CanaryField', isRequired: true, ruleCriterias: ['Required', 'ExpectedPattern: ^CANARY-PATTERN$'], exampleValue: 'CANARY-EXAMPLE', dependencies: [] }] }),

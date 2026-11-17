@@ -44,7 +44,7 @@ export function createTrackDocument(deps: TrackDeps): ToolDef<typeof trackInput,
   return {
     spec: { name: 'track_document', access: 'read' },
     title: 'Track document',
-    description: 'Reads the delivery status of an invoice by invoice number, external document id or document id (exactly one). Creates nothing and never returns recipient data. Returns an outcome per document and per channel plus the raw status, optionally the delivery history of one document. Status can lag by hours to days; one read per call, no polling.',
+    description: 'Reads the delivery status of an invoice by invoice number, external document id or document id (exactly one). Creates nothing and never returns recipient data. Returns an outcome per document and per channel plus the status when it is exactly a known status name (otherwise `other`), optionally the delivery history of one document. Status can lag by hours to days; one read per call, no polling.',
     inputSchema: trackInput,
     outputSchema: trackOutput,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },

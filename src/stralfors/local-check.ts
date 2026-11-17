@@ -4,7 +4,7 @@ import { hintFor, type Criterion, type LocalRule } from './rules.ts';
 
 const MAX_FINDINGS = 200;
 const MAX_PATTERN = 500;
-const MAX_TEXT = 10_000;
+const MAX_TEXT = 500; // ponytail: a longer value is left to the dry run; with the nested-quantifier skip this bounds regex work
 const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 const PLAIN = /^-?\d+(\.\d+)?$/;
 const ABSENT = Symbol('absent');
@@ -35,6 +35,20 @@ const plain = (v: unknown): string | undefined => {
 };
 const today10 = (d: Date): string => d.toISOString().slice(0, 10);
 
+// A quantified group whose body itself holds a quantifier or an alternation: the shapes that backtrack exponentially, e.g. (a+)+ (.*)* (a|aa)+
+// ponytail: conservative textual detector; it may skip a safe pattern (left to the dry run) but never lets these shapes run
+const RISKY = /\((?:\?:)?[^()]*(?:[+*|]|\{\d*,\d*\})[^()]*\)(?:[+*]|\{\d*,\d*\})/;
+const compiled = new Map<string, RegExp | undefined>();
+/** Compiles a vendor pattern once; undefined when it is too long, unparseable or risky. */
+function compile(pattern: string): RegExp | undefined {
+  if (compiled.has(pattern)) return compiled.get(pattern);
+  let re: RegExp | undefined;
+  if (pattern.length <= MAX_PATTERN && !RISKY.test(pattern)) try { re = new RegExp(pattern); } catch { /* unparseable: dry run decides */ }
+  if (compiled.size >= 1000) compiled.clear(); // ponytail: patterns come from the cached rules of a few channels; the cap only bounds memory
+  compiled.set(pattern, re);
+  return re;
+}
+
 /** True when the value certainly violates the criterion. `parent` serves exclusive. */
 function violates(c: Criterion, v: unknown, parent: Obj, today: string): boolean {
   if (c.kind === 'exclusive') return v !== null && v !== ABSENT && (() => { const o = get(parent, camel(c.field)); return o !== ABSENT && o !== null; })();
@@ -45,8 +59,9 @@ function violates(c: Criterion, v: unknown, parent: Obj, today: string): boolean
     case 'array': return !Array.isArray(v);
     case 'valid_items': case 'valid_templates': return scalar && !c.values.some((x) => x.toLowerCase() === String(v).toLowerCase()); // ponytail: case-insensitive, never a false invalid; exact casing is the dry run's
     case 'pattern': {
-      if (typeof v !== 'string' || v.length > MAX_TEXT || c.pattern.length > MAX_PATTERN) return false;
-      try { return !new RegExp(c.pattern).test(v); } catch { return false; }
+      if (typeof v !== 'string' || v.length > MAX_TEXT) return false;
+      const re = compile(c.pattern);
+      return re !== undefined && !re.test(v);
     }
     case 'numeric': return typeof v === 'string' ? !/^\d+$/.test(v) : typeof v === 'number' && !(Number.isInteger(v) && v >= 0);
     case 'decimal': return typeof v === 'string' ? !DECIMAL.test(v) : false;

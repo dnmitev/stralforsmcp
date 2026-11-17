@@ -10,7 +10,7 @@ import { ToolInputError, type ToolContext } from '../src/server/tools.ts';
 
 type ReadClient = Pick<StralforsClient, 'token' | 'channels' | 'rules' | 'documentExample' | 'trackDocuments' | 'trackHistory'>;
 export interface Deps { client: ReadClient; profile: { id: string; agreements: Profile['agreements'] }; env: 'test' | 'prod' }
-export interface Opts { channels?: string[]; invoiceNumber?: string; now?: () => number; rawStatus?: boolean }
+export interface Opts { channels?: string[]; invoiceNumber?: string; now?: () => number }
 
 /** LIVE_CHECK_CHANNELS: comma list, trimmed, empty entries dropped; nothing usable gives undefined. */
 export function parseChannels(env: string | undefined): string[] | undefined {
@@ -19,10 +19,10 @@ export function parseChannels(env: string | undefined): string[] | undefined {
 }
 
 const leaves = (v: unknown): number => (v !== null && typeof v === 'object' ? Object.values(v).reduce<number>((n, x) => n + leaves(x), 0) : 1);
-/** A status is printed only when it is exactly a known status name (or rawStatus is on); anything else may be free text and shows its length only. */
-const shown = (s: unknown, raw: boolean): string => {
+/** A status is printed only when it is exactly a known status name ; anything else may be free text and shows its length only. */
+const shown = (s: unknown): string => {
   const t = String(s);
-  return raw || safeMessage(t) !== undefined ? t : `<other len=${t.length}>`;
+  return safeMessage(t) !== undefined ? t : `<other len=${t.length}>`;
 };
 const kindOf =(e: unknown) => (e instanceof StralforsError ? e.kind : e instanceof ToolInputError ? 'input' : 'unknown');
 
@@ -64,14 +64,13 @@ export async function report({ client, profile, env }: Deps, opts: Opts = {}): P
   }
   if (opts.invoiceNumber === undefined) out.push('track: skipped (set LIVE_CHECK_INVOICE_NUMBER)');
   else {
-    if (opts.rawStatus) out.push('track: raw status strings shown (LIVE_CHECK_RAW_STATUS), do not paste');
     const invoiceNumber = opts.invoiceNumber;
     await step('track', async () => {
       const r = await track.run({ invoiceNumber }, ctx);
       const lines = [`documents=${r.documents.length} hasMore=${r.hasMore}`];
       for (const [i, d] of r.documents.entries()) {
         lines.push(`  document #${i + 1} outcome=${d.outcome}`);
-        for (const c of d.channels) lines.push(`    channelId=${String(c['channelId'])} status=${shown(c['status'], opts.rawStatus === true)} outcome=${c.outcome}`);
+        for (const c of d.channels) lines.push(`    channelId=${String(c['channelId'])} status=${shown(c['status'])} outcome=${c.outcome}`);
       }
       return lines.join('\n');
     });
@@ -86,7 +85,7 @@ async function main(): Promise<number> {
     const profile = Object.values(config.profiles)[0];
     if (!profile) throw new ConfigError('no profile configured');
     client = createClient({ config, profileId: profile.id });
-    const text = await report({ client, profile, env: config.env }, { channels: parseChannels(process.env['LIVE_CHECK_CHANNELS']), invoiceNumber: process.env['LIVE_CHECK_INVOICE_NUMBER'] || undefined, rawStatus: process.env['LIVE_CHECK_RAW_STATUS'] === '1' });
+    const text = await report({ client, profile, env: config.env }, { channels: parseChannels(process.env['LIVE_CHECK_CHANNELS']), invoiceNumber: process.env['LIVE_CHECK_INVOICE_NUMBER'] || undefined });
     console.log(text);
     return /^fail /m.test(text) ? 1 : 0;
   } catch (e) {
