@@ -22,6 +22,7 @@ ENV NODE_ENV=production
 COPY --chown=65532:65532 --from=deps /app/node_modules ./node_modules
 COPY --chown=65532:65532 package.json ./
 COPY --chown=65532:65532 src ./src
+COPY --chown=65532:65532 knowledge/public ./knowledge/public
 USER 65532:65532
 EXPOSE 3000 9464
 CMD ["src/server/main.ts"]

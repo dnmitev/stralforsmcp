@@ -1,7 +1,9 @@
 import { readFileSync, realpathSync } from 'node:fs';
 import { isIPv6 } from 'node:net';
 import { createServer, type Server } from 'node:http';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createIndex, loadKnowledge } from '../knowledge/index.ts';
 import { createAudit, fromBlocked, type Audit } from '../audit/index.ts';
 import { createTokenStore, type Env } from '../auth/index.ts';
 import { ConfigError } from '../stralfors/errors.ts';
@@ -15,6 +17,7 @@ import { createHttpServer } from './http.ts';
 import { buildMcp } from './mcp.ts';
 import { createRulesCache } from './rules-cache.ts';
 import { createChannelLookup } from './lookup-tool.ts';
+import { createSearchDocs } from './search-tool.ts';
 import { createTrackDocument } from './track-tool.ts';
 import { createGetExampleInvoice, createGetRules } from './rules-tools.ts';
 import { DEFAULT_MAX_OUTPUT_BYTES } from './tools.ts';
@@ -58,6 +61,10 @@ const int = (name: string, v: string | undefined, def: number, min: number, max 
   if (!/^\d+$/.test(v) || n < min || n > max) throw new ConfigError(`${name} is invalid`);
   return n;
 };
+
+// ':' separated, empty entries ignored, unset means none. ponytail: POSIX separator only (the image is Linux); Windows drive letters are not supported.
+const overlayDirs = (v: string | undefined): string[] => (v ?? '').split(':').filter(Boolean);
+const PUBLIC_DIR = fileURLToPath(new URL('../../knowledge/public', import.meta.url));
 
 const LEVELS = new Set(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent']);
 const level = (v: string | undefined): string => {
@@ -159,7 +166,9 @@ export async function start(env: Record<string, string | undefined>, deps: Start
     }
     const profiles = Object.values(config.profiles).map((p) => ({ id: p.id, country: p.country }));
     const cache = createRulesCache({ ttlMs: rulesCacheS * 1000, now });
-    const tools = [createWhoami(profiles), createListChannels({ clients, config }), createGetRules({ clients, cache }), createGetExampleInvoice({ clients }), createValidateInvoice({ clients, config, cache }), createTrackDocument({ clients, now }), createChannelLookup({ clients })];
+    const { docs, warnings } = await loadKnowledge({ publicDir: env.KNOWLEDGE_PUBLIC_DIR ? resolve(env.KNOWLEDGE_PUBLIC_DIR) : PUBLIC_DIR, overlayDirs: overlayDirs(env.KNOWLEDGE_DIRS).map((d) => resolve(d)) });
+    logger[warnings.length ? 'warn' : 'debug']({}, `knowledge loaded: ${docs.length} docs, ${warnings.length} warnings`); // silent unless a doc was skipped; counts in the message (the logger drops unlisted keys); warnings name files, private ones must not reach logs
+    const tools = [createWhoami(profiles), createListChannels({ clients, config }), createGetRules({ clients, cache }), createGetExampleInvoice({ clients }), createValidateInvoice({ clients, config, cache }), createTrackDocument({ clients, now }), createChannelLookup({ clients }), createSearchDocs({ index: createIndex(docs) })];
     const limiter = createRateLimiter({ perMinute, burst, now: deps.monotonic ?? (() => performance.now()) });
     metricsListening = await new Promise<number>((resolve, reject) => {
       metrics.once('error', () => reject(new ConfigError('metrics listener failed (port in use or not permitted; see MCP_METRICS_PORT)'))); // the OS error carries the address: not forwarded

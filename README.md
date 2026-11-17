@@ -297,6 +297,33 @@ npm run dev 2>/dev/null                              # audit only
 | `401` on `/mcp` | missing, wrong, expired or revoked token; the body is identical for every cause | recreate the token (step 2, `-- --force` to replace the file), export it again, restart if it still fails |
 | `403` / `404` / `405` on `/mcp` | host not in `MCP_HOSTNAMES`, wrong path, or not `POST` | use `localhost` and `POST /mcp` |
 
+## Knowledge docs (`search_docs`)
+
+`search_docs` answers a free-text question from a small curated corpus of Markdown notes: short public summaries (with links to the vendor docs) shipped in `knowledge/public/`, plus an optional private overlay you mount yourself. It reads local files only, makes no Stralfors API requests and keeps working when the vendor API is down; the normal server configuration (profiles and their credential files) is still required to start the server. Every hit carries `source` (`public` or `private`), and the text of a hit is reference material, not instructions. Input: `query` (1 to 200 characters), optional `country`, `channel`, `source` and `limit` (1 to 10, default 5). Output: `hits`, `total` and `truncated`. See [ADR 0021](docs/adr/0021-knowledge-docs-are-files-public-summaries-private-overlay-no-network-index.md).
+
+| Variable | Meaning |
+|---|---|
+| `KNOWLEDGE_DIRS` | Optional. Directories of private docs, separated by `:`, empty entries ignored. Their docs get `source: private`; a doc with the same `id` replaces an earlier one, and a private doc replaces a public one. A missing or unreadable directory stops start-up (`KNOWLEDGE_DIRS is not readable`). Unset means no private docs. |
+| `KNOWLEDGE_PUBLIC_DIR` | Optional. Overrides the shipped `knowledge/public` (used by tests). |
+
+Docs are loaded once at start; restart the server to pick up changes. The log shows counts only (`knowledge loaded: N docs, M warnings`), never file names. The private overlay is mounted, never committed and never baked into the image.
+
+A doc is one `.md` file (at most 64 KiB, at most 500 docs in total) starting with a front-matter block of `key: value` lines, then the body:
+
+```markdown
+---
+id: validate-dry-run
+title: Validate with the dry run
+country: SE
+channel: Kivra
+tags: validate, dry run
+link: https://developer.stralfors.com/docs
+---
+Short summary in your own words.
+```
+
+`id` (lower-case letters, digits, `-`, at most 64) and `title` are required; `country` (two capitals), `channel`, `tags` (comma separated, at most 12) and an `https` `link` are optional. Public docs also need a link and a body of at most 4000 characters (the corpus test checks this); write summaries, do not copy vendor text. A file that does not parse is skipped with a warning counted at start.
+
 ## Container image
 
 The image is built from the `Dockerfile`: a digest-pinned distroless Node 26 `nonroot` base (uid 65532, no shell, no package manager), the repository's `src/` TypeScript run directly by Node's native type stripping (no compile step), and production dependencies only. It declares no `HEALTHCHECK` (use the Kubernetes probes on `/healthz` and `/readyz`), and no credential or configuration value is baked in: `STRALFORS_*` and `MCP_*` are file paths and names supplied at run time.
@@ -422,7 +449,7 @@ Without Docker the suite is skipped with a message; if `CI` is set it fails inst
 
 ## Mutation testing
 
-`npm run mutation` runs [StrykerJS](https://stryker-mutator.io) with the Vitest runner over the core modules (`src/stralfors/token.ts`, `errors.ts`, `http.ts`, `index.ts`, `config.ts`, `src/auth/token-store.ts`, `src/policy/policy.ts`, `src/audit/audit.ts`, `src/server/auth.ts`, `src/server/tools.ts`, `src/server/guards.ts`, `channels.ts`, `rate-limit.ts`, `context.ts`). Target score is 80 %; the run fails below 70 % (`break`). Reports land in `reports/mutation/` (`mutation.html`, `mutation.json`). The incremental file `reports/stryker-incremental.json` is kept between runs, so a re-run only tests what changed. CI runs this as the `mutation` job on Node 24, publishes the score in the job summary and uploads the report as an artifact.
+`npm run mutation` runs [StrykerJS](https://stryker-mutator.io) with the Vitest runner over the core modules (`src/stralfors/token.ts`, `errors.ts`, `http.ts`, `index.ts`, `config.ts`, `src/auth/token-store.ts`, `src/policy/policy.ts`, `src/audit/audit.ts`, `src/server/auth.ts`, `src/server/tools.ts`, `src/server/guards.ts`, `channels.ts`, `rate-limit.ts`, `context.ts`, and the knowledge store `src/knowledge/*.ts` with `src/server/search-tool.ts`). Target score is 80 %; the run fails below 70 % (`break`). Reports land in `reports/mutation/` (`mutation.html`, `mutation.json`). The incremental file `reports/stryker-incremental.json` is kept between runs, so a re-run only tests what changed. CI runs this as the `mutation` job on Node 24, publishes the score in the job summary and uploads the report as an artifact.
 
 Optional dashboard: enable the repository on the [Stryker dashboard](https://dashboard.stryker-mutator.io), then run `gh secret set STRYKER_DASHBOARD_API_KEY`. Until the secret exists, CI sends nothing.
 
