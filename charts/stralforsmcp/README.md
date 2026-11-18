@@ -49,7 +49,7 @@ helm install stralforsmcp ./charts/stralforsmcp \
 - Shutdown budget (ADR 0023): `terminationGracePeriodSeconds * 1000` must exceed `readyDelayMs + drainMs + 8000` (3 s client close + 5 s telemetry flush); rendering fails otherwise. Defaults: 5000 + 10000 + 8000 = 23 s inside a 30 s grace. A larger `STRALFORS_TIMEOUT_MS` needs a larger `drainMs` and grace.
 - `extraEnv` may not set a variable the chart sets itself (including any `STRALFORS_PROFILE_*`) or one that moves the listeners the probes, Services and NetworkPolicy assume (`MCP_PORT`, `MCP_LISTEN_HOST`, `MCP_METRICS_PORT`, `MCP_METRICS_HOST`), the knowledge variables (`KNOWLEDGE_DIRS`, `KNOWLEDGE_PUBLIC_DIR`) and any `OTEL_EXPORTER_OTLP_*` (use `otlp.*`, so credentials stay in a Secret); `value` must be a string (quote numbers), and `extraVolumes` / `extraVolumeMounts` may not reuse the names `token-list` or `creds-<profile id>`, and a mount may not sit under `/run/creds`.
 - Rendering fails when there is no hostname (ingress hosts plus `extraHostnames` feed `MCP_HOSTNAMES`).
-- Ingress backends only target port 3000. Metrics (9464) are served only by the separate `<release>-stralforsmcp-metrics` ClusterIP Service; with `networkPolicy.enabled`, port 9464 accepts traffic only from `networkPolicy.prometheusNamespace`.
+- Ingress backends only target port 3000. Metrics (9464) are served only by the separate `<release>-stralforsmcp-metrics` ClusterIP Service; with `networkPolicy.enabled`, the rendered policy allows port 9464 from `networkPolicy.prometheusNamespace` (see NetworkPolicy below for what it does and does not guarantee).
 
 ## Rollouts, probes and memory
 

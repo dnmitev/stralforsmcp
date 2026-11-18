@@ -60,7 +60,7 @@
         "burst": { "type": ["integer", "null"], "minimum": 1 }
       }
     },
-    "extraEnv": { "type": "array", "items": { "type": "object", "required": ["name"], "properties": { "name": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }, "value": { "type": "string" }, "valueFrom": { "type": "object" } } } },
+    "extraEnv": { "type": "array", "items": { "type": "object", "required": ["name"], "properties": { "name": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }, "value": { "type": "string" }, "valueFrom": { "type": "object" } }, "not": { "required": ["value", "valueFrom"] } } },
     "extraVolumes": { "type": "array", "items": { "type": "object", "required": ["name"] } },
     "extraVolumeMounts": { "type": "array", "items": { "type": "object", "required": ["name", "mountPath"] } },
     "terminationGracePeriodSeconds": { "type": "integer", "minimum": 0 },

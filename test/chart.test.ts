@@ -494,6 +494,10 @@ describe.skipIf(!helmOk)(helmOk ? 'chart' : 'chart (SKIPPED: helm binary not fou
     it('rejects a scalar extraEnv valueFrom naming the key', () => {
       expect(helmError({ ...baseValues(), extraEnv: [{ name: 'MCP_RULES_CACHE_S', valueFrom: 'example-config' }] })).toMatch(/extraEnv/);
     });
+    it('rejects an extraEnv entry with both value and valueFrom naming the key', () => {
+      const e = helmError({ ...baseValues(), extraEnv: [{ name: 'MCP_RULES_CACHE_S', value: '1', valueFrom: { configMapKeyRef: { name: 'example-cm', key: 'k' } } }] });
+      expect(e).toMatch(/extraEnv/);
+    });
     it('appends extraEnv in value and valueFrom form', () => {
       const docs = render({
         ...baseValues(),
