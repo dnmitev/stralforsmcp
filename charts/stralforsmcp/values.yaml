@@ -35,9 +35,27 @@ otlp:
     key: headers
 
 replicas: 1
-# terminationGracePeriodSeconds * 1000 must exceed drainMs, or rendering fails.
+# Shutdown (ADR 0023): the server turns /readyz to 503 on SIGTERM, keeps serving for
+# readyDelayMs (endpoint propagation), then drains for drainMs. Rendering fails unless
+# terminationGracePeriodSeconds * 1000 > readyDelayMs + drainMs + 8000 (3 s client close + 5 s flush).
+# There is no preStop hook: the image has no shell or sleep and the server delays itself.
+readyDelayMs: 5000
 drainMs: 10000
 terminationGracePeriodSeconds: 30
+
+# Node old-space limit in MiB: about 75 % of resources.limits.memory (256Mi -> 192).
+heapMaxMb: 192
+
+# Optional server settings; omitted from the pod when empty.
+logLevel: ""          # MCP_LOG_LEVEL
+rate:
+  perMinute: null     # MCP_RATE_PER_MINUTE
+  burst: null         # MCP_RATE_BURST
+# Any other server variable (see README): [{name: MCP_TOOL_OUTPUT_MAX_BYTES, value: "65536"}].
+# Names the chart sets itself are rejected. Secrets still go by file path (ADR 0005).
+extraEnv: []
+extraVolumes: []
+extraVolumeMounts: []
 
 resources:
   requests:
@@ -61,7 +79,7 @@ ingress:
     <<: *ingress
 
 networkPolicy:
-  enabled: false
+  enabled: true
   prometheusNamespace: monitoring
   ingressControllerNamespace: ingress
 

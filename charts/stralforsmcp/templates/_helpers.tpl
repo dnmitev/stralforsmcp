@@ -27,11 +27,32 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- join "," $h -}}
 {{- end }}
 
+{{/* Env names the chart sets itself; extraEnv may not repeat them (Kubernetes would silently take the last one). */}}
+{{- define "stralforsmcp.reservedEnv" -}}
+STRALFORS_ENV STRALFORS_PROFILES STRALFORS_ALLOW_WRITE STRALFORS_PROD_VALIDATE_ENABLED STRALFORS_CERT_RELOAD_S STRALFORS_TIMEOUT_MS MCP_TOKEN_LIST_FILE MCP_HOSTNAMES MCP_ORIGINS MCP_DRAIN_MS MCP_READY_DELAY_MS MCP_LOG_LEVEL MCP_RATE_PER_MINUTE MCP_RATE_BURST NODE_OPTIONS OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_HEADERS
+{{- end }}
+
 {{- define "stralforsmcp.guards" -}}
-{{- if le (mul (int .Values.terminationGracePeriodSeconds) 1000) (int .Values.drainMs) -}}{{- fail "stralforsmcp: terminationGracePeriodSeconds must be longer than drainMs (in seconds vs milliseconds)" -}}{{- end -}}
+{{- /* Shutdown budget (ADR 0023): ready delay + drain + 3 s client close + 5 s telemetry flush must fit inside the grace period. */ -}}
+{{- if le (mul (int .Values.terminationGracePeriodSeconds) 1000) (add (int .Values.readyDelayMs) (int .Values.drainMs) 8000) -}}{{- fail "stralforsmcp: terminationGracePeriodSeconds * 1000 must exceed readyDelayMs + drainMs + 8000 (3 s client close + 5 s telemetry flush); raise terminationGracePeriodSeconds or lower readyDelayMs/drainMs" -}}{{- end -}}
+{{- $reserved := splitList " " (include "stralforsmcp.reservedEnv" .) -}}
+{{- range .Values.extraEnv -}}
+{{- if or (has .name $reserved) (hasPrefix "STRALFORS_PROFILE_" .name) -}}{{- fail (printf "stralforsmcp: extraEnv must not set %s: the chart sets it (use its own value instead)" .name) -}}{{- end -}}
+{{- end -}}
+{{- $own := list "token-list" -}}
+{{- range .Values.profiles }}{{- $own = append $own (printf "creds-%s" .id) -}}{{- end -}}
+{{- range .Values.extraVolumes -}}
+{{- if has .name $own -}}{{- fail (printf "stralforsmcp: extraVolumes name %s is used by the chart" .name) -}}{{- end -}}
+{{- end -}}
+{{- range .Values.extraVolumeMounts -}}
+{{- if has .name $own -}}{{- fail (printf "stralforsmcp: extraVolumeMounts name %s is used by the chart" .name) -}}{{- end -}}
+{{- end -}}
 {{- if eq .Values.stralfors.env "prod" -}}
 {{- if .Values.stralfors.allowWrite -}}{{- fail "stralforsmcp: stralfors.allowWrite is never allowed with env=prod" -}}{{- end -}}
 {{- if .Values.ingress.public.enabled -}}{{- fail "stralforsmcp: public ingress is not allowed with env=prod (ingress.public.enabled)" -}}{{- end -}}
+{{- if not .Values.ingress.internal.enabled -}}{{- fail "stralforsmcp: env=prod requires ingress.internal.enabled=true" -}}{{- end -}}
+{{- if not .Values.ingress.internal.className -}}{{- fail "stralforsmcp: env=prod requires ingress.internal.className (the class the operator exposes only internally)" -}}{{- end -}}
+{{- if compact (default (list) .Values.extraHostnames) -}}{{- fail "stralforsmcp: env=prod does not allow extraHostnames; hostnames come only from the internal ingress" -}}{{- end -}}
 {{- end -}}
 {{- end }}
 

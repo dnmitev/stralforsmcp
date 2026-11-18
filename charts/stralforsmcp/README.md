@@ -43,9 +43,25 @@ helm install stralforsmcp ./charts/stralforsmcp \
 
 ## Guards
 
-- `stralfors.env` is `test` or `prod`. With `prod`, rendering fails if `stralfors.allowWrite` is true or `ingress.public.enabled` is true.
-- `terminationGracePeriodSeconds` must be longer than `drainMs` (seconds against milliseconds); rendering fails otherwise.
+- `stralfors.env` is `test` or `prod`. With `prod`, rendering fails if `stralfors.allowWrite` is true or `ingress.public.enabled` is true, unless `ingress.internal.enabled` is true with a non-empty `ingress.internal.className`, and when `extraHostnames` is set (hostnames then come only from the internal ingress). The chart cannot know what your internal class exposes: keeping that class internal-only is the operator's job.
+- Shutdown budget (ADR 0023): `terminationGracePeriodSeconds * 1000` must exceed `readyDelayMs + drainMs + 8000` (3 s client close + 5 s telemetry flush); rendering fails otherwise. Defaults: 5000 + 10000 + 8000 = 23 s inside a 30 s grace. A larger `STRALFORS_TIMEOUT_MS` needs a larger `drainMs` and grace.
+- `extraEnv` may not set a variable the chart sets itself (including any `STRALFORS_PROFILE_*`), and `extraVolumes` / `extraVolumeMounts` may not reuse the names `token-list` or `creds-<profile id>`.
 - Rendering fails when there is no hostname (ingress hosts plus `extraHostnames` feed `MCP_HOSTNAMES`).
 - Ingress backends only target port 3000. Metrics (9464) are served only by the separate `<release>-stralforsmcp-metrics` ClusterIP Service; with `networkPolicy.enabled`, port 9464 accepts traffic only from `networkPolicy.prometheusNamespace`.
+
+## Rollouts, probes and memory
+
+- On SIGTERM the server turns `/readyz` to 503 and keeps serving for `readyDelayMs` so the endpoint is removed from the Service and the ingress before the listener closes, then drains for `drainMs`. There is no `preStop` hook: the image is distroless (no shell, no `sleep`) and the server delays itself. A startup probe (`/healthz`, up to 60 s), a liveness probe (`/healthz`) and a readiness probe (`/readyz`) have explicit timings. Readiness never depends on Stralfors or the token list (ADR 0023).
+- `heapMaxMb` sets `NODE_OPTIONS=--max-old-space-size`. Keep it at about 75 % of `resources.limits.memory` (192 for the default 256Mi); raise both together.
+
+## Settings beyond the first-class values
+
+First-class: `logLevel` (`MCP_LOG_LEVEL`), `rate.perMinute` / `rate.burst` (`MCP_RATE_PER_MINUTE`, `MCP_RATE_BURST`), `readyDelayMs`, `drainMs`, `stralfors.*`. Everything else the server reads (the root README lists each variable) goes through `extraEnv`, for example `MCP_TOOL_OUTPUT_MAX_BYTES`, `MCP_RULES_CACHE_S`, `MCP_TOKEN_STALE_MS`, `MCP_TRACE_SAMPLE_RATIO`, `MCP_MAX_BODY_BYTES`, `STRALFORS_MAX_BODY_BYTES`, `STRALFORS_TOKEN_REFRESH_MARGIN_S`, `MCP_HEARTBEAT_S`. Secrets still go by file path (ADR 0005): use `extraVolumes` plus `extraVolumeMounts`, not a literal in `extraEnv`.
+
+The knowledge overlay (`KNOWLEDGE_DIRS`) is deliberately not offered: resource and prompt policy parity (plan 05-04) lands first, and whether a publicly reachable TEST deployment may mount an overlay is decided in plan 05-03.
+
+## NetworkPolicy
+
+`networkPolicy.enabled` defaults to true: port 3000 accepts traffic only from `networkPolicy.ingressControllerNamespace` and port 9464 only from `networkPolicy.prometheusNamespace`. Set both to your cluster's real namespace names (the defaults are `ingress` and `monitoring`) or the ingress and scrapes are blocked; kubelet probes come from the node and are normally allowed by the CNI. There is no egress policy yet.
 
 Not included: ExternalSecret or IRSA objects, ServiceMonitor, HPA. Pass IRSA-style annotations with `serviceAccount.annotations`.
