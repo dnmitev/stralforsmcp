@@ -25,17 +25,17 @@ kubectl create secret generic example-profile-a \
 
 ## Install
 
-`image.tag` has no default and is required.
+`image.tag` has no default and is required. Replace every `<placeholder>` below before running the command (an unquoted `<` or `>` is a shell redirection).
 
 ```sh
 helm install stralforsmcp ./charts/stralforsmcp \
-  --set image.tag=<release-tag> \
+  --set 'image.tag=<release-tag>' \
   --set 'profiles[0].id=example-profile' \
   --set 'profiles[0].country=<country-code>' \
   --set 'profiles[0].secretName=example-profile-a' \
   --set tokenList.secretName=example-token-list \
-  --set networkPolicy.ingressControllerNamespace=<ingress-controller-namespace> \
-  --set networkPolicy.prometheusNamespace=<prometheus-namespace> \
+  --set 'networkPolicy.ingressControllerNamespace=<ingress-controller-namespace>' \
+  --set 'networkPolicy.prometheusNamespace=<prometheus-namespace>' \
   --set 'ingress.internal.enabled=true' \
   --set 'ingress.internal.className=<ingress-class>' \
   --set 'ingress.internal.hosts[0].host=<mcp-hostname>' \
