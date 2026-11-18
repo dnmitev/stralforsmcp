@@ -654,6 +654,19 @@ describe('R-06 vendor heartbeat (setInterval, MCP_HEARTBEAT_S)', () => {
     }
   });
 
+  it('a probe that resolves DOWN after close() began neither logs nor publishes', async () => {
+    const p = await boot();
+    let finish!: (v: unknown) => void;
+    p.calls.a.mockImplementationOnce(() => new Promise((r) => void (finish = r)));
+    await vi.advanceTimersByTimeAsync(60_000); // a round starts and hangs on profile a
+    const closing = p.s.close();
+    finish({ status: 'DOWN' });
+    await closing;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(p.logs().some((l) => l.msg === 'upstream.down' || l.msg === 'upstream.up')).toBe(false);
+    expect(await up(p.s.metricsPort).catch(() => null)).toBeNull();
+  });
+
   it('close() stops the timer: no probe afterwards and two fewer timers (token store and heartbeat)', async () => {
     const p = await boot();
     const before = vi.getTimerCount();

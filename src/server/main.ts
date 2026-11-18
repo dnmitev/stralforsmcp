@@ -221,6 +221,7 @@ export async function start(env: Record<string, string | undefined>, deps: Start
       try {
         // Stryker disable next-line ArrowFunction: equivalent, a rejected probe mapped to undefined instead of false is still falsy for every(Boolean)
         await Promise.all([...clients].map(async ([id, c]) => void last.set(id, await Promise.resolve().then(() => c.healthV1()).then((h) => h.status === 'UP', () => false))));
+        if (closing) return; // a round that finishes during shutdown must not publish or log
         const next = [...last.values()].every(Boolean) ? 1 : 0;
         if (next !== state) {
           if (next) logger.info({}, 'upstream.up');

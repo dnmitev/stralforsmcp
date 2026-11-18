@@ -44,6 +44,13 @@ const ID_SEGMENT = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
 /** `noReplay`: on a 401 invalidate the token but never send the request a second time (a request that starts something must not be duplicated). */
 interface RequestOpts<T> { schema?: z.ZodType<T>; query?: Record<string, string>; operation?: string; noReplay?: boolean }
 
+/** validToDate comes from a native conversion whose failure is not reported as an exception: refuse a non-finite or non-positive time */
+function expiryOf(c: X509Certificate): number {
+  const t = c.validToDate.getTime();
+  if (!Number.isFinite(t) || t <= 0) throw new Error('bad notAfter');
+  return t;
+}
+
 export function createClient(o: CreateClientOptions) {
   const { config } = o;
   const profile = config.profiles[o.profileId];
@@ -55,7 +62,7 @@ export function createClient(o: CreateClientOptions) {
   const make = o.createAgent ?? defaultCreateAgent;
   let certExpiresAt: number;
   try {
-    certExpiresAt = new X509Certificate(profile.cert.trim()).validToDate.getTime(); // before the agent: a bad mounted cert is a fixed-text config error, never a parser message
+    certExpiresAt = expiryOf(new X509Certificate(profile.cert.trim())); // before the agent: a bad mounted cert is a fixed-text config error, never a parser message
   } catch {
     throw new ConfigError('client certificate is not a valid PEM certificate');
   }
@@ -82,7 +89,7 @@ export function createClient(o: CreateClientOptions) {
       if (!next.cert || !next.key || next.passphrase === '') kind = 'empty';
       else if (next.cert !== current.cert || next.key !== current.key || next.passphrase !== current.passphrase) {
         let privateKey;
-        let x509: X509Certificate | undefined;
+        let expiresAt = 0;
         try {
           privateKey = createPrivateKey({ key: next.key, passphrase: next.passphrase });
         } catch {
@@ -91,7 +98,8 @@ export function createClient(o: CreateClientOptions) {
         // createAgent checks the key only, so the cert is parsed here and must belong to the key
         if (privateKey) {
           try {
-            x509 = new X509Certificate(next.cert);
+            const x509 = new X509Certificate(next.cert);
+            expiresAt = expiryOf(x509);
             if (!x509.checkPrivateKey(privateKey)) kind = 'key';
           } catch {
             kind = 'pem';
@@ -101,7 +109,7 @@ export function createClient(o: CreateClientOptions) {
           const old = agent;
           agent = make({ id: profile!.id, ...next } as Profile, { ca: o.ca });
           current = next;
-          certExpiresAt = x509!.validToDate.getTime();
+          certExpiresAt = expiresAt;
           report(true);
           void old.close().catch(() => undefined); // close, never destroy: in-flight requests finish
         }
@@ -189,7 +197,8 @@ export function createClient(o: CreateClientOptions) {
       if (e instanceof StralforsError) {
         e.profile ??= ctx.profile;
         e.operation ??= operation;
-        log.warn({ ...ctx, method, pathTemplate, status: e.status, durationMs: now() - started, kind: e.kind, traceId: e.traceId }, 'request.failed');
+        // the heartbeat's error body is vendor-supplied and probed on a timer: its traceId is not logged
+        log.warn({ ...ctx, method, pathTemplate, status: e.status, durationMs: now() - started, kind: e.kind, traceId: operation === 'healthV1' ? undefined : e.traceId }, 'request.failed');
       }
       throw e;
     }

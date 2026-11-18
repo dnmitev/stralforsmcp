@@ -11,6 +11,7 @@ import { X509Certificate } from 'node:crypto';
 import { createServer, type Server } from 'node:https';
 import type { AddressInfo } from 'node:net';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { setImmediate as tick } from 'node:timers/promises';
 import { inspect } from 'node:util';
 import type { Dispatcher } from 'undici';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -407,7 +408,7 @@ describe('R-06 certificate expiry and reload outcomes (client seams: certExpires
       const c = build({}, { onCredentialReload: () => Promise.reject(new Error('sink down')) as never });
       c.rotate();
       c.client.reloadCredentials();
-      await new Promise(setImmediate);
+      await tick();
       expect(unhandled).not.toHaveBeenCalled();
       expect(c.client.certExpiresAt()).toBe(notAfter(pki.foreignClient.cert));
       await c.client.close();
@@ -431,6 +432,35 @@ describe('R-06 certificate expiry and reload outcomes (client seams: certExpires
     expect((e as Error).message).toBe('client certificate is not a valid PEM certificate');
     expect(factory).not.toHaveBeenCalled();
     void c.client.close();
+  });
+
+  // ponytail: a certificate with an out-of-range notAfter cannot be generated deterministically, so the native conversion result is stubbed
+  it('a certificate whose expiry does not convert is refused at start with the fixed-text ConfigError', () => {
+    const c = build();
+    const spy = vi.spyOn(X509Certificate.prototype, 'validToDate', 'get').mockReturnValue(new Date(NaN));
+    try {
+      expect(() => createClient({ config: c.config, profileId: 'a', createAgent: vi.fn() as never, setTimer: () => ({}), clearTimer: () => undefined })).toThrow('client certificate is not a valid PEM certificate');
+    } finally {
+      spy.mockRestore();
+    }
+    void c.client.close();
+  });
+
+  it('on reload a certificate whose expiry does not convert is a failed replacement: last agent and expiry kept, kind pem', async () => {
+    await open();
+    const c = build();
+    const before = c.client.certExpiresAt();
+    c.rotate();
+    const spy = vi.spyOn(X509Certificate.prototype, 'validToDate', 'get').mockReturnValue(new Date(NaN));
+    try {
+      c.client.reloadCredentials();
+    } finally {
+      spy.mockRestore();
+    }
+    expect(c.factory).toHaveBeenCalledTimes(1);
+    expect(c.client.certExpiresAt()).toBe(before);
+    expect(c.failures().map((l) => l['kind'])).toEqual(['pem']);
+    await c.client.close();
   });
 
   it('a reload callback that throws never breaks the tick or the last good agent', async () => {
