@@ -132,12 +132,12 @@ export async function start(env: Record<string, string | undefined>, deps: Start
   const deploy: Env = config.env;
   const allowWrite = config.allowWrite;
   const logger = createLogger({ level: logLevel, destination: stderr, mixin: logMixin });
+  const telemetry = deps.telemetry ?? createTelemetry({ serviceVersion: serverInfo.version, env: deploy, sampleRatio, otlpEndpoint });
   const store = createTokenStore({
     read: () => readFile(file), now, staleAfterMs, log: logger,
     onStale: () => logger.warn({}, 'token_list.stale'),
-    onReload: (r) => telemetry.instruments.tokenReloads.add(1, { outcome: r.ok ? 'ok' : 'failed' }), // runs on a timer tick, after telemetry exists
+    onReload: (r) => telemetry.instruments.tokenReloads.add(1, { outcome: r.ok ? 'ok' : 'failed' })
   });
-  const telemetry = deps.telemetry ?? createTelemetry({ serviceVersion: serverInfo.version, env: deploy, sampleRatio, otlpEndpoint });
   telemetry.instruments.observeStale(store.staleMs);
   const audit = deps.audit ?? createAudit({ destination: process.stdout, now, otelTraceId: () => activeIds()?.trace_id });
   const clients = new Map<string, StralforsClient>();
@@ -222,7 +222,10 @@ export async function start(env: Record<string, string | undefined>, deps: Start
         // Stryker disable next-line ArrowFunction: equivalent, a rejected probe mapped to undefined instead of false is still falsy for every(Boolean)
         await Promise.all([...clients].map(async ([id, c]) => void last.set(id, await Promise.resolve().then(() => c.healthV1()).then((h) => h.status === 'UP', () => false))));
         const next = [...last.values()].every(Boolean) ? 1 : 0;
-        if (next !== state) (next ? logger.info : logger.warn).call(logger, {}, next ? 'upstream.up' : 'upstream.down');
+        if (next !== state) {
+          if (next) logger.info({}, 'upstream.up');
+          else logger.warn({}, 'upstream.down');
+        }
         state = next;
       } finally {
         busy = false;
@@ -234,9 +237,7 @@ export async function start(env: Record<string, string | undefined>, deps: Start
   }
   const close = () => (closing ??= (async () => {
     let first: string | undefined;
-    // ponytail: Timeout.close() when it exists, else clearInterval (fake timers have no close()); boot tests count the global clearInterval as the token store's own call
-    if (beat?.close) beat.close();
-    else clearInterval(beat);
+    if (beat) clearInterval(beat);
     try {
       await srv.close();
     } finally {

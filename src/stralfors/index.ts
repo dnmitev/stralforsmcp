@@ -82,6 +82,7 @@ export function createClient(o: CreateClientOptions) {
       if (!next.cert || !next.key || next.passphrase === '') kind = 'empty';
       else if (next.cert !== current.cert || next.key !== current.key || next.passphrase !== current.passphrase) {
         let privateKey;
+        let x509: X509Certificate | undefined;
         try {
           privateKey = createPrivateKey({ key: next.key, passphrase: next.passphrase });
         } catch {
@@ -90,7 +91,8 @@ export function createClient(o: CreateClientOptions) {
         // createAgent checks the key only, so the cert is parsed here and must belong to the key
         if (privateKey) {
           try {
-            if (!new X509Certificate(next.cert).checkPrivateKey(privateKey)) kind = 'key';
+            x509 = new X509Certificate(next.cert);
+            if (!x509.checkPrivateKey(privateKey)) kind = 'key';
           } catch {
             kind = 'pem';
           }
@@ -99,7 +101,7 @@ export function createClient(o: CreateClientOptions) {
           const old = agent;
           agent = make({ id: profile!.id, ...next } as Profile, { ca: o.ca });
           current = next;
-          certExpiresAt = new X509Certificate(next.cert).validToDate.getTime();
+          certExpiresAt = x509!.validToDate.getTime();
           report(true);
           void old.close().catch(() => undefined); // close, never destroy: in-flight requests finish
         }

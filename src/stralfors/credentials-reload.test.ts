@@ -407,7 +407,7 @@ describe('R-06 certificate expiry and reload outcomes (client seams: certExpires
       const c = build({}, { onCredentialReload: () => Promise.reject(new Error('sink down')) as never });
       c.rotate();
       c.client.reloadCredentials();
-      await new Promise((r) => setTimeout(r, 20));
+      await new Promise(setImmediate);
       expect(unhandled).not.toHaveBeenCalled();
       expect(c.client.certExpiresAt()).toBe(notAfter(pki.foreignClient.cert));
       await c.client.close();

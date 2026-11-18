@@ -298,7 +298,7 @@ describe('close order', () => {
       return closeOf.call(this, cb);
     });
     let signal!: () => void;
-    const b = await W.boot(W.mcpEnv(), { clientFactory: (o) => clients[o.profileId as 'a' | 'b'], telemetry: m.t, onSignal: (fn) => void (signal = fn), ...extra });
+    const b = await W.boot(W.mcpEnv({ MCP_HEARTBEAT_S: '0' }), { clientFactory: (o) => clients[o.profileId as 'a' | 'b'], telemetry: m.t, onSignal: (fn) => void (signal = fn), ...extra });
     ports = { mcp: b.s.port, metrics: b.s.metricsPort };
     return { ...b, order, signal, m, clients };
   };
@@ -357,7 +357,7 @@ describe('close order', () => {
     const ms: number[] = [];
     const timer = ((fn: () => void, n: number) => (ms.push(n), queueMicrotask(fn), { unref: () => undefined, ref: () => undefined, hasRef: () => false })) as unknown as typeof setTimeout;
     let signal!: () => void;
-    const { s } = await W.boot(W.mcpEnv(), { telemetry: m.t, timer, onSignal: (fn: () => void) => void (signal = fn) } as never);
+    const { s } = await W.boot(W.mcpEnv({ MCP_HEARTBEAT_S: '0' }), { telemetry: m.t, timer, onSignal: (fn: () => void) => void (signal = fn) } as never);
     await withExitCode(async () => {
       signal();
       const p1 = s.close();
@@ -633,22 +633,24 @@ describe('R-06 vendor heartbeat (setInterval, MCP_HEARTBEAT_S)', () => {
     expect(p.logs().filter((l) => l.msg === 'upstream.up')).toHaveLength(1);
   });
 
-  it('the heartbeat interval is unref-ed (never holds the process) and closed with Timeout.close() on shutdown', async () => {
-    const handles: { ms: unknown; unref: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> }[] = [];
+  it('the heartbeat interval is unref-ed (never holds the process) and cleared on shutdown', async () => {
+    const handles: { ms: unknown; unref: ReturnType<typeof vi.fn> }[] = [];
     const spy = vi.spyOn(globalThis, 'setInterval').mockImplementation(((_fn: unknown, ms: unknown) => {
-      const h = { ms, unref: vi.fn(), close: vi.fn() };
+      const h = { ms, unref: vi.fn() };
       handles.push(h);
       return h;
     }) as never);
+    const clear = vi.spyOn(globalThis, 'clearInterval');
     try {
       const { s } = await W.boot(W.mcpEnv({ MCP_HEARTBEAT_S: '7' }), { telemetry: memTelemetry().t, clientFactory: probes().clientFactory });
       const beat = handles.find((h) => h.ms === 7000)!;
       expect(beat.unref).toHaveBeenCalledTimes(1);
-      expect(beat.close).not.toHaveBeenCalled();
+      expect(clear).not.toHaveBeenCalledWith(beat);
       await s.close();
-      expect(beat.close).toHaveBeenCalledTimes(1);
+      expect(clear).toHaveBeenCalledWith(beat);
     } finally {
       spy.mockRestore();
+      clear.mockRestore();
     }
   });
 

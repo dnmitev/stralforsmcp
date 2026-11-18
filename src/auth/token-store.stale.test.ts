@@ -128,6 +128,31 @@ describe('onStale', () => {
     expect(onStale).toHaveBeenCalledTimes(2);
   });
 
+  it('a throwing onReload on the success path keeps the new view and counts as a good load', () => {
+    const { store, f, at, onReload, onStale, good } = make();
+    onReload.mockImplementation(() => { throw new Error('observer'); });
+    f.file.content = good;
+    at(MIN);
+    expect(() => store.reload()).not.toThrow();
+    expect(store.staleMs()).toBe(0);
+    f.file.content = '{';
+    at(MIN + 899_999);
+    store.reload();
+    expect(onStale).not.toHaveBeenCalled(); // lastOk was set at MIN, not at boot
+    at(MIN + 900_000);
+    store.reload();
+    expect(onStale).toHaveBeenCalledTimes(1);
+  });
+
+  it('a throwing onReload on the failure path does not escape reload and the stale hook still runs', () => {
+    const { store, f, at, onReload, onStale } = make();
+    onReload.mockImplementation(() => { throw new Error('observer'); });
+    f.file.content = '{';
+    at(900_000);
+    expect(() => store.reload()).not.toThrow();
+    expect(onStale).toHaveBeenCalledTimes(1);
+  });
+
   it('a custom bound is honoured', () => {
     const { store, f, at, onStale } = make({ staleAfterMs: 120_000 });
     f.file.content = '{';

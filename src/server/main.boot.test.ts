@@ -224,7 +224,7 @@ describe('shutdown', () => {
   };
 
   it('drain -> clients (in order) -> store; an in-flight call completes first; exit code 0', async () => {
-    const env = mcpEnv({ MCP_DRAIN_MS: '5000' });
+    const env = mcpEnv({ MCP_DRAIN_MS: '5000', MCP_HEARTBEAT_S: '0' });
     const order: string[] = [];
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
@@ -255,7 +255,7 @@ describe('shutdown', () => {
   });
 
   it('a client close failure still closes the store, sets exit code 1 and rejects Started.close()', async () => {
-    const env = mcpEnv();
+    const env = mcpEnv({ MCP_HEARTBEAT_S: '0' }); // the heartbeat's clearInterval would be logged as the store's
     const order: string[] = [];
     const clients: Record<string, StralforsClient> = { a: stub('a', order), b: stub('b', order, { close: async () => { order.push('close b'); throw new Error('close failed'); } }) };
     const orig = clearInterval;
