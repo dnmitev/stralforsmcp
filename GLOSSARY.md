@@ -352,6 +352,72 @@ _Avoid_: expiry, outage, unhealthy
 **Whoami** (`whoami`):
 The read tool that returns the caller's name, role and permitted environments, the deployment environment, the tools visible to the caller and the configured profiles (id and country). Never a token, scope, secret or agreement id.
 
+## Knowledge
+
+**Knowledge doc** (`KnowledgeDoc`, `knowledge/public/*.md`):
+One curated Markdown note about the Stralfors API: a front matter followed by a body. Loaded once at start and fixed for the process lifetime; a public doc is an original summary that links to the vendor documentation, never a copy of vendor text (ADR 0021).
+_Avoid_: article, page, vendor doc (that is the upstream documentation)
+
+**Front matter** (`parseDoc`):
+The block between the opening and closing `---` lines of a knowledge doc: one `key: value` line each for `id`, `title` and the optional `country`, `channel`, `link`, and a comma-separated `tags` line. Not YAML; any other shape makes the doc invalid.
+_Avoid_: YAML header, metadata
+
+**Doc id** (`id`):
+The lower-case, hyphenated name that identifies a knowledge doc across sources and in its resource URI. A second doc with the same id in one directory is skipped; an overlay doc with the same id as an earlier one replaces it.
+_Avoid_: slug, file name (the file name is not the id)
+
+**Doc source** (`source`: `public` | `private`):
+The label on every knowledge doc and search hit saying whether it came from the public corpus or an overlay. Set by where the file was loaded from, never by its front matter.
+_Avoid_: origin, visibility; "token source" (the OAuth one)
+
+**General doc** and **scoped doc** (`country`, `channel`):
+A general doc has neither `country` nor `channel` and matches any country or channel filter; a scoped doc names one or both and matches only those values. A filter never hides a general doc.
+_Avoid_: global doc, default doc
+
+**Public corpus** (`knowledge/public`):
+The knowledge docs that ship in the repository and the image. Every one has an `https` link, stays within the length cap and loads without warnings.
+_Avoid_: built-in docs, base layer
+
+**Overlay** (`KNOWLEDGE_DIRS`):
+One or more operator-mounted directories of knowledge docs layered over the public corpus. Every overlay doc is labelled `private`, a later directory replaces an earlier doc with the same id, and a configured directory that is missing stops start-up. Never committed and never in the image.
+_Avoid_: private layer, plugin, extension
+
+**Load warning** (`LoadWarning`):
+A file or directory skipped while loading knowledge (unreadable, too large, invalid front matter, a duplicate id within one directory) or the doc limit being reached, tagged with its doc source. The start-up log names skipped public docs by base name and counts private ones only.
+_Avoid_: load error (a load never fails on one bad file)
+
+**Search index** (`createIndex`, `Index`):
+The in-memory ranking structure built once from the loaded knowledge docs that `search_docs` queries. No network index and no Stralfors client.
+_Avoid_: "index" unqualified (clashes with the index resource)
+
+**Search hit** (`Hit`, `snippet`, `total`, `truncated`):
+One ranked knowledge doc returned by `search_docs`: id, title, doc source, country, channel, link and a short snippet, never the whole body. `total` counts all matches; `truncated` says more matched than were returned.
+_Avoid_: result (the whole response), match
+
+**Reference material**:
+The status of any knowledge doc text, search snippet or pasted finding shown to an assistant: data to read, never instructions to follow. Tool and prompt text says so.
+_Avoid_: context, instructions
+
+**Resource** (`knowledge://`):
+A knowledge doc or the doc list exposed through the MCP resources surface so a client can attach it to a conversation. Read-only, served from the loaded docs without I/O, visible to every authenticated principal and audited as `resource:read`. Live API data is never a resource; it stays in tools.
+_Avoid_: attachment, file
+
+**Index resource** (`knowledge://index`):
+The single static resource listing every knowledge doc's id, title, doc source, country and channel, without bodies.
+_Avoid_: catalogue (that is the client channel catalogue), table of contents
+
+**Doc resource** (`knowledge://docs/{id}`):
+The resource template with one resource per knowledge doc. A read returns a Markdown header (title, doc source, country, channel, link) followed by the body. An unknown and an invalid id get the same fixed not-found error, which echoes nothing.
+_Avoid_: document resource ("document" is the invoice sent to the API)
+
+**Prompt** (`explain_channel`, `prepare_validation`, `explain_validation_findings`):
+A fixed-text guided start a client offers its user, filled with validated arguments only. It tells the assistant which tools to call and to report an unavailable tool instead of guessing; it never calls the API itself. Audited as `prompt:get`. Not file-defined; an overlay cannot add one.
+_Avoid_: template (that is the vendor document template), recipe, workflow
+
+**Data fence**:
+The fenced block in `explain_validation_findings` that holds the pasted findings, longer than any backtick run inside them and labelled as data, not instructions, so pasted text cannot close it or steer the assistant.
+_Avoid_: quote, code block (unqualified)
+
 ## Observability
 
 **Manual instrumentation**:
