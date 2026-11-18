@@ -143,12 +143,14 @@ export async function start(env: Record<string, string | undefined>, deps: Start
   const clients = new Map<string, StralforsClient>();
   const make = deps.clientFactory ?? createClient;
   const timer = deps.timer ?? setTimeout;
-  /** undefined = abandoned after CLIENT_CLOSE_MS (not an error) */
+  /** true when some client's close rejected, even if another is still unfinished; an unfinished close (abandoned after CLIENT_CLOSE_MS) is not an error */
   const closeClients = async () => {
     let t: ReturnType<typeof setTimeout> | undefined;
+    let failed = false;
     try {
       // Stryker disable next-line OptionalChaining: equivalent under test, every timer double returns a handle with unref(); the optional call only tolerates one without
-      return await Promise.race([Promise.allSettled([...clients.values()].map((c) => c.close())), new Promise<undefined>((r) => void (t = timer(() => r(undefined), CLIENT_CLOSE_MS)).unref?.())]);
+      await Promise.race([Promise.all([...clients.values()].map((c) => (async () => c.close())().catch(() => void (failed = true)))), new Promise<void>((r) => void (t = timer(() => r(), CLIENT_CLOSE_MS)).unref?.())]);
+      return failed;
     } finally {
       clearTimeout(t);
     }
@@ -207,33 +209,39 @@ export async function start(env: Record<string, string | undefined>, deps: Start
   }
   telemetry.instruments.observeCertExpiry(() => Math.min(...[...clients.values()].map((c) => (c.certExpiresAt() - now()) / 1000)));
   // Vendor heartbeat: never touches readiness. One warn per state change; no body or error text is logged.
+  let closing: Promise<void> | undefined;
   let beat: ReturnType<typeof setInterval> | undefined;
   if (heartbeatS > 0) {
     const last = new Map<string, boolean>();
     let state: 0 | 1 | undefined;
+    let busy = false; // one round at a time: a slow earlier round must not overwrite a newer result or log a stale recovery
     const probe = async () => {
-      // Stryker disable next-line ArrowFunction: equivalent, a rejected probe mapped to undefined instead of false is still falsy for every(Boolean)
-      await Promise.all([...clients].map(async ([id, c]) => void last.set(id, await Promise.resolve().then(() => c.healthV1()).then((h) => h.status === 'UP', () => false))));
-      const next = [...last.values()].every(Boolean) ? 1 : 0;
-      if (next !== state) (next ? logger.info : logger.warn).call(logger, {}, next ? 'upstream.up' : 'upstream.down');
-      state = next;
+      if (busy || closing) return;
+      busy = true;
+      try {
+        // Stryker disable next-line ArrowFunction: equivalent, a rejected probe mapped to undefined instead of false is still falsy for every(Boolean)
+        await Promise.all([...clients].map(async ([id, c]) => void last.set(id, await Promise.resolve().then(() => c.healthV1()).then((h) => h.status === 'UP', () => false))));
+        const next = [...last.values()].every(Boolean) ? 1 : 0;
+        if (next !== state) (next ? logger.info : logger.warn).call(logger, {}, next ? 'upstream.up' : 'upstream.down');
+        state = next;
+      } finally {
+        busy = false;
+      }
     };
     telemetry.instruments.observeUp(() => state);
     beat = setInterval(() => void probe(), heartbeatS * 1000);
     beat.unref();
   }
-  let closing: Promise<void> | undefined;
   const close = () => (closing ??= (async () => {
-    let r: PromiseSettledResult<unknown>[] | undefined;
     let first: string | undefined;
+    // ponytail: Timeout.close() when it exists, else clearInterval (fake timers have no close()); boot tests count the global clearInterval as the token store's own call
+    if (beat?.close) beat.close();
+    else clearInterval(beat);
     try {
       await srv.close();
     } finally {
-      // ponytail: Timeout.close() when it exists, else clearInterval (fake timers have no close()); boot tests count the global clearInterval as the token store's own call
-      if (beat?.close) beat.close();
-      else clearInterval(beat);
-      r = await closeClients();
-      if (r?.some((x) => x.status === 'rejected')) first = 'client close failed';
+      // ponytail: a probe already in flight keeps its socket until the upstream timeout; aborting it needs abort propagation through the client (plan 05-04, R-11)
+      if (await closeClients()) first = 'client close failed';
       await closeMetrics().catch(() => undefined);
       await shutdownTelemetry().catch(() => void (first ??= 'telemetry shutdown failed'));
       store.close();

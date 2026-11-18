@@ -374,7 +374,12 @@ describe('token list staleness wiring', () => {
 describe('shutdown sequence (R-04)', () => {
   /** records every armed timer and never fires one by itself */
   const manual = () => {
-    const t = { ms: [] as number[], fns: [] as (() => void)[], timer: ((fn: () => void, n: number) => (t.ms.push(n), t.fns.push(fn), { unref: () => undefined, ref: () => undefined, hasRef: () => false })) as unknown as typeof setTimeout };
+    const t = {
+      ms: [] as number[], fns: [] as (() => void)[], released: false,
+      /** cleanup for a `finally`: fires every pending timer and every one armed later, so a failed assertion cannot leave close() hanging */
+      release: () => { t.released = true; t.fns.forEach((f) => f()); },
+      timer: ((fn: () => void, n: number) => (t.ms.push(n), t.fns.push(fn), t.released && fn(), { unref: () => undefined, ref: () => undefined, hasRef: () => false })) as unknown as typeof setTimeout,
+    };
     return t;
   };
   const fire = (t: ReturnType<typeof manual>, ms: number) => t.fns[t.ms.indexOf(ms)]!();
@@ -392,7 +397,13 @@ describe('shutdown sequence (R-04)', () => {
     const t = manual();
     const s = await boot(mcpEnv({ MCP_READY_DELAY_MS: v }), { timer: t.timer });
     const closing = s.s.close();
-    if (v !== '0') fire(t, Number(v)); // the delay timer is armed by close(); a timer that never fires would hang it
+    try {
+      if (v !== '0') fire(t, Number(v)); // the delay timer is armed by close(); a timer that never fires would hang it
+    } catch (e) {
+      t.release(); // a failed assertion must not leave close() hanging
+      await closing.catch(() => undefined);
+      throw e;
+    }
     await closing;
   });
 
@@ -400,8 +411,9 @@ describe('shutdown sequence (R-04)', () => {
     const t = manual();
     let signal!: () => void;
     const prev = process.exitCode;
+    let s: Awaited<ReturnType<typeof boot>>['s'] | undefined;
     try {
-      const { s } = await boot(mcpEnv({ MCP_READY_DELAY_MS: '5000' }), { timer: t.timer, onSignal: (fn) => void (signal = fn) });
+      ({ s } = await boot(mcpEnv({ MCP_READY_DELAY_MS: '5000' }), { timer: t.timer, onSignal: (fn) => void (signal = fn) }));
       signal();
       await vi.waitFor(() => expect(t.ms).toContain(5000));
       expect(await probe(s.port)).toBe(503);
@@ -411,6 +423,8 @@ describe('shutdown sequence (R-04)', () => {
       expect(await probe(s.port)).toBe('refused');
       await vi.waitFor(() => expect(process.exitCode).toBe(0));
     } finally {
+      t.release();
+      await s?.close().catch(() => undefined);
       process.exitCode = prev;
     }
   });
@@ -421,12 +435,31 @@ describe('shutdown sequence (R-04)', () => {
     const clients: Record<string, StralforsClient> = { a: stub('a', order, { close: () => new Promise<void>(() => undefined) }), b: stub('b', order) };
     const { s } = await boot(mcpEnv(), { clientFactory: (o) => clients[o.profileId]!, timer: t.timer });
     const closing = s.close();
-    await vi.waitFor(() => expect(t.ms).toContain(3000));
-    expect(order).toEqual(['close b']);
-    fire(t, 3000);
-    await vi.waitFor(() => expect(t.ms).toContain(5000)); // the telemetry flush bound is armed only after the clients are done
-    fire(t, 5000);
-    await expect(closing).resolves.toBeUndefined();
+    try {
+      await vi.waitFor(() => expect(t.ms).toContain(3000));
+      expect(order).toEqual(['close b']);
+      fire(t, 3000);
+      await vi.waitFor(() => expect(t.ms).toContain(5000)); // the telemetry flush bound is armed only after the clients are done
+      fire(t, 5000);
+      await expect(closing).resolves.toBeUndefined();
+    } finally {
+      t.release();
+      await closing.catch(() => undefined);
+    }
+  });
+
+  it('a client that rejects at once still makes close() fail with "client close failed" while another client hangs past 3000 ms', async () => {
+    const t = manual();
+    const clients: Record<string, StralforsClient> = { a: stub('a', [], { close: () => Promise.reject(new Error('boom')) }), b: stub('b', [], { close: () => new Promise<void>(() => undefined) }) };
+    const { s } = await boot(mcpEnv(), { clientFactory: (o) => clients[o.profileId]!, timer: t.timer });
+    const closing = s.close().then(() => undefined, (e: unknown) => e as Error);
+    try {
+      await vi.waitFor(() => expect(t.ms).toContain(3000));
+      fire(t, 3000);
+    } finally {
+      t.release();
+    }
+    expect((await closing)?.message).toBe('client close failed');
   });
 
   it('the 3000 ms client bound is cleared once the clients are done, so no timer outlives close()', async () => {

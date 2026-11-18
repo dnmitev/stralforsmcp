@@ -22,8 +22,8 @@ describe('INSTRUMENTS', () => {
       ['staleSeconds', 'mcp.token_list.stale_seconds', 'observable_gauge', 's', []],
       ['tokenReloads', 'mcp.token_list.reloads', 'counter', '{reload}', ['outcome']],
       ['clientCertExpiry', 'stralfors.client_cert.expiry_seconds', 'observable_gauge', 's', []],
-      ['credentialReloads', 'stralfors.credentials.reloads', 'counter', expect.any(String), ['outcome']],
-      ['upstreamUp', 'stralfors.up', 'observable_gauge', expect.any(String), ['api', 'env']],
+      ['credentialReloads', 'stralfors.credentials.reloads', 'counter', '{reload}', ['outcome']],
+      ['upstreamUp', 'stralfors.up', 'observable_gauge', '1', ['api', 'env']],
     ]);
   });
 

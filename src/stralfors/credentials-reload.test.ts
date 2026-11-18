@@ -15,7 +15,7 @@ import { inspect } from 'node:util';
 import type { Dispatcher } from 'undici';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from './config.ts';
-import { TlsError } from './errors.ts';
+import { ConfigError, TlsError } from './errors.ts';
 import { createAgent, createClient } from './index.ts';
 import { canary, makeEnv, memoryLogger } from '../../test/helpers/api.ts';
 import { generatePki, type Pki } from '../../test/helpers/mtls.ts';
@@ -362,6 +362,7 @@ describe('R-06 certificate expiry and reload outcomes (client seams: certExpires
   it('it follows a hot swap, and a failed swap keeps the last good certificate', async () => {
     await open();
     const c = build();
+    expect(notAfter(pki.foreignClient.cert)).not.toBe(notAfter(pki.client.cert)); // else the swap below proves nothing
     c.rotate();
     c.client.reloadCredentials();
     expect(c.client.certExpiresAt()).toBe(notAfter(pki.foreignClient.cert));
@@ -396,6 +397,40 @@ describe('R-06 certificate expiry and reload outcomes (client seams: certExpires
     c.client.reloadCredentials();
     expect(seen).toEqual([{ ok: false }]);
     await c.client.close();
+  });
+
+  it('a reload callback that returns a rejecting promise is handled: no unhandled rejection, the swap stands', async () => {
+    await open();
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      const c = build({}, { onCredentialReload: () => Promise.reject(new Error('sink down')) as never });
+      c.rotate();
+      c.client.reloadCredentials();
+      await new Promise((r) => setTimeout(r, 20));
+      expect(unhandled).not.toHaveBeenCalled();
+      expect(c.client.certExpiresAt()).toBe(notAfter(pki.foreignClient.cert));
+      await c.client.close();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
+  });
+
+  it('a mounted certificate that does not parse is a fixed-text ConfigError before any agent is created', () => {
+    const c = build();
+    const secret = 'CERT-CANARY-body';
+    const bad = { ...c.config, profiles: { a: { ...c.config.profiles['a']!, cert: secret } } };
+    const factory = vi.fn();
+    let e: unknown;
+    try {
+      createClient({ config: bad, profileId: 'a', createAgent: factory as never, setTimer: () => ({}), clearTimer: () => undefined });
+    } catch (x) {
+      e = x;
+    }
+    expect(e).toBeInstanceOf(ConfigError);
+    expect((e as Error).message).toBe('client certificate is not a valid PEM certificate');
+    expect(factory).not.toHaveBeenCalled();
+    void c.client.close();
   });
 
   it('a reload callback that throws never breaks the tick or the last good agent', async () => {

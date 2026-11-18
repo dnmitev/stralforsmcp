@@ -539,6 +539,8 @@ describe('R-06 vendor heartbeat (setInterval, MCP_HEARTBEAT_S)', () => {
   it('default 60 s: every profile is probed once per minute with no argument, and stralfors.up{api="omni",env} is 1', async () => {
     const p = await boot();
     const [a0, b0] = calls(p);
+    expect([a0, b0]).toEqual([0, 0]); // nothing is probed at start
+    expect(await up(p.s.metricsPort)).toBeNull(); // and the series appears only after the first interval
     await vi.advanceTimersByTimeAsync(59_999);
     expect(calls(p)).toEqual([a0, b0]);
     await vi.advanceTimersByTimeAsync(1);
@@ -561,7 +563,7 @@ describe('R-06 vendor heartbeat (setInterval, MCP_HEARTBEAT_S)', () => {
     const p = await boot({ MCP_HEARTBEAT_S: '0' });
     await vi.advanceTimersByTimeAsync(3_600_000);
     expect(calls(p)).toEqual([0, 0]);
-    expect(await up(p.s.metricsPort)).toBeNull();
+    expect((await get(p.s.metricsPort, '/metrics')).text).not.toMatch(/^stralfors_up/m); // any label shape, any value
   });
 
   it('MCP_HEARTBEAT_S=0: close() still resolves and closes every client (no timer to stop)', async () => {
@@ -596,7 +598,7 @@ describe('R-06 vendor heartbeat (setInterval, MCP_HEARTBEAT_S)', () => {
     expect(warns()).toBe(w0 + 1);
     p.calls.b.mockRejectedValue(new Error(body));
     await vi.advanceTimersByTimeAsync(60_000 * 3);
-    expect(warns()).toBeLessThanOrEqual(w0 + 2);
+    expect(warns()).toBe(w0 + 1); // DOWN then a rejection is still DOWN: no second warning
     expect(`${p.err.join('')}${p.out.join('')}`).not.toContain(body);
   });
 
@@ -610,6 +612,25 @@ describe('R-06 vendor heartbeat (setInterval, MCP_HEARTBEAT_S)', () => {
     p.calls.b.mockResolvedValue({ status: 'UP' });
     await vi.advanceTimersByTimeAsync(60_000);
     expect(lines()).toEqual([['upstream.down', 40], ['upstream.up', 30]]);
+    // the full field set: the message plus standard logger metadata (and the trace ids the mixin adds), nothing probe-specific
+    for (const l of p.logs().filter((x) => x.msg === 'upstream.down' || x.msg === 'upstream.up')) {
+      expect(Object.keys(l).filter((k) => k !== 'trace_id' && k !== 'span_id').sort()).toEqual(['hostname', 'level', 'msg', 'name', 'pid', 'time']);
+    }
+  });
+
+  it('a slow round never overlaps the next: no second probe while one is in flight, no stale result, one recovery line', async () => {
+    const p = await boot();
+    let release!: (v: unknown) => void;
+    p.calls.b.mockImplementationOnce(() => new Promise((r) => (release = r))); // round 1 hangs on b
+    const n = p.calls.b.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(60_000 * 3); // three ticks while round 1 is in flight
+    expect(p.calls.b.mock.calls.length).toBe(n + 1); // ticks 2 and 3 were skipped
+    release({ status: 'DOWN' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect((await up(p.s.metricsPort))![1]).toBe('0');
+    await vi.advanceTimersByTimeAsync(60_000); // the next round starts again and recovers
+    expect(p.calls.b.mock.calls.length).toBe(n + 2);
+    expect(p.logs().filter((l) => l.msg === 'upstream.up')).toHaveLength(1);
   });
 
   it('the heartbeat interval is unref-ed (never holds the process) and closed with Timeout.close() on shutdown', async () => {

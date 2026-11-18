@@ -35,7 +35,7 @@ export interface CreateClientOptions {
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (handle: unknown) => void;
   createAgent?: typeof defaultCreateAgent;
-  /** called with ok only: true after a swap, false on every failing tick, never for an unchanged tick; a throw is swallowed */
+  /** called with ok only: true after a swap, false on every failing tick, never for an unchanged tick; a throw or a rejected promise is swallowed */
   onCredentialReload?: (r: { ok: boolean }) => void;
 }
 export interface InstrumentInfo { operation: string; method: string }
@@ -53,11 +53,16 @@ export function createClient(o: CreateClientOptions) {
   const now = o.now ?? Date.now;
   const instrument = o.instrument ?? ((_i, run) => run());
   const make = o.createAgent ?? defaultCreateAgent;
+  let certExpiresAt: number;
+  try {
+    certExpiresAt = new X509Certificate(profile.cert.trim()).validToDate.getTime(); // before the agent: a bad mounted cert is a fixed-text config error, never a parser message
+  } catch {
+    throw new ConfigError('client certificate is not a valid PEM certificate');
+  }
   let agent: Dispatcher = make(profile, { ca: o.ca });
   const readFile = o.readFile ?? ((p: string) => readFileSync(p, 'utf8'));
   // Stryker disable next-line MethodExpression: equivalent, loadConfig already trims all three values, so trim() here is defensive only
   let current = { cert: profile.cert.trim(), key: profile.key.trim(), passphrase: profile.passphrase?.trim() };
-  let certExpiresAt = new X509Certificate(current.cert).validToDate.getTime();
   let closed = false;
   let lastFailure: string | undefined;
   /** One tick: re-read the files; swap the agent only when the content changed and the new material loads. Failures keep the last good agent. */
@@ -65,7 +70,7 @@ export function createClient(o: CreateClientOptions) {
   const report = (ok: boolean) => {
     try {
       // Stryker disable next-line OptionalChaining: equivalent, calling an absent sink throws a TypeError that the surrounding catch swallows
-      o.onCredentialReload?.({ ok });
+      void Promise.resolve(o.onCredentialReload?.({ ok })).catch(() => undefined); // a sink that returns a rejecting promise must not become an unhandled rejection
     } catch { /* a broken sink must not break the tick */ }
   };
   function reloadCredentials(): void {

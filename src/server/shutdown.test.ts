@@ -166,10 +166,14 @@ describe('readiness first (MCP_READY_DELAY_MS seam: readyDelayMs)', () => {
     const ft = fakeTimer();
     const h = await startHttp({ readyDelayMs: 500, timer: ft.timer } as never);
     const a = h.srv.close();
-    expect(h.srv.close()).toBe(a);
-    await vi.waitFor(() => expect(ft.fns).toHaveLength(1));
-    ft.fns[0]!();
-    await a;
+    try {
+      expect(h.srv.close()).toBe(a);
+      await vi.waitFor(() => expect(ft.fns).toHaveLength(1));
+      ft.fns[0]!();
+    } finally {
+      ft.fns.forEach((f) => f()); // a failed assertion must not leave close() waiting on a timer that never fires
+      await a;
+    }
     expect(ft.ms).toEqual([500]);
   });
 });
