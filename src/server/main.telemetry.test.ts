@@ -675,7 +675,9 @@ describe('R-06 vendor heartbeat (setInterval, MCP_HEARTBEAT_S)', () => {
     try {
       finish({ status: 'DOWN' });
       await vi.advanceTimersByTimeAsync(0);
-      expect(await up(p.s.metricsPort)).toBeNull(); // the scrape succeeded and carries no stralfors_up sample
+      const scrape = await get(p.s.metricsPort, '/metrics');
+      expect(scrape.status).toBe(200); // a failed scrape must not satisfy the assertion below
+      expect(scrape.text).not.toMatch(/^stralfors_up(?:\{| )/m);
       expect(p.logs().some((l) => l.msg === 'upstream.down' || l.msg === 'upstream.up')).toBe(false);
     } finally {
       held.splice(0).forEach((f) => f());
