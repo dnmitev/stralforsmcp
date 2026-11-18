@@ -17,6 +17,8 @@ export interface HttpServerOptions {
   origins: string[];
   maxBodyBytes: number;
   drainMs: number;
+  /** ms /readyz answers 503 while the listener still accepts, before it closes (endpoint propagation); default 0 */
+  readyDelayMs?: number;
   factory: McpServerFactory;
   limiter: RateLimiter;
   now?: () => number;
@@ -138,6 +140,7 @@ export function createHttpServer(o: HttpServerOptions): HttpServer {
     },
     close: () => (closing ??= (async () => {
       ready = false;
+      if (o.readyDelayMs) await new Promise<void>((r) => void (o.timer ?? setTimeout)(r, o.readyDelayMs));
       const stopped = server.listening ? new Promise<void>((r) => server.close(() => r())) : Promise.resolve();
       server.closeIdleConnections();
       if (inflight > 0 && o.drainMs > 0) {

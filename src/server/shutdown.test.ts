@@ -117,3 +117,59 @@ describe('graceful shutdown', () => {
     await expect(send(h.port, { headers: MCP_HEADERS, body: LIST })).rejects.toThrow();
   });
 });
+
+describe('readiness first (MCP_READY_DELAY_MS seam: readyDelayMs)', () => {
+  it('readyz is 503 at once but the listener keeps accepting for the delay; it closes only after, and the in-flight call completes', async () => {
+    const ft = fakeTimer();
+    const d = deferred();
+    const entered = deferred();
+    const h = await startHttp({ hosts: ['127.0.0.1'], drainMs: 2000, readyDelayMs: 500, timer: ft.timer, tools: [whoami, slow(d, entered)] } as never);
+    try {
+      const c = await connect('modern', h.fetchFor(h.w.tA), `http://127.0.0.1:${h.port}/mcp`);
+      const inflight = c.callTool({ name: 'slow', arguments: {} });
+      await entered.promise;
+      let closed = false;
+      const closing = h.srv.close().then(() => (closed = true));
+      await vi.waitFor(() => expect(ft.ms).toEqual([500]));
+      for (let i = 0; i < 2; i++) {
+        expect((await send(h.port, { method: 'GET', path: '/readyz' })).status).toBe(503);
+        expect(await refused(h.port)).toBe(false);
+        expect(h.srv.server.listening).toBe(true);
+      }
+      expect((await send(h.port, { method: 'GET', path: '/healthz' })).status).toBe(200);
+      expect(closed).toBe(false);
+      ft.fns[0]!(); // the delay elapses
+      await vi.waitFor(() => expect(h.srv.server.listening).toBe(false));
+      expect(await refused(h.port)).toBe(true);
+      expect(closed).toBe(false); // still draining the in-flight call
+      d.resolve();
+      expect((await inflight).structuredContent).toEqual({ v: 1 });
+      await closing;
+      expect(ft.ms).toEqual([500, 2000]); // delay first, then the drain
+    } finally {
+      d.resolve();
+      ft.fns.forEach((f) => f());
+    }
+  });
+
+  it('no delay timer is armed when readyDelayMs is 0 or unset, and the listener closes at once', async () => {
+    for (const over of [{}, { readyDelayMs: 0 }]) {
+      const ft = fakeTimer();
+      const h = await startHttp({ timer: ft.timer, ...over } as never);
+      await h.srv.close();
+      expect(ft.ms).toEqual([]);
+      expect(h.srv.server.listening).toBe(false);
+    }
+  });
+
+  it('a second close during the delay returns the same promise and arms nothing new', async () => {
+    const ft = fakeTimer();
+    const h = await startHttp({ readyDelayMs: 500, timer: ft.timer } as never);
+    const a = h.srv.close();
+    expect(h.srv.close()).toBe(a);
+    await vi.waitFor(() => expect(ft.fns).toHaveLength(1));
+    ft.fns[0]!();
+    await a;
+    expect(ft.ms).toEqual([500]);
+  });
+});

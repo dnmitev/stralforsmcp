@@ -35,6 +35,8 @@ export interface CreateClientOptions {
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (handle: unknown) => void;
   createAgent?: typeof defaultCreateAgent;
+  /** called with ok only: true after a swap, false on every failing tick, never for an unchanged tick; a throw is swallowed */
+  onCredentialReload?: (r: { ok: boolean }) => void;
 }
 export interface InstrumentInfo { operation: string; method: string }
 // unanchored on purpose: an id hidden inside a segment (encoded separator, prefix) is still masked
@@ -55,10 +57,17 @@ export function createClient(o: CreateClientOptions) {
   const readFile = o.readFile ?? ((p: string) => readFileSync(p, 'utf8'));
   // Stryker disable next-line MethodExpression: equivalent, loadConfig already trims all three values, so trim() here is defensive only
   let current = { cert: profile.cert.trim(), key: profile.key.trim(), passphrase: profile.passphrase?.trim() };
+  let certExpiresAt = new X509Certificate(current.cert).validToDate.getTime();
   let closed = false;
   let lastFailure: string | undefined;
   /** One tick: re-read the files; swap the agent only when the content changed and the new material loads. Failures keep the last good agent. */
   // ponytail: content compare, not mtime; one interval per client, so N profiles poll N times (cheap: three small files each)
+  const report = (ok: boolean) => {
+    try {
+      // Stryker disable next-line OptionalChaining: equivalent, calling an absent sink throws a TypeError that the surrounding catch swallows
+      o.onCredentialReload?.({ ok });
+    } catch { /* a broken sink must not break the tick */ }
+  };
   function reloadCredentials(): void {
     if (closed) return;
     let kind: 'read' | 'empty' | 'pem' | 'key' | undefined;
@@ -85,12 +94,15 @@ export function createClient(o: CreateClientOptions) {
           const old = agent;
           agent = make({ id: profile!.id, ...next } as Profile, { ca: o.ca });
           current = next;
+          certExpiresAt = new X509Certificate(next.cert).validToDate.getTime();
+          report(true);
           void old.close().catch(() => undefined); // close, never destroy: in-flight requests finish
         }
       }
     } catch {
       kind = 'read';
     }
+    if (kind) report(false);
     if (kind && kind !== lastFailure) log.warn({ profile: profile!.id, kind }, 'credentials.reload_failed');
     lastFailure = kind;
   }
@@ -184,6 +196,7 @@ export function createClient(o: CreateClientOptions) {
     post: <T = unknown>(path: string, body?: unknown, opts?: RequestOpts<T>) => request('POST', path, body, opts),
     delete: <T = unknown>(path: string, opts?: RequestOpts<T>) => request('DELETE', path, undefined, opts),
     reloadCredentials,
+    certExpiresAt: () => certExpiresAt,
     close: () => {
       clearTimer(timer);
       closed = true;

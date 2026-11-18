@@ -203,7 +203,7 @@ describe('context manager (V-1)', () => {
 
 describe('metrics views: every instrument drops every key outside its table row', () => {
   const junk = () => { const c = canaries(); return { userId: c.user, path: `/${c.path}`, 'url.full': c.query, trace_id: 'a'.repeat(32), agreement: c.agreement }; };
-  const sample: Record<string, unknown> = { 'http.request.method': 'POST', 'http.response.status_code': 200, 'http.route': '/mcp', reason: 'unknown', tool: 'whoami', outcome: 'allowed', env: 'test', operation: 'channels', 'error.type': 'timeout' };
+  const sample: Record<string, unknown> = { api: 'omni', 'http.request.method': 'POST', 'http.response.status_code': 200, 'http.route': '/mcp', reason: 'unknown', tool: 'whoami', outcome: 'allowed', env: 'test', operation: 'channels', 'error.type': 'timeout' };
 
   it.each(Object.entries(INSTRUMENTS))('%s', async (key, spec) => {
     const m = memTelemetry();
@@ -358,5 +358,31 @@ describe('shutdown', () => {
       [process.stderr.write, process.stdout.write] = orig as [typeof process.stderr.write, typeof process.stdout.write];
     }
     expect(writes.join('')).not.toMatch(new RegExp(`${port}|ECONNREFUSED`));
+  });
+});
+
+describe('observeCertExpiry / observeUp gauges', () => {
+  it('no series until a source is registered; NaN and undefined add none', async () => {
+    const m = memTelemetry();
+    expect(await m.series('stralfors.client_cert.expiry_seconds')).toEqual([]);
+    expect(await m.series('stralfors.up')).toEqual([]);
+    m.t.instruments.observeCertExpiry(() => NaN);
+    m.t.instruments.observeUp(() => undefined);
+    expect(await m.series('stralfors.client_cert.expiry_seconds')).toEqual([]);
+    expect(await m.series('stralfors.up')).toEqual([]);
+  });
+
+  it('a registered source is read at scrape time; up carries api and env, cert expiry carries no attributes', async () => {
+    const m = memTelemetry();
+    let v = 5;
+    m.t.instruments.observeCertExpiry(() => v);
+    m.t.instruments.observeUp(() => 1);
+    expect(await m.series('stralfors.client_cert.expiry_seconds')).toEqual([{ attributes: {}, value: 5 }]);
+    v = 7;
+    expect(num((await m.series('stralfors.client_cert.expiry_seconds'))[0])).toBe(7);
+    expect(await m.series('stralfors.up')).toEqual([{ attributes: { api: 'omni', env: 'test' }, value: 1 }]);
+    const text = await m.text();
+    expect(text).toMatch(/^# HELP stralfors_client_cert_expiry_seconds Seconds until/m);
+    expect(text).toMatch(/^# HELP stralfors_up 1 when every profile/m);
   });
 });

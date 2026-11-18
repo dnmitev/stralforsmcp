@@ -252,6 +252,41 @@ describe('R4 reload', () => {
     expect(warn).toHaveBeenCalledTimes(3);
   });
 
+  it('unknown-user reference, duplicate hash and bad JSON are three distinct causes: one fixed warn each, never an id, hash or fragment', () => {
+    const { store, f, warn, onReload } = make();
+    const canary = `GHOST-${Math.random().toString(16).slice(2)}`;
+    const ghost = clone(f);
+    ghost.tokens[0]!.userId = canary;
+    f.file.content = JSON.stringify(ghost);
+    store.reload(); store.reload();
+    const dup = clone(f);
+    dup.tokens[1]!.hash = dup.tokens[0]!.hash;
+    f.file.content = JSON.stringify(dup);
+    store.reload(); store.reload();
+    f.file.content = `{"users":"${canary}"`;
+    store.reload();
+    expect(warn.mock.calls).toEqual([[{ kind: 'config' }, 'reload.failed'], [{ kind: 'config' }, 'reload.failed'], [{ kind: 'config' }, 'reload.failed']]);
+    expect(onReload.mock.calls).toEqual(Array(5).fill([{ ok: false }]));
+    const all = JSON.stringify([warn.mock.calls, onReload.mock.calls]);
+    for (const secret of [canary, f.list.tokens[0]!.hash, f.list.tokens[1]!.hash, 'u1']) expect(all).not.toContain(secret);
+  });
+
+  it('a revoked token stays accepted while the reload keeps failing (fail-open, ADR 0006) and is rejected after the file is repaired', () => {
+    const { store, f, onReload } = make();
+    const revoked = clone(f);
+    revoked.tokens[0]!.revoked = true;
+    const broken = JSON.parse(JSON.stringify(revoked)) as typeof revoked;
+    broken.tokens[2]!.userId = 'nobody';
+    f.file.content = JSON.stringify(broken);
+    store.reload(); store.reload();
+    expect(store.verify(f.raw.tA).ok).toBe(true);
+    expect(onReload).toHaveBeenLastCalledWith({ ok: false });
+    f.file.content = JSON.stringify(revoked);
+    store.reload();
+    expect(onReload).toHaveBeenLastCalledWith(expect.objectContaining({ ok: true }));
+    expect(store.verify(f.raw.tA)).toEqual({ ok: false, code: 'revoked' });
+  });
+
   it('close clears the timer once', () => {
     const { store, clear } = make();
     store.close();

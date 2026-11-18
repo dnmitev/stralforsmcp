@@ -1,0 +1,27 @@
+---
+status: accepted
+---
+# Shutdown sequence and operability signals
+
+The server is about to be deployed by a separate repository. A security and operations audit found that a rollout cut requests that arrived while Kubernetes was still routing to the pod, that a failed token list reload left no trace, and that nothing warned before a client certificate expired or when the vendor was down. This ADR records the shutdown order and the signals added. Alert rules, dashboards and the runbook that use them are written with the deployment hand-off, not here.
+
+## Decision
+
+1. **Readiness drops first, the listener closes later.** On SIGTERM `/readyz` answers 503 at once and the server keeps accepting connections for `MCP_READY_DELAY_MS` (integer 0-120000). Only then does it stop listening and drain in-flight requests for `MCP_DRAIN_MS`. The default is 0, so local runs behave as before; the chart sets a value that covers endpoint propagation behind the ingress.
+2. **Client close is bounded.** Closing the upstream clients is abandoned after a fixed 3 s, so a hung upstream cannot push the total past the pod's termination grace period. The telemetry flush keeps its own 5 s bound. An abandoned close is not an error.
+3. **Budget.** Worst-case shutdown is `MCP_READY_DELAY_MS + MCP_DRAIN_MS + 3 s + 5 s`. The termination grace period must exceed that sum; the longest single call (a channel lookup can wait 20 s) should fit inside the drain. The chart enforces the relation in the next plan.
+4. **Readiness stays independent of the vendor and the token list.** A stale list or a vendor outage keeps serving what it can (ADR 0006, ADR 0010); taking every replica out of rotation would turn a configuration or vendor problem into a total outage. Signals, not readiness, report these states.
+5. **Token list reloads are visible.** The store now logs one fixed-text warning per distinct failure and a counter `mcp.token_list.reloads{outcome=ok|failed}` records every tick. The stale line goes through the structured logger. The last good list still keeps serving, so a revocation edit that fails to parse does not take effect until a later reload succeeds; the counter and the `mcp.token_list.stale_seconds` gauge are how an operator finds out. Warnings carry no user id, token hash or file content.
+6. **Certificate expiry and credential reloads are measured.** `stralfors.client_cert.expiry_seconds` is the time to the earliest certificate not-after across profiles, computed at scrape time; it has no label, so no profile id or certificate field leaves the process. `stralfors.credentials.reloads{outcome}` counts successful swaps and every failing tick (the log warning stays once per distinct cause).
+7. **A vendor heartbeat, never a gate.** Every `MCP_HEARTBEAT_S` seconds (default 60, 0 disables) the server calls the existing v1 health read per profile; `stralfors.up{api="omni",env}` is 1 only if every profile's last probe returned `UP`. A state change logs one fixed line; the response body and error text are never logged. The probe uses the existing PROD read allowlist and never touches readiness. The series appears after the first interval, not at start.
+
+## Not covered
+
+- Alert rules, dashboards, a ServiceMonitor and the runbook (hand-off plan).
+- A per-profile certificate or heartbeat label; add one only if an operator needs it, and review its cardinality first (ADR 0011).
+- Probing the other vendor APIs (track and trace, channel lookup); `api` has the single value `omni`.
+- Stopping the heartbeat when a profile is removed at runtime; profiles are fixed at start.
+
+## Revisit when
+
+An operator needs per-profile expiry or health, the deployment adds a startup or readiness dependency on the vendor, or the shutdown budget no longer fits the grace period.

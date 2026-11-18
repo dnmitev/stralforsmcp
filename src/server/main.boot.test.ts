@@ -334,6 +334,8 @@ describe('new environment variables', () => {
 
 describe('token list staleness wiring', () => {
   const MIN = 60_000;
+  // the stale line is a structured logger line (warn, fixed msg), not raw stderr text
+  const staleLine = (x: string) => x.startsWith('{') && (JSON.parse(x) as { msg?: string }).msg === 'token_list.stale';
   const scenario = async (extra: Record<string, string>, minutes: number) => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     try {
@@ -345,7 +347,7 @@ describe('token list staleness wiring', () => {
       for (let m = 1; m <= minutes; m++) {
         t += MIN;
         vi.advanceTimersByTime(MIN);
-        seen.push(err.filter((x) => x === 'token_list.stale\n').length);
+        seen.push(err.filter((x) => staleLine(x)).length);
       }
       return { s, err, seen };
     } finally {
@@ -353,11 +355,12 @@ describe('token list staleness wiring', () => {
     }
   };
 
-  it('default bound 900000 ms: one fixed stderr line at the 15th failed reload, nothing else, readiness unaffected', async () => {
+  it('default bound 900000 ms: one structured warn line at the 15th failed reload, never raw text, readiness unaffected', async () => {
     const { s, err, seen } = await scenario({}, 18);
     expect(seen.indexOf(1)).toBe(14);
     expect(seen.at(-1)).toBe(1);
-    expect(err).toEqual(['token_list.stale\n']);
+    expect(err).not.toContain('token_list.stale\n');
+    expect(err.filter(staleLine).map((x) => JSON.parse(x) as Record<string, unknown>)).toEqual([expect.objectContaining({ level: 40, msg: 'token_list.stale' })]);
     expect((await send(s.port, { method: 'GET', path: '/readyz', headers: { host: '127.0.0.1' } })).status).toBe(200);
     expect((await call('modern', s.port, f.raw.tA, 'whoami', {})).isError).toBeUndefined();
   });
@@ -365,5 +368,86 @@ describe('token list staleness wiring', () => {
   it('MCP_TOKEN_STALE_MS overrides the bound', async () => {
     const { seen } = await scenario({ MCP_TOKEN_STALE_MS: '120000' }, 4);
     expect(seen).toEqual([0, 1, 1, 1]);
+  });
+});
+
+describe('shutdown sequence (R-04)', () => {
+  /** records every armed timer and never fires one by itself */
+  const manual = () => {
+    const t = { ms: [] as number[], fns: [] as (() => void)[], timer: ((fn: () => void, n: number) => (t.ms.push(n), t.fns.push(fn), { unref: () => undefined, ref: () => undefined, hasRef: () => false })) as unknown as typeof setTimeout };
+    return t;
+  };
+  const fire = (t: ReturnType<typeof manual>, ms: number) => t.fns[t.ms.indexOf(ms)]!();
+  const probe = (port: number) => send(port, { method: 'GET', path: '/readyz', headers: { host: '127.0.0.1' } }).then((r) => r.status, () => 'refused' as const);
+
+  it.each([['-1'], ['120001'], ['1.5'], ['abc'], ['']])('MCP_READY_DELAY_MS=%j is refused with a ConfigError before anything is started', async (v) => {
+    const factory = vi.fn(real);
+    const e = await boot(mcpEnv({ MCP_READY_DELAY_MS: v }), { clientFactory: factory }).then(() => undefined, (x: unknown) => x);
+    expect(e).toBeInstanceOf(ConfigError);
+    expect((e as Error).message).toBe('MCP_READY_DELAY_MS is invalid');
+    expect(factory).not.toHaveBeenCalled();
+  });
+
+  it.each([['0'], ['120000']])('MCP_READY_DELAY_MS=%s is accepted', async (v) => {
+    const t = manual();
+    const s = await boot(mcpEnv({ MCP_READY_DELAY_MS: v }), { timer: t.timer });
+    const closing = s.s.close();
+    if (v !== '0') fire(t, Number(v)); // the delay timer is armed by close(); a timer that never fires would hang it
+    await closing;
+  });
+
+  it('SIGTERM: /readyz is 503 and the port still accepts for MCP_READY_DELAY_MS; the listener closes only after the delay; exit code 0', async () => {
+    const t = manual();
+    let signal!: () => void;
+    const prev = process.exitCode;
+    try {
+      const { s } = await boot(mcpEnv({ MCP_READY_DELAY_MS: '5000' }), { timer: t.timer, onSignal: (fn) => void (signal = fn) });
+      signal();
+      await vi.waitFor(() => expect(t.ms).toContain(5000));
+      expect(await probe(s.port)).toBe(503);
+      expect((await send(s.port, { headers: { ...MCP_HEADERS, host: '127.0.0.1', authorization: `Bearer ${f.raw.tA}` }, body: INIT })).status).toBe(200); // new work is still accepted
+      fire(t, 5000);
+      await s.close();
+      expect(await probe(s.port)).toBe('refused');
+      await vi.waitFor(() => expect(process.exitCode).toBe(0));
+    } finally {
+      process.exitCode = prev;
+    }
+  });
+
+  it('a client whose close never settles is abandoned after 3000 ms: close() resolves, the other client was closed, the abandonment is not an error', async () => {
+    const t = manual();
+    const order: string[] = [];
+    const clients: Record<string, StralforsClient> = { a: stub('a', order, { close: () => new Promise<void>(() => undefined) }), b: stub('b', order) };
+    const { s } = await boot(mcpEnv(), { clientFactory: (o) => clients[o.profileId]!, timer: t.timer });
+    const closing = s.close();
+    await vi.waitFor(() => expect(t.ms).toContain(3000));
+    expect(order).toEqual(['close b']);
+    fire(t, 3000);
+    await vi.waitFor(() => expect(t.ms).toContain(5000)); // the telemetry flush bound is armed only after the clients are done
+    fire(t, 5000);
+    await expect(closing).resolves.toBeUndefined();
+  });
+
+  it('the 3000 ms client bound is cleared once the clients are done, so no timer outlives close()', async () => {
+    const t = manual();
+    const handles: unknown[] = [];
+    const timer = ((fn: () => void, n: number) => (handles.push(t.timer(fn, n)), handles.at(-1))) as unknown as typeof setTimeout;
+    const clear = vi.spyOn(globalThis, 'clearTimeout');
+    try {
+      const { s } = await boot(mcpEnv(), { clientFactory: (o) => stub(o.profileId), timer });
+      await s.close();
+      expect(clear).toHaveBeenCalledWith(handles[t.ms.indexOf(3000)]);
+    } finally {
+      clear.mockRestore();
+    }
+  });
+
+  it('a prompt close arms the 3000 ms client bound once and the 5000 ms flush bound once', async () => {
+    const t = manual();
+    const { s } = await boot(mcpEnv(), { clientFactory: (o) => stub(o.profileId), timer: t.timer });
+    await s.close();
+    expect(t.ms.filter((n) => n === 3000)).toEqual([3000]);
+    expect(t.ms.filter((n) => n === 5000)).toEqual([5000]);
   });
 });

@@ -1,6 +1,6 @@
 // Pure data, no OpenTelemetry import: the instrument set and its label keys live in one table so the Views (label allowlists) and the call sites cannot drift.
 export type InstrumentKind = 'counter' | 'histogram' | 'observable_gauge';
-export interface InstrumentSpec { name: string; kind: InstrumentKind; unit: 's' | '{call}' | '{request}'; description: string; keys: readonly string[]; buckets?: readonly number[] }
+export interface InstrumentSpec { name: string; kind: InstrumentKind; unit: 's' | '1' | '{call}' | '{reload}' | '{request}'; description: string; keys: readonly string[]; buckets?: readonly number[] }
 
 /** Second-scale histogram boundaries (the SDK default is millisecond-shaped). */
 export const SECONDS = [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10] as const;
@@ -14,6 +14,10 @@ export const INSTRUMENTS = {
   upstreamRequests: { name: 'stralfors.requests', kind: 'counter', unit: '{request}', keys: ['operation', 'outcome', 'error.type'], description: 'Stralfors requests by outcome' },
   upstreamDuration: { name: 'stralfors.request.duration', kind: 'histogram', unit: 's', keys: ['operation', 'outcome', 'error.type'], buckets: SECONDS, description: 'Stralfors request duration' },
   staleSeconds: { name: 'mcp.token_list.stale_seconds', kind: 'observable_gauge', unit: 's', keys: [], description: 'Seconds the token list has been served from the last good load while reloads fail' },
+  tokenReloads: { name: 'mcp.token_list.reloads', kind: 'counter', unit: '{reload}', keys: ['outcome'], description: 'Token list reload attempts by outcome (ok, failed)' },
+  clientCertExpiry: { name: 'stralfors.client_cert.expiry_seconds', kind: 'observable_gauge', unit: 's', keys: [], description: 'Seconds until the earliest client certificate not-after across profiles' },
+  credentialReloads: { name: 'stralfors.credentials.reloads', kind: 'counter', unit: '{reload}', keys: ['outcome'], description: 'Client credential hot-swap attempts by outcome (ok, failed)' },
+  upstreamUp: { name: 'stralfors.up', kind: 'observable_gauge', unit: '1', keys: ['api', 'env'], description: '1 when every profile last probed UP on the vendor health operation, else 0' },
 } as const satisfies Record<string, InstrumentSpec>;
 
 const KNOWN_METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'CONNECT', 'TRACE']);

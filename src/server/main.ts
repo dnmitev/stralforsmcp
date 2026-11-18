@@ -43,6 +43,7 @@ export interface StartDeps {
 }
 export interface Started { port: number; metricsPort: number; close(): Promise<void> }
 export const TELEMETRY_FLUSH_MS = 5_000;
+export const CLIENT_CLOSE_MS = 3_000;
 
 const HOSTNAME = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/;
 // Allowlist entries: a hostname, or an IPv6 literal bare or bracketed (stored bracketed, as WHATWG URL reports it). No scheme, no port.
@@ -119,6 +120,8 @@ export async function start(env: Record<string, string | undefined>, deps: Start
   const burst = int('MCP_RATE_BURST', env.MCP_RATE_BURST, 30, 1);
   const maxOutputBytes = int('MCP_TOOL_OUTPUT_MAX_BYTES', env.MCP_TOOL_OUTPUT_MAX_BYTES, DEFAULT_MAX_OUTPUT_BYTES, 1);
   const rulesCacheS = int('MCP_RULES_CACHE_S', env.MCP_RULES_CACHE_S, 3600, 0, 86_400);
+  const readyDelayMs = int('MCP_READY_DELAY_MS', env.MCP_READY_DELAY_MS, 0, 0, 120_000);
+  const heartbeatS = int('MCP_HEARTBEAT_S', env.MCP_HEARTBEAT_S, 60, 0, 3600);
   const staleAfterMs = int('MCP_TOKEN_STALE_MS', env.MCP_TOKEN_STALE_MS, 900_000, 1);
 
   const now = deps.now ?? Date.now;
@@ -128,15 +131,28 @@ export async function start(env: Record<string, string | undefined>, deps: Start
   if (Object.keys(config.profiles).length === 0) throw new ConfigError('STRALFORS_PROFILES is empty');
   const deploy: Env = config.env;
   const allowWrite = config.allowWrite;
-  const store = createTokenStore({ read: () => readFile(file), now, staleAfterMs, onStale: () => void stderr.write('token_list.stale\n') });
+  const logger = createLogger({ level: logLevel, destination: stderr, mixin: logMixin });
+  const store = createTokenStore({
+    read: () => readFile(file), now, staleAfterMs, log: logger,
+    onStale: () => logger.warn({}, 'token_list.stale'),
+    onReload: (r) => telemetry.instruments.tokenReloads.add(1, { outcome: r.ok ? 'ok' : 'failed' }), // runs on a timer tick, after telemetry exists
+  });
   const telemetry = deps.telemetry ?? createTelemetry({ serviceVersion: serverInfo.version, env: deploy, sampleRatio, otlpEndpoint });
   telemetry.instruments.observeStale(store.staleMs);
   const audit = deps.audit ?? createAudit({ destination: process.stdout, now, otelTraceId: () => activeIds()?.trace_id });
   const clients = new Map<string, StralforsClient>();
-  const closeClients = () => Promise.allSettled([...clients.values()].map((c) => c.close()));
-  const logger = createLogger({ level: logLevel, destination: stderr, mixin: logMixin });
   const make = deps.clientFactory ?? createClient;
   const timer = deps.timer ?? setTimeout;
+  /** undefined = abandoned after CLIENT_CLOSE_MS (not an error) */
+  const closeClients = async () => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    try {
+      // Stryker disable next-line OptionalChaining: equivalent under test, every timer double returns a handle with unref(); the optional call only tolerates one without
+      return await Promise.race([Promise.allSettled([...clients.values()].map((c) => c.close())), new Promise<undefined>((r) => void (t = timer(() => r(undefined), CLIENT_CLOSE_MS)).unref?.())]);
+    } finally {
+      clearTimeout(t);
+    }
+  };
   const shutdownTelemetry = async () => {
     let t: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -164,7 +180,7 @@ export async function start(env: Record<string, string | undefined>, deps: Start
   let metricsListening: number;
   try {
     for (const id of Object.keys(config.profiles)) {
-      clients.set(id, make({ config, profileId: id, logger, now, instrument: upstreamInstrument(telemetry), onBlocked: (e) => void audit.record({ ...fromBlocked(e), principal: currentPrincipal(), env: deploy }) }));
+      clients.set(id, make({ config, profileId: id, logger, now, instrument: upstreamInstrument(telemetry), onBlocked: (e) => void audit.record({ ...fromBlocked(e), principal: currentPrincipal(), env: deploy }), onCredentialReload: (r) => telemetry.instruments.credentialReloads.add(1, { outcome: r.ok ? 'ok' : 'failed' }) }));
     }
     const profiles = Object.values(config.profiles).map((p) => ({ id: p.id, country: p.country }));
     const cache = createRulesCache({ ttlMs: rulesCacheS * 1000, now });
@@ -177,7 +193,7 @@ export async function start(env: Record<string, string | undefined>, deps: Start
       metrics.once('error', () => reject(new ConfigError('metrics listener failed (port in use or not permitted; see MCP_METRICS_PORT)'))); // the OS error carries the address: not forwarded
       metrics.listen(metricsPort, metricsHost, () => resolve((metrics.address() as { port: number }).port));
     });
-    srv = createHttpServer({ store, audit, telemetry, monotonic: deps.monotonic, env: deploy, hosts, origins, maxBodyBytes, drainMs, now, limiter, factory: buildMcp({ env: deploy, allowWrite, prodValidateEnabled: config.prodValidateEnabled, audit, tools, now, telemetry, maxOutputBytes, knowledge: { docs } }) });
+    srv = createHttpServer({ store, audit, telemetry, monotonic: deps.monotonic, env: deploy, hosts, origins, maxBodyBytes, drainMs, readyDelayMs, timer: deps.timer, now, limiter, factory: buildMcp({ env: deploy, allowWrite, prodValidateEnabled: config.prodValidateEnabled, audit, tools, now, telemetry, maxOutputBytes, knowledge: { docs } }) });
     listening = await srv.listen(port, env.MCP_LISTEN_HOST ?? '0.0.0.0').catch(() => { // the OS error carries the address: not forwarded
       throw new ConfigError('HTTP listener failed (port in use or not permitted; see MCP_PORT)');
     });
@@ -189,15 +205,35 @@ export async function start(env: Record<string, string | undefined>, deps: Start
     store.close();
     throw e;
   }
+  telemetry.instruments.observeCertExpiry(() => Math.min(...[...clients.values()].map((c) => (c.certExpiresAt() - now()) / 1000)));
+  // Vendor heartbeat: never touches readiness. One warn per state change; no body or error text is logged.
+  let beat: ReturnType<typeof setInterval> | undefined;
+  if (heartbeatS > 0) {
+    const last = new Map<string, boolean>();
+    let state: 0 | 1 | undefined;
+    const probe = async () => {
+      // Stryker disable next-line ArrowFunction: equivalent, a rejected probe mapped to undefined instead of false is still falsy for every(Boolean)
+      await Promise.all([...clients].map(async ([id, c]) => void last.set(id, await Promise.resolve().then(() => c.healthV1()).then((h) => h.status === 'UP', () => false))));
+      const next = [...last.values()].every(Boolean) ? 1 : 0;
+      if (next !== state) (next ? logger.info : logger.warn).call(logger, {}, next ? 'upstream.up' : 'upstream.down');
+      state = next;
+    };
+    telemetry.instruments.observeUp(() => state);
+    beat = setInterval(() => void probe(), heartbeatS * 1000);
+    beat.unref();
+  }
   let closing: Promise<void> | undefined;
   const close = () => (closing ??= (async () => {
-    let r: PromiseSettledResult<void>[];
+    let r: PromiseSettledResult<unknown>[] | undefined;
     let first: string | undefined;
     try {
       await srv.close();
     } finally {
+      // ponytail: Timeout.close() when it exists, else clearInterval (fake timers have no close()); boot tests count the global clearInterval as the token store's own call
+      if (beat?.close) beat.close();
+      else clearInterval(beat);
       r = await closeClients();
-      if (r.some((x) => x.status === 'rejected')) first = 'client close failed';
+      if (r?.some((x) => x.status === 'rejected')) first = 'client close failed';
       await closeMetrics().catch(() => undefined);
       await shutdownTelemetry().catch(() => void (first ??= 'telemetry shutdown failed'));
       store.close();
