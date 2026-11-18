@@ -341,8 +341,11 @@ describe.skipIf(!helmOk)(helmOk ? 'chart' : 'chart (SKIPPED: helm binary not fou
       expect([undefined, 'ClusterIP']).toContain(s.spec.type);
       expect(m.metadata.name).toBe(`${s.metadata.name}-metrics`);
     });
-    it('renders no NetworkPolicy unless enabled', () => {
-      expect(kind(render(baseValues()), 'NetworkPolicy')).toEqual([]);
+    it('renders a NetworkPolicy by default and none when disabled', () => {
+      expect(kind(render(baseValues()), 'NetworkPolicy').length).toBe(1);
+      const v = baseValues();
+      v.networkPolicy = { enabled: false };
+      expect(kind(render(v), 'NetworkPolicy')).toEqual([]);
     });
     it('limits 9464 to the Prometheus namespace and 3000 to the ingress controller namespace', () => {
       const [np] = kind(render(full()), 'NetworkPolicy');
@@ -427,16 +430,134 @@ describe.skipIf(!helmOk)(helmOk ? 'chart' : 'chart (SKIPPED: helm binary not fou
       expect(e).toMatch(/profiles/);
       expect(e).toMatch(/\bid\b/);
     });
-    it('fails when the grace period does not exceed drainMs', () => {
-      const v = baseValues();
-      v.terminationGracePeriodSeconds = 0;
-      expect(helmError(v)).toContain('terminationGracePeriodSeconds must be longer than drainMs');
-      expect(helmError(baseValues())).toBe('');
-    });
     it('rejects unknown networkPolicy keys', () => {
       const v = baseValues();
       v.networkPolicy = { enabld: true };
       expect(helmError(v)).toMatch(/enabld/);
+    });
+  });
+
+  describe('05-02b shutdown budget, probes, heap', () => {
+    const grace = (g: number, extra: Obj = {}) => ({ ...baseValues(), terminationGracePeriodSeconds: g, drainMs: 10000, readyDelayMs: 5000, ...extra });
+    it('sets MCP_READY_DELAY_MS, default 5000', () => {
+      expect(envVal(render(baseValues()), 'MCP_READY_DELAY_MS')).toBe('5000');
+      expect(envVal(render({ ...baseValues(), readyDelayMs: 0 }), 'MCP_READY_DELAY_MS')).toBe('0');
+    });
+    it('requires grace * 1000 > readyDelayMs + drainMs + 8000', () => {
+      for (const g of [23, 0]) {
+        const e = helmError(grace(g));
+        expect(e, `grace ${g}`).toContain('terminationGracePeriodSeconds');
+        expect(e).toContain('readyDelayMs');
+        expect(e).toContain('drainMs');
+      }
+      expect(helmError(grace(24))).toBe('');
+      expect(helmError(baseValues())).toBe('');
+    });
+    it('emits no lifecycle hook', () => {
+      expect(container(render(baseValues())).lifecycle).toBeUndefined();
+    });
+    it('has liveness, readiness and startup probes with explicit timings', () => {
+      const c = container(render(baseValues()));
+      expect(c.startupProbe.httpGet.path).toBe('/healthz');
+      expect(c.livenessProbe.httpGet.path).toBe('/healthz');
+      expect(c.readinessProbe.httpGet.path).toBe('/readyz');
+      expect(c.startupProbe).toMatchObject({ periodSeconds: 2, timeoutSeconds: 2, failureThreshold: 30 });
+      expect(c.livenessProbe).toMatchObject({ periodSeconds: 10, timeoutSeconds: 2, failureThreshold: 3 });
+      expect(c.readinessProbe).toMatchObject({ periodSeconds: 5, timeoutSeconds: 2, failureThreshold: 2 });
+    });
+    it('bounds the heap by heapMaxMb, default 192', () => {
+      expect(envVal(render(baseValues()), 'NODE_OPTIONS')).toBe('--max-old-space-size=192');
+      expect(envVal(render({ ...baseValues(), heapMaxMb: 300 }), 'NODE_OPTIONS')).toBe('--max-old-space-size=300');
+    });
+  });
+
+  describe('05-02b config surface', () => {
+    it('emits logLevel and rate only when set', () => {
+      const none = envMap(render(baseValues()));
+      for (const n of ['MCP_LOG_LEVEL', 'MCP_RATE_PER_MINUTE', 'MCP_RATE_BURST', 'KNOWLEDGE_DIRS']) expect(none[n], n).toBeUndefined();
+      const docs = render({ ...baseValues(), logLevel: 'debug', rate: { perMinute: 60, burst: 10 } });
+      expect(envVal(docs, 'MCP_LOG_LEVEL')).toBe('debug');
+      expect(envVal(docs, 'MCP_RATE_PER_MINUTE')).toBe('60');
+      expect(envVal(docs, 'MCP_RATE_BURST')).toBe('10');
+    });
+    it('renders with rate null and with only one limit set', () => {
+      const none = envMap(render({ ...baseValues(), rate: null }));
+      expect(none.MCP_RATE_PER_MINUTE).toBeUndefined();
+      expect(none.MCP_RATE_BURST).toBeUndefined();
+      const one = envMap(render({ ...baseValues(), rate: { burst: 5 } }));
+      expect(one.MCP_RATE_BURST.value).toBe('5');
+      expect(one.MCP_RATE_PER_MINUTE).toBeUndefined();
+    });
+    it('rejects a non-string extraEnv value naming the key', () => {
+      expect(helmError({ ...baseValues(), extraEnv: [{ name: 'MCP_RULES_CACHE_S', value: 65536 }] })).toMatch(/extraEnv/);
+    });
+    it('rejects a scalar extraEnv valueFrom naming the key', () => {
+      expect(helmError({ ...baseValues(), extraEnv: [{ name: 'MCP_RULES_CACHE_S', valueFrom: 'example-config' }] })).toMatch(/extraEnv/);
+    });
+    it('rejects an extraEnv entry with both value and valueFrom naming the key', () => {
+      const e = helmError({ ...baseValues(), extraEnv: [{ name: 'MCP_RULES_CACHE_S', value: '1', valueFrom: { configMapKeyRef: { name: 'example-cm', key: 'k' } } }] });
+      expect(e).toMatch(/extraEnv/);
+    });
+    it('appends extraEnv in value and valueFrom form', () => {
+      const docs = render({
+        ...baseValues(),
+        extraEnv: [{ name: 'MCP_TOOL_OUTPUT_MAX_BYTES', value: '65536' }, { name: 'MCP_RULES_CACHE_S', valueFrom: { configMapKeyRef: { name: 'example-cm', key: 'k' } } }],
+      });
+      expect(envVal(docs, 'MCP_TOOL_OUTPUT_MAX_BYTES')).toBe('65536');
+      expect(envMap(docs).MCP_RULES_CACHE_S.valueFrom.configMapKeyRef.name).toBe('example-cm');
+    });
+    it('rejects an extraEnv name the chart already sets, naming it', () => {
+      for (const name of ['NODE_OPTIONS', 'MCP_LOG_LEVEL', 'MCP_HOSTNAMES', 'MCP_PORT', 'MCP_LISTEN_HOST', 'MCP_METRICS_PORT', 'MCP_METRICS_HOST', 'KNOWLEDGE_DIRS', 'KNOWLEDGE_PUBLIC_DIR', 'OTEL_EXPORTER_OTLP_TRACES_HEADERS', 'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', 'STRALFORS_ENV', 'STRALFORS_PROFILE_TEST_A_CERT_FILE']) {
+        const e = helmError({ ...baseValues(), extraEnv: [{ name, value: 'x' }] });
+        expect(e, name).toContain(name);
+      }
+    });
+    it('appends extraVolumes and extraVolumeMounts next to the Secret volumes', () => {
+      const docs = render({
+        ...baseValues(),
+        extraVolumes: [{ name: 'scratch', emptyDir: {} }],
+        extraVolumeMounts: [{ name: 'scratch', mountPath: '/tmp/scratch' }],
+      });
+      expect(podSpec(docs).volumes.map((v: Obj) => v.name)).toEqual(expect.arrayContaining(['creds-test-a', 'token-list', 'scratch']));
+      expect(container(docs).volumeMounts.map((m: Obj) => m.name)).toContain('scratch');
+    });
+    it('rejects an extra mount under /run/creds', () => {
+      const e = helmError({ ...baseValues(), extraVolumes: [{ name: 'x', emptyDir: {} }], extraVolumeMounts: [{ name: 'x', mountPath: '/run/creds/test-a' }] });
+      expect(e).toContain('/run/creds');
+    });
+    it('rejects an extra volume or mount named like a chart volume', () => {
+      for (const name of ['token-list', 'creds-test-a']) {
+        expect(helmError({ ...baseValues(), extraVolumes: [{ name, emptyDir: {} }] }), name).toContain(name);
+        expect(helmError({ ...baseValues(), extraVolumeMounts: [{ name, mountPath: '/x' }] }), name).toContain(name);
+      }
+    });
+  });
+
+  describe('05-02b prod exposure', () => {
+    const prod = (over: Obj = {}): Obj => ({ ...baseValues(), stralfors: { env: 'prod' }, ...over });
+    it('renders prod with an internal ingress that has a className', () => {
+      expect(helmError(prod())).toBe('');
+    });
+    it('fails without an enabled internal ingress', () => {
+      const v = prod();
+      v.ingress = {};
+      v.extraHostnames = [];
+      expect(helmError(v)).toContain('ingress.internal.enabled');
+      const w = prod();
+      w.ingress.internal.enabled = false;
+      w.extraHostnames = ['only.example.invalid'];
+      expect(helmError(w)).toContain('ingress.internal.enabled');
+    });
+    it('fails when the internal ingress has no className', () => {
+      const v = prod();
+      v.ingress.internal.className = '';
+      expect(helmError(v)).toContain('ingress.internal.className');
+    });
+    it('fails with extraHostnames', () => {
+      expect(helmError(prod({ extraHostnames: ['x.example.invalid'] }))).toContain('extraHostnames');
+    });
+    it('does not apply to test', () => {
+      expect(helmError({ ...baseValues(), extraHostnames: ['x.example.invalid'] })).toBe('');
     });
   });
 

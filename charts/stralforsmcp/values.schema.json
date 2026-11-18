@@ -48,7 +48,21 @@
     "extraHostnames": { "type": "array", "items": { "type": "string" } },
     "origins": { "type": "array", "items": { "type": "string" } },
     "replicas": { "type": "integer", "minimum": 1 },
+    "readyDelayMs": { "type": "integer", "minimum": 0, "maximum": 120000 },
     "drainMs": { "type": "integer", "minimum": 0 },
+    "heapMaxMb": { "type": "integer", "minimum": 64 },
+    "logLevel": { "enum": ["", "trace", "debug", "info", "warn", "error", "fatal", "silent"] },
+    "rate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "perMinute": { "type": ["integer", "null"], "minimum": 1 },
+        "burst": { "type": ["integer", "null"], "minimum": 1 }
+      }
+    },
+    "extraEnv": { "type": "array", "items": { "type": "object", "required": ["name"], "properties": { "name": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }, "value": { "type": "string" }, "valueFrom": { "type": "object" } }, "not": { "required": ["value", "valueFrom"] } } },
+    "extraVolumes": { "type": "array", "items": { "type": "object", "required": ["name"] } },
+    "extraVolumeMounts": { "type": "array", "items": { "type": "object", "required": ["name", "mountPath"] } },
     "terminationGracePeriodSeconds": { "type": "integer", "minimum": 0 },
     "networkPolicy": {
       "type": "object",
