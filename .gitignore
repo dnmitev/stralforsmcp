@@ -35,3 +35,7 @@ tokenomics/
 # Local knowledge overlay (private docs are mounted, never committed)
 knowledge/*
 !knowledge/public/
+
+# AEGIS audit output is private (symlink into the private repo)
+.aegis
+.aegis-backup-*
