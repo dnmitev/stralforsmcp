@@ -34,6 +34,8 @@ helm install stralforsmcp ./charts/stralforsmcp \
   --set 'profiles[0].country=<country-code>' \
   --set 'profiles[0].secretName=example-profile-a' \
   --set tokenList.secretName=example-token-list \
+  --set networkPolicy.ingressControllerNamespace=<ingress-controller-namespace> \
+  --set networkPolicy.prometheusNamespace=<prometheus-namespace> \
   --set 'ingress.internal.enabled=true' \
   --set 'ingress.internal.className=<ingress-class>' \
   --set 'ingress.internal.hosts[0].host=<mcp-hostname>' \
@@ -43,9 +45,9 @@ helm install stralforsmcp ./charts/stralforsmcp \
 
 ## Guards
 
-- `stralfors.env` is `test` or `prod`. With `prod`, rendering fails if `stralfors.allowWrite` is true or `ingress.public.enabled` is true, unless `ingress.internal.enabled` is true with a non-empty `ingress.internal.className`, and when `extraHostnames` is set (hostnames then come only from the internal ingress). The chart cannot know what your internal class exposes: keeping that class internal-only is the operator's job.
+- `stralfors.env` is `test` or `prod`. With `prod`, rendering requires `ingress.internal.enabled` true with a non-empty `ingress.internal.className`, and independently fails if `stralfors.allowWrite` is true, `ingress.public.enabled` is true or `extraHostnames` is set (hostnames then come only from the internal ingress). The chart cannot know what your internal class exposes: keeping that class internal-only is the operator's job.
 - Shutdown budget (ADR 0023): `terminationGracePeriodSeconds * 1000` must exceed `readyDelayMs + drainMs + 8000` (3 s client close + 5 s telemetry flush); rendering fails otherwise. Defaults: 5000 + 10000 + 8000 = 23 s inside a 30 s grace. A larger `STRALFORS_TIMEOUT_MS` needs a larger `drainMs` and grace.
-- `extraEnv` may not set a variable the chart sets itself (including any `STRALFORS_PROFILE_*`), and `extraVolumes` / `extraVolumeMounts` may not reuse the names `token-list` or `creds-<profile id>`.
+- `extraEnv` may not set a variable the chart sets itself (including any `STRALFORS_PROFILE_*`) or one that moves the listeners the probes, Services and NetworkPolicy assume (`MCP_PORT`, `MCP_LISTEN_HOST`, `MCP_METRICS_PORT`, `MCP_METRICS_HOST`); `value` must be a string (quote numbers), and `extraVolumes` / `extraVolumeMounts` may not reuse the names `token-list` or `creds-<profile id>`.
 - Rendering fails when there is no hostname (ingress hosts plus `extraHostnames` feed `MCP_HOSTNAMES`).
 - Ingress backends only target port 3000. Metrics (9464) are served only by the separate `<release>-stralforsmcp-metrics` ClusterIP Service; with `networkPolicy.enabled`, port 9464 accepts traffic only from `networkPolicy.prometheusNamespace`.
 
@@ -62,6 +64,6 @@ The knowledge overlay (`KNOWLEDGE_DIRS`) is deliberately not offered: resource a
 
 ## NetworkPolicy
 
-`networkPolicy.enabled` defaults to true: port 3000 accepts traffic only from `networkPolicy.ingressControllerNamespace` and port 9464 only from `networkPolicy.prometheusNamespace`. Set both to your cluster's real namespace names (the defaults are `ingress` and `monitoring`) or the ingress and scrapes are blocked; kubelet probes come from the node and are normally allowed by the CNI. There is no egress policy yet.
+`networkPolicy.enabled` defaults to true. The policy this chart renders allows port 3000 from `networkPolicy.ingressControllerNamespace` and port 9464 from `networkPolicy.prometheusNamespace`, and nothing else. Isolation only holds if your CNI enforces NetworkPolicy and no other policy selecting the pod admits more; traffic from the pod's own node (kubelet probes) is exempt. **Set both namespaces to your cluster's real names before every install and upgrade** (the defaults are `ingress` and `monitoring`): with an enforcing CNI and a controller in, say, `ingress-nginx`, Helm succeeds but the route stops working. There is no egress policy yet.
 
 Not included: ExternalSecret or IRSA objects, ServiceMonitor, HPA. Pass IRSA-style annotations with `serviceAccount.annotations`.

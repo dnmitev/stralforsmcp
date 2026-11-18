@@ -104,13 +104,15 @@ spec:
             - name: MCP_LOG_LEVEL
               value: {{ . | quote }}
             {{- end }}
-            {{- with .Values.rate.perMinute }}
+            {{- with .Values.rate }}
+            {{- with .perMinute }}
             - name: MCP_RATE_PER_MINUTE
               value: {{ . | int64 | quote }}
             {{- end }}
-            {{- with .Values.rate.burst }}
+            {{- with .burst }}
             - name: MCP_RATE_BURST
               value: {{ . | int64 | quote }}
+            {{- end }}
             {{- end }}
             {{- if .Values.otlp.endpoint }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT

@@ -461,11 +461,9 @@ describe.skipIf(!helmOk)(helmOk ? 'chart' : 'chart (SKIPPED: helm binary not fou
       expect(c.startupProbe.httpGet.path).toBe('/healthz');
       expect(c.livenessProbe.httpGet.path).toBe('/healthz');
       expect(c.readinessProbe.httpGet.path).toBe('/readyz');
-      for (const p of [c.startupProbe, c.livenessProbe, c.readinessProbe]) {
-        expect(p.periodSeconds).toBeGreaterThan(0);
-        expect(p.failureThreshold).toBeGreaterThan(0);
-      }
-      expect(c.startupProbe.failureThreshold * c.startupProbe.periodSeconds).toBeGreaterThanOrEqual(30);
+      expect(c.startupProbe).toMatchObject({ periodSeconds: 2, failureThreshold: 30 });
+      expect(c.livenessProbe).toMatchObject({ periodSeconds: 10, timeoutSeconds: 2, failureThreshold: 3 });
+      expect(c.readinessProbe).toMatchObject({ periodSeconds: 5, timeoutSeconds: 2, failureThreshold: 2 });
     });
     it('bounds the heap by heapMaxMb, default 192', () => {
       expect(envVal(render(baseValues()), 'NODE_OPTIONS')).toBe('--max-old-space-size=192');
@@ -482,6 +480,17 @@ describe.skipIf(!helmOk)(helmOk ? 'chart' : 'chart (SKIPPED: helm binary not fou
       expect(envVal(docs, 'MCP_RATE_PER_MINUTE')).toBe('60');
       expect(envVal(docs, 'MCP_RATE_BURST')).toBe('10');
     });
+    it('renders with rate null and with only one limit set', () => {
+      const none = envMap(render({ ...baseValues(), rate: null }));
+      expect(none.MCP_RATE_PER_MINUTE).toBeUndefined();
+      expect(none.MCP_RATE_BURST).toBeUndefined();
+      const one = envMap(render({ ...baseValues(), rate: { burst: 5 } }));
+      expect(one.MCP_RATE_BURST.value).toBe('5');
+      expect(one.MCP_RATE_PER_MINUTE).toBeUndefined();
+    });
+    it('rejects a non-string extraEnv value naming the key', () => {
+      expect(helmError({ ...baseValues(), extraEnv: [{ name: 'MCP_RULES_CACHE_S', value: 65536 }] })).toMatch(/extraEnv/);
+    });
     it('appends extraEnv in value and valueFrom form', () => {
       const docs = render({
         ...baseValues(),
@@ -491,7 +500,7 @@ describe.skipIf(!helmOk)(helmOk ? 'chart' : 'chart (SKIPPED: helm binary not fou
       expect(envMap(docs).MCP_RULES_CACHE_S.valueFrom.configMapKeyRef.name).toBe('example-cm');
     });
     it('rejects an extraEnv name the chart already sets, naming it', () => {
-      for (const name of ['NODE_OPTIONS', 'MCP_LOG_LEVEL', 'MCP_HOSTNAMES', 'STRALFORS_ENV', 'STRALFORS_PROFILE_TEST_A_CERT_FILE']) {
+      for (const name of ['NODE_OPTIONS', 'MCP_LOG_LEVEL', 'MCP_HOSTNAMES', 'MCP_PORT', 'MCP_LISTEN_HOST', 'MCP_METRICS_PORT', 'MCP_METRICS_HOST', 'STRALFORS_ENV', 'STRALFORS_PROFILE_TEST_A_CERT_FILE']) {
         const e = helmError({ ...baseValues(), extraEnv: [{ name, value: 'x' }] });
         expect(e, name).toContain(name);
       }

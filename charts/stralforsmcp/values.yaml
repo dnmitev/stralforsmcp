@@ -52,7 +52,8 @@ rate:
   perMinute: null     # MCP_RATE_PER_MINUTE
   burst: null         # MCP_RATE_BURST
 # Any other server variable (see README): [{name: MCP_TOOL_OUTPUT_MAX_BYTES, value: "65536"}].
-# Names the chart sets itself are rejected. Secrets still go by file path (ADR 0005).
+# Names the chart sets itself, and MCP_PORT / MCP_LISTEN_HOST / MCP_METRICS_PORT / MCP_METRICS_HOST
+# (probes and Services assume the fixed ports), are rejected. Values must be strings (quote numbers). Secrets still go by file path (ADR 0005).
 extraEnv: []
 extraVolumes: []
 extraVolumeMounts: []
@@ -78,6 +79,9 @@ ingress:
   public:
     <<: *ingress
 
+# Set both namespaces to your cluster's real ones (controller and scraper) before installing or
+# upgrading: with an enforcing CNI the defaults only admit traffic from namespaces named
+# `ingress` and `monitoring`, and the route or scrape stops working otherwise.
 networkPolicy:
   enabled: true
   prometheusNamespace: monitoring
