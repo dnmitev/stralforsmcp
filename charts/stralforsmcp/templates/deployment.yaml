@@ -50,6 +50,7 @@ spec:
               path: /healthz
               port: mcp
             periodSeconds: 2
+            timeoutSeconds: 2
             failureThreshold: 30
           livenessProbe:
             httpGet:

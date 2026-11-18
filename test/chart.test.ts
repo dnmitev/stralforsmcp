@@ -461,7 +461,7 @@ describe.skipIf(!helmOk)(helmOk ? 'chart' : 'chart (SKIPPED: helm binary not fou
       expect(c.startupProbe.httpGet.path).toBe('/healthz');
       expect(c.livenessProbe.httpGet.path).toBe('/healthz');
       expect(c.readinessProbe.httpGet.path).toBe('/readyz');
-      expect(c.startupProbe).toMatchObject({ periodSeconds: 2, failureThreshold: 30 });
+      expect(c.startupProbe).toMatchObject({ periodSeconds: 2, timeoutSeconds: 2, failureThreshold: 30 });
       expect(c.livenessProbe).toMatchObject({ periodSeconds: 10, timeoutSeconds: 2, failureThreshold: 3 });
       expect(c.readinessProbe).toMatchObject({ periodSeconds: 5, timeoutSeconds: 2, failureThreshold: 2 });
     });
@@ -503,7 +503,7 @@ describe.skipIf(!helmOk)(helmOk ? 'chart' : 'chart (SKIPPED: helm binary not fou
       expect(envMap(docs).MCP_RULES_CACHE_S.valueFrom.configMapKeyRef.name).toBe('example-cm');
     });
     it('rejects an extraEnv name the chart already sets, naming it', () => {
-      for (const name of ['NODE_OPTIONS', 'MCP_LOG_LEVEL', 'MCP_HOSTNAMES', 'MCP_PORT', 'MCP_LISTEN_HOST', 'MCP_METRICS_PORT', 'MCP_METRICS_HOST', 'STRALFORS_ENV', 'STRALFORS_PROFILE_TEST_A_CERT_FILE']) {
+      for (const name of ['NODE_OPTIONS', 'MCP_LOG_LEVEL', 'MCP_HOSTNAMES', 'MCP_PORT', 'MCP_LISTEN_HOST', 'MCP_METRICS_PORT', 'MCP_METRICS_HOST', 'KNOWLEDGE_DIRS', 'KNOWLEDGE_PUBLIC_DIR', 'OTEL_EXPORTER_OTLP_TRACES_HEADERS', 'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', 'STRALFORS_ENV', 'STRALFORS_PROFILE_TEST_A_CERT_FILE']) {
         const e = helmError({ ...baseValues(), extraEnv: [{ name, value: 'x' }] });
         expect(e, name).toContain(name);
       }
@@ -516,6 +516,10 @@ describe.skipIf(!helmOk)(helmOk ? 'chart' : 'chart (SKIPPED: helm binary not fou
       });
       expect(podSpec(docs).volumes.map((v: Obj) => v.name)).toEqual(expect.arrayContaining(['creds-test-a', 'token-list', 'scratch']));
       expect(container(docs).volumeMounts.map((m: Obj) => m.name)).toContain('scratch');
+    });
+    it('rejects an extra mount under /run/creds', () => {
+      const e = helmError({ ...baseValues(), extraVolumes: [{ name: 'x', emptyDir: {} }], extraVolumeMounts: [{ name: 'x', mountPath: '/run/creds/test-a' }] });
+      expect(e).toContain('/run/creds');
     });
     it('rejects an extra volume or mount named like a chart volume', () => {
       for (const name of ['token-list', 'creds-test-a']) {
