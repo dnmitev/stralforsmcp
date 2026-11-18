@@ -2,8 +2,8 @@
  * R23 staleness. API under test (src/auth/token-store.ts): TokenStoreOptions.staleAfterMs / onStale, TokenStore.staleMs().
  */
 import { describe, expect, it, vi } from 'vitest';
-import { createTokenStore } from './index.ts';
-import { T, fixture } from '../../test/helpers/token-list.ts';
+import { createTokenStore, generateToken } from './index.ts';
+import { T, entry, fixture } from '../../test/helpers/token-list.ts';
 
 const MIN = 60_000;
 const make = (o: { staleAfterMs?: number | undefined; read?: () => string; onStale?: () => void } = {}) => {
@@ -129,11 +129,13 @@ describe('onStale', () => {
   });
 
   it('a throwing onReload on the success path keeps the new view and counts as a good load', () => {
-    const { store, f, at, onReload, onStale, good } = make();
+    const { store, f, at, onReload, onStale } = make();
     onReload.mockImplementation(() => { throw new Error('observer'); });
-    f.file.content = good;
+    const probe = generateToken();
+    f.file.content = JSON.stringify({ users: f.list.users, tokens: [entry(probe, 'u1', { revoked: true })] }); // a view the boot list does not contain
     at(MIN);
     expect(() => store.reload()).not.toThrow();
+    expect(store.verify(probe)).toMatchObject({ ok: false, code: 'revoked' });
     expect(store.staleMs()).toBe(0);
     f.file.content = '{';
     at(MIN + 899_999);

@@ -256,6 +256,17 @@ describe('error context and logging', () => {
     expect(failed.map((l) => [l['operation'], l['traceId']])).toEqual([['healthV1', undefined], ['apiInfo', 'tr']]);
   });
 
+  it('repeated failing health probes log request.failed at debug, never warn; other operations stay at warn', async () => {
+    fake = await startFakeApi({ pki, api: (_q, res) => json(res, 503, {}) });
+    const mem = memoryLogger();
+    const { client } = testClient(pki, fake, { logger: mem.logger });
+    await caught(client.healthV1());
+    await caught(client.healthV1());
+    await caught(client.apiInfo());
+    const failed = mem.lines().filter((l) => l['msg'] === 'request.failed');
+    expect(failed.map((l) => [l['operation'], l['level']])).toEqual([['healthV1', 20], ['healthV1', 20], ['apiInfo', 40]]);
+  });
+
   it('UpstreamError type for a 5xx', async () => {
     fake = await startFakeApi({ pki, api: (_q, res) => json(res, 502, {}) });
     expect(await caught(testClient(pki, fake).client.get('/rest/x'))).toBeInstanceOf(UpstreamError);

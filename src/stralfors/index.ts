@@ -198,7 +198,8 @@ export function createClient(o: CreateClientOptions) {
         e.profile ??= ctx.profile;
         e.operation ??= operation;
         // the heartbeat's error body is vendor-supplied and probed on a timer: its traceId is not logged
-        log.warn({ ...ctx, method, pathTemplate, status: e.status, durationMs: now() - started, kind: e.kind, traceId: operation === 'healthV1' ? undefined : e.traceId }, 'request.failed');
+        // the heartbeat probes every interval and main.ts logs the upstream.down transition once, so its failures are debug, not a warn per round
+        log[operation === 'healthV1' ? 'debug' : 'warn']({ ...ctx, method, pathTemplate, status: e.status, durationMs: now() - started, kind: e.kind, traceId: operation === 'healthV1' ? undefined : e.traceId }, 'request.failed');
       }
       throw e;
     }

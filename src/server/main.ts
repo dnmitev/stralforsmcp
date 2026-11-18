@@ -133,16 +133,30 @@ export async function start(env: Record<string, string | undefined>, deps: Start
   const allowWrite = config.allowWrite;
   const logger = createLogger({ level: logLevel, destination: stderr, mixin: logMixin });
   const telemetry = deps.telemetry ?? createTelemetry({ serviceVersion: serverInfo.version, env: deploy, sampleRatio, otlpEndpoint });
-  const store = createTokenStore({
-    read: () => readFile(file), now, staleAfterMs, log: logger,
-    onStale: () => logger.warn({}, 'token_list.stale'),
-    onReload: (r) => telemetry.instruments.tokenReloads.add(1, { outcome: r.ok ? 'ok' : 'failed' })
-  });
+  const timer = deps.timer ?? setTimeout;
+  const shutdownTelemetry = async () => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([telemetry.shutdown(), new Promise<never>((_, rej) => void (t = timer(() => rej(new Error('timeout')), TELEMETRY_FLUSH_MS)).unref?.())]);
+    } finally {
+      clearTimeout(t);
+    }
+  };
+  let store: ReturnType<typeof createTokenStore>;
+  try {
+    store = createTokenStore({
+      read: () => readFile(file), now, staleAfterMs, log: logger,
+      onStale: () => logger.warn({}, 'token_list.stale'),
+      onReload: (r) => telemetry.instruments.tokenReloads.add(1, { outcome: r.ok ? 'ok' : 'failed' })
+    });
+  } catch (e) { // a malformed list: release the telemetry owner so a caller that retries can register a new one
+    await shutdownTelemetry().catch(() => undefined);
+    throw e;
+  }
   telemetry.instruments.observeStale(store.staleMs);
   const audit = deps.audit ?? createAudit({ destination: process.stdout, now, otelTraceId: () => activeIds()?.trace_id });
   const clients = new Map<string, StralforsClient>();
   const make = deps.clientFactory ?? createClient;
-  const timer = deps.timer ?? setTimeout;
   /** true when some client's close rejected, even if another is still unfinished; an unfinished close (abandoned after CLIENT_CLOSE_MS) is not an error */
   const closeClients = async () => {
     let t: ReturnType<typeof setTimeout> | undefined;
@@ -151,14 +165,6 @@ export async function start(env: Record<string, string | undefined>, deps: Start
       // Stryker disable next-line OptionalChaining: equivalent under test, every timer double returns a handle with unref(); the optional call only tolerates one without
       await Promise.race([Promise.all([...clients.values()].map((c) => (async () => c.close())().catch(() => void (failed = true)))), new Promise<void>((r) => void (t = timer(() => r(), CLIENT_CLOSE_MS)).unref?.())]);
       return failed;
-    } finally {
-      clearTimeout(t);
-    }
-  };
-  const shutdownTelemetry = async () => {
-    let t: ReturnType<typeof setTimeout> | undefined;
-    try {
-      await Promise.race([telemetry.shutdown(), new Promise<never>((_, rej) => void (t = timer(() => rej(new Error('timeout')), TELEMETRY_FLUSH_MS)).unref?.())]);
     } finally {
       clearTimeout(t);
     }

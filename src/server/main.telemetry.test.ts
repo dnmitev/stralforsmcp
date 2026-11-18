@@ -279,6 +279,16 @@ describe('metrics listener lifecycle', () => {
     expect(clear).toHaveBeenCalledTimes(1);
     expect(calls).toHaveLength(0);
   });
+
+  it('a malformed token list shuts the telemetry down, rejects with the ConfigError, and a second start works', async () => {
+    const m = memTelemetry({ metricReader: undefined });
+    const shutdown = vi.spyOn(m.t, 'shutdown');
+    const env = W.mcpEnv();
+    const e = await W.boot(env, { telemetry: m.t, readFile: (p) => (p === env.MCP_TOKEN_LIST_FILE ? '{' : readFileSync(p, 'utf8')) }).then(() => undefined, (x: unknown) => x);
+    expect(e).toBeInstanceOf(ConfigError);
+    expect(shutdown).toHaveBeenCalledTimes(1);
+    await W.boot(env, { telemetry: memTelemetry().t });
+  });
 });
 
 describe('close order', () => {
