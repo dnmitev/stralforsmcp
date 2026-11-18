@@ -74,6 +74,13 @@ describe('R7 error mapping', () => {
     }
   });
 
+  it('a 404 whose message is an object that cannot convert to a string still maps to AgreementNotFoundError', () => {
+    const body = '{"message":{"toString":1,"valueOf":1}}';
+    const err = mapHttpError({ status: 404, contentType: 'application/json', body }, ctx);
+    expect(err).toBeInstanceOf(AgreementNotFoundError);
+    expect((err as AgreementNotFoundError).actionId).toBeUndefined();
+  });
+
   it('fixtures map to their classes', () => {
     const p = mapHttpError({ status: 400, contentType: 'application/problem+json; charset=utf-8', body: fixture('error-problemdetails.json') }, ctx);
     expect(p).toBeInstanceOf(BadRequestError);

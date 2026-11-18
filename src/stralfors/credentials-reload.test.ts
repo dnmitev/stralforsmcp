@@ -438,8 +438,17 @@ describe('R-06 certificate expiry and reload outcomes (client seams: certExpires
   it('a certificate whose expiry does not convert is refused at start with the fixed-text ConfigError', () => {
     const c = build();
     const spy = vi.spyOn(X509Certificate.prototype, 'validToDate', 'get').mockReturnValue(new Date(NaN));
+    const factory = vi.fn();
     try {
-      expect(() => createClient({ config: c.config, profileId: 'a', createAgent: vi.fn() as never, setTimer: () => ({}), clearTimer: () => undefined })).toThrow('client certificate is not a valid PEM certificate');
+      let e: unknown;
+      try {
+        createClient({ config: c.config, profileId: 'a', createAgent: factory as never, setTimer: () => ({}), clearTimer: () => undefined });
+      } catch (x) {
+        e = x;
+      }
+      expect(e).toBeInstanceOf(ConfigError);
+      expect((e as Error).message).toBe('client certificate is not a valid PEM certificate');
+      expect(factory).not.toHaveBeenCalled();
     } finally {
       spy.mockRestore();
     }

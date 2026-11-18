@@ -526,11 +526,11 @@ describe('R-06 vendor heartbeat (setInterval, MCP_HEARTBEAT_S)', () => {
     return { calls, clientFactory };
   };
   const up = async (port: number) => /^stralfors_up\{[^}]*\} (\d+)$/m.exec((await get(port, '/metrics')).text);
-  const boot = async (extra: Record<string, string> = {}) => {
+  const boot = async (extra: Record<string, string> = {}, deps: Record<string, unknown> = {}) => {
     const m = memTelemetry();
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const p = probes();
-    const b = await W.boot(W.mcpEnv(extra), { telemetry: m.t, clientFactory: p.clientFactory });
+    const b = await W.boot(W.mcpEnv(extra), { telemetry: m.t, clientFactory: p.clientFactory, ...deps });
     await vi.advanceTimersByTimeAsync(0);
     return { ...p, ...b };
   };
@@ -665,16 +665,22 @@ describe('R-06 vendor heartbeat (setInterval, MCP_HEARTBEAT_S)', () => {
   });
 
   it('a probe that resolves DOWN after close() began neither logs nor publishes', async () => {
-    const p = await boot();
+    const held: (() => void)[] = []; // shutdown stays in the readiness delay until released; other timers are real
+    const timer = ((fn: () => void, ms: number) => (ms === 5000 ? (held.push(fn), { unref: () => undefined }) : setTimeout(fn, ms))) as unknown as typeof setTimeout;
+    const p = await boot({ MCP_READY_DELAY_MS: '5000' }, { timer });
     let finish!: (v: unknown) => void;
     p.calls.a.mockImplementationOnce(() => new Promise((r) => void (finish = r)));
     await vi.advanceTimersByTimeAsync(60_000); // a round starts and hangs on profile a
     const closing = p.s.close();
-    finish({ status: 'DOWN' });
-    await closing;
-    await vi.advanceTimersByTimeAsync(0);
-    expect(p.logs().some((l) => l.msg === 'upstream.down' || l.msg === 'upstream.up')).toBe(false);
-    expect(await up(p.s.metricsPort).catch(() => null)).toBeNull();
+    try {
+      finish({ status: 'DOWN' });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(await up(p.s.metricsPort)).toBeNull(); // the scrape succeeded and carries no stralfors_up sample
+      expect(p.logs().some((l) => l.msg === 'upstream.down' || l.msg === 'upstream.up')).toBe(false);
+    } finally {
+      held.splice(0).forEach((f) => f());
+      await closing;
+    }
   });
 
   it('close() stops the timer: no probe afterwards and two fewer timers (token store and heartbeat)', async () => {
