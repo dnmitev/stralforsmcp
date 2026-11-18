@@ -27,9 +27,13 @@ export interface TelemetryOptions {
 }
 export interface Instruments {
   httpDuration: Histogram; authRejections: Counter; rateLimited: Counter; toolCalls: Counter; toolDuration: Histogram;
-  upstreamRequests: Counter; upstreamDuration: Histogram;
+  upstreamRequests: Counter; upstreamDuration: Histogram; tokenReloads: Counter; credentialReloads: Counter;
   /** the gauge callback reads this source in seconds; a later call replaces the source */
   observeStale(staleMs: () => number): void;
+  /** seconds until the earliest client certificate expires; read at scrape time */
+  observeCertExpiry(seconds: () => number): void;
+  /** 1 or 0, or undefined for no series (heartbeat off); a later call replaces the source */
+  observeUp(up: () => 0 | 1 | undefined): void;
 }
 export interface Telemetry {
   tracer: Tracer;
@@ -113,11 +117,26 @@ export function createTelemetry(o: TelemetryOptions): Telemetry {
   const g = INSTRUMENTS.staleSeconds;
   meter.createObservableGauge(g.name, { unit: g.unit, description: g.description }).addCallback((r) => r.observe(stale() / 1000));
 
+  // Stryker disable next-line ArrowFunction: equivalent, undefined is not finite either, so no series in both cases
+  let certExpiry: () => number = () => NaN;
+  const c = INSTRUMENTS.clientCertExpiry;
+  meter.createObservableGauge(c.name, { unit: c.unit, description: c.description }).addCallback((r) => { const v = certExpiry(); if (Number.isFinite(v)) r.observe(v); });
+  let upNow: () => 0 | 1 | undefined = () => undefined;
+  const u = INSTRUMENTS.upstreamUp;
+  meter.createObservableGauge(u.name, { unit: u.unit, description: u.description }).addCallback((r) => {
+    const v = upNow();
+    // Stryker disable next-line ConditionalExpression: equivalent, the SDK drops a non-numeric observation, same as no series
+    if (v !== undefined) r.observe(v, { api: 'omni', env: o.env });
+  });
+
   const instruments: Instruments = {
     httpDuration: make('httpDuration') as Histogram, authRejections: make('authRejections') as Counter, rateLimited: make('rateLimited') as Counter,
     toolCalls: make('toolCalls') as Counter, toolDuration: make('toolDuration') as Histogram,
     upstreamRequests: make('upstreamRequests') as Counter, upstreamDuration: make('upstreamDuration') as Histogram,
+    tokenReloads: make('tokenReloads') as Counter, credentialReloads: make('credentialReloads') as Counter,
     observeStale: (fn) => void (stale = fn),
+    observeCertExpiry: (fn) => void (certExpiry = fn),
+    observeUp: (fn) => void (upNow = fn),
   };
 
   let closing: Promise<void> | undefined;

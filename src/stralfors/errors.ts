@@ -117,7 +117,7 @@ export function mapHttpError(
       return new ForbiddenError(`${msg}: forbidden`, p);
     case 404:
       if (!j) return new RouteNotFoundError(`${msg}: route not found`, p);
-      return new AgreementNotFoundError(`${msg}: agreement not found`, { ...p, actionId: /action ?id '([^']+)'/i.exec(String(j['message']))?.[1] });
+      return new AgreementNotFoundError(`${msg}: agreement not found`, { ...p, actionId: /action ?id '([^']+)'/i.exec(typeof j['message'] === 'string' ? j['message'] : '')?.[1] });
     case 409:
       return new ConflictError(`${msg}: conflict`, p);
     case 429: {

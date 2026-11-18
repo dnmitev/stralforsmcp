@@ -45,14 +45,14 @@ export function generatePki(): Pki {
       '-out', `${name}.pem`,
     );
   };
-  const leaf = (name: string, ca: string, ext: string, pass?: string) => {
+  const leaf = (name: string, ca: string, ext: string, pass?: string, days = '2') => {
     ossl('genpkey', ...EC, '-out', `${name}.plain`);
     ossl('req', '-new', '-key', `${name}.plain`, '-subj', `/CN=${name}`, '-out', `${name}.csr`);
     // encrypt only after the CSR exists (openssl req mishandles -passin on some builds)
     if (pass) ossl('pkcs8', '-topk8', '-v2', 'aes-256-cbc', '-in', `${name}.plain`, '-passout', `pass:${pass}`, '-out', `${name}.key`);
     else ossl('pkcs8', '-topk8', '-nocrypt', '-in', `${name}.plain`, '-out', `${name}.key`);
     writeFileSync(join(dir, `${name}.ext`), ext);
-    ossl('x509', '-req', '-in', `${name}.csr`, '-CA', `${ca}.pem`, '-CAkey', `${ca}.key`, '-CAcreateserial', '-days', '2', '-extfile', `${name}.ext`, '-out', `${name}.pem`);
+    ossl('x509', '-req', '-in', `${name}.csr`, '-CA', `${ca}.pem`, '-CAkey', `${ca}.key`, '-CAcreateserial', '-days', days, '-extfile', `${name}.ext`, '-out', `${name}.pem`);
     return { cert: read(`${name}.pem`), key: read(`${name}.key`) };
   };
 
@@ -61,7 +61,7 @@ export function generatePki(): Pki {
   const server = leaf('server', 'ca', 'subjectAltName=DNS:localhost,IP:127.0.0.1\nbasicConstraints=CA:FALSE\n');
   const clientExt = 'basicConstraints=CA:FALSE\nextendedKeyUsage=clientAuth\n';
   const client = leaf('client', 'ca', clientExt, passphrase);
-  const foreignClient = leaf('fclient', 'foreign', clientExt, passphrase);
+  const foreignClient = leaf('fclient', 'foreign', clientExt, passphrase, '3'); // a different validity, so a hot swap is visible in the expiry
   ossl(
     'req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:P-256', '-nodes', '-keyout', 'ss.key', '-out', 'ss.pem',
     '-subj', '/CN=localhost', '-days', '2', '-addext', 'subjectAltName=DNS:localhost,IP:127.0.0.1',

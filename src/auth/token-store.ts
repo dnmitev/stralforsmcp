@@ -117,12 +117,16 @@ export function createTokenStore(o: TokenStoreOptions): TokenStore {
       lastFailure = undefined;
       lastOk = o.now();
       armed = true;
-      o.onReload?.({ ok: true, users: next.list.users.length, tokens: next.list.tokens.length });
+      try {
+        o.onReload?.({ ok: true, users: next.list.users.length, tokens: next.list.tokens.length });
+      } catch {}
     } catch (e) {
       const text = e instanceof ConfigError ? e.message : 'unknown';
       if (text !== lastFailure) o.log?.warn({ kind: 'config' }, 'reload.failed');
       lastFailure = text;
-      o.onReload?.({ ok: false });
+      try {
+        o.onReload?.({ ok: false });
+      } catch {}
       if (armed && o.staleAfterMs !== undefined && o.now() - lastOk >= o.staleAfterMs) {
         armed = false;
         try {

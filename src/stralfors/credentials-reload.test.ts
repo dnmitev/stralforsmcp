@@ -7,14 +7,16 @@
  *     and warns `credentials.reload_failed` {profile, kind: 'read'|'empty'|'pem'|'key'} once per distinct failure.
  *   client.close(): clears the timer first, then closes the agent; a reload after (or during) close creates no agent.
  */
+import { X509Certificate } from 'node:crypto';
 import { createServer, type Server } from 'node:https';
 import type { AddressInfo } from 'node:net';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { setImmediate as tick } from 'node:timers/promises';
 import { inspect } from 'node:util';
 import type { Dispatcher } from 'undici';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from './config.ts';
-import { TlsError } from './errors.ts';
+import { ConfigError, TlsError } from './errors.ts';
 import { createAgent, createClient } from './index.ts';
 import { canary, makeEnv, memoryLogger } from '../../test/helpers/api.ts';
 import { generatePki, type Pki } from '../../test/helpers/mtls.ts';
@@ -67,7 +69,7 @@ afterEach(async () => {
 });
 
 /** Client on files in a fresh dir, with a manual timer and an agent factory spy that records every agent and the close order. */
-function build(extra: Record<string, string> = {}, opts: { readFile?: (p: string) => string; clock?: { t: number } } = {}) {
+function build(extra: Record<string, string> = {}, opts: { readFile?: (p: string) => string; clock?: { t: number }; onCredentialReload?: (r: { ok: boolean }) => void } = {}) {
   const f = makeEnv(pki, { id: 'a', extra });
   const config = loadConfig(f.env);
   const paths = { cert: f.env['STRALFORS_PROFILE_A_CERT_FILE']!, key: f.env['STRALFORS_PROFILE_A_KEY_FILE']!, passphrase: f.env['STRALFORS_PROFILE_A_KEY_PASSPHRASE_FILE']! };
@@ -91,7 +93,7 @@ function build(extra: Record<string, string> = {}, opts: { readFile?: (p: string
   const clock = opts.clock ?? { t: Date.now() };
   const client = createClient({
     config, profileId: 'a', ca: pki.ca, baseUrl: srv?.url, logger: mem.logger, now: () => clock.t,
-    createAgent: factory as typeof createAgent, readFile: opts.readFile,
+    createAgent: factory as typeof createAgent, readFile: opts.readFile, ...(opts.onCredentialReload ? { onCredentialReload: opts.onCredentialReload } : {}),
     setTimer: (fn, ms) => { const h = { fn, ms }; timers.push(h); return h; },
     clearTimer: (h) => void order.push(h === timers[0] ? 'timer.clear' : 'timer.clear?'),
   });
@@ -345,6 +347,136 @@ describe('AC-5 secrets stay hidden', () => {
       expect(v).not.toContain(c.passphrase);
     }
     expect(Object.keys(c.config.profiles['a']!)).not.toContain('files');
+    await c.client.close();
+  });
+});
+
+describe('R-06 certificate expiry and reload outcomes (client seams: certExpiresAt(), onCredentialReload)', () => {
+  const notAfter = (pem: string) => new X509Certificate(pem).validToDate.getTime();
+
+  it('certExpiresAt() is the not-after of the mounted certificate in epoch ms, from the start', async () => {
+    const c = build();
+    expect(c.client.certExpiresAt()).toBe(notAfter(pki.client.cert));
+    await c.client.close();
+  });
+
+  it('it follows a hot swap, and a failed swap keeps the last good certificate', async () => {
+    await open();
+    const c = build();
+    expect(notAfter(pki.foreignClient.cert)).not.toBe(notAfter(pki.client.cert)); // else the swap below proves nothing
+    c.rotate();
+    c.client.reloadCredentials();
+    expect(c.client.certExpiresAt()).toBe(notAfter(pki.foreignClient.cert));
+    writeFileSync(c.paths.cert, 'this is not a certificate');
+    c.client.reloadCredentials();
+    expect(c.client.certExpiresAt()).toBe(notAfter(pki.foreignClient.cert));
+    await c.client.close();
+  });
+
+  it('onCredentialReload reports ok once per swap, nothing for an unchanged tick, and failed per failing tick (the warn stays once per distinct cause)', async () => {
+    await open();
+    const seen: { ok: boolean }[] = [];
+    const c = build({}, { onCredentialReload: (r) => void seen.push(r) });
+    c.client.reloadCredentials();
+    expect(seen).toEqual([]); // unchanged: neither ok nor failed
+    c.rotate();
+    c.client.reloadCredentials();
+    expect(seen).toEqual([{ ok: true }]);
+    writeFileSync(c.paths.cert, 'this is not a certificate');
+    c.client.reloadCredentials();
+    c.client.reloadCredentials();
+    expect(seen).toEqual([{ ok: true }, { ok: false }, { ok: false }]);
+    expect(c.failures()).toHaveLength(1);
+    await c.client.close();
+  });
+
+  it('the report carries ok only: no kind, path or file text', async () => {
+    await open();
+    const seen: object[] = [];
+    const c = build({}, { onCredentialReload: (r) => void seen.push(r) });
+    rmSync(c.paths.cert);
+    c.client.reloadCredentials();
+    expect(seen).toEqual([{ ok: false }]);
+    await c.client.close();
+  });
+
+  it('a reload callback that returns a rejecting promise is handled: no unhandled rejection, the swap stands', async () => {
+    await open();
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      const c = build({}, { onCredentialReload: () => Promise.reject(new Error('sink down')) as never });
+      c.rotate();
+      c.client.reloadCredentials();
+      await tick();
+      expect(unhandled).not.toHaveBeenCalled();
+      expect(c.client.certExpiresAt()).toBe(notAfter(pki.foreignClient.cert));
+      await c.client.close();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
+  });
+
+  it('a mounted certificate that does not parse is a fixed-text ConfigError before any agent is created', () => {
+    const c = build();
+    const secret = 'CERT-CANARY-body';
+    const bad = { ...c.config, profiles: { a: { ...c.config.profiles['a']!, cert: secret } } };
+    const factory = vi.fn();
+    let e: unknown;
+    try {
+      createClient({ config: bad, profileId: 'a', createAgent: factory as never, setTimer: () => ({}), clearTimer: () => undefined });
+    } catch (x) {
+      e = x;
+    }
+    expect(e).toBeInstanceOf(ConfigError);
+    expect((e as Error).message).toBe('client certificate is not a valid PEM certificate');
+    expect(factory).not.toHaveBeenCalled();
+    void c.client.close();
+  });
+
+  // ponytail: a certificate with an out-of-range notAfter cannot be generated deterministically, so the native conversion result is stubbed
+  it('a certificate whose expiry does not convert is refused at start with the fixed-text ConfigError', () => {
+    const c = build();
+    const spy = vi.spyOn(X509Certificate.prototype, 'validToDate', 'get').mockReturnValue(new Date(NaN));
+    const factory = vi.fn();
+    try {
+      let e: unknown;
+      try {
+        createClient({ config: c.config, profileId: 'a', createAgent: factory as never, setTimer: () => ({}), clearTimer: () => undefined });
+      } catch (x) {
+        e = x;
+      }
+      expect(e).toBeInstanceOf(ConfigError);
+      expect((e as Error).message).toBe('client certificate is not a valid PEM certificate');
+      expect(factory).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+    void c.client.close();
+  });
+
+  it('on reload a certificate whose expiry does not convert is a failed replacement: last agent and expiry kept, kind pem', async () => {
+    await open();
+    const c = build();
+    const before = c.client.certExpiresAt();
+    c.rotate();
+    const spy = vi.spyOn(X509Certificate.prototype, 'validToDate', 'get').mockReturnValue(new Date(NaN));
+    try {
+      c.client.reloadCredentials();
+    } finally {
+      spy.mockRestore();
+    }
+    expect(c.factory).toHaveBeenCalledTimes(1);
+    expect(c.client.certExpiresAt()).toBe(before);
+    expect(c.failures().map((l) => l['kind'])).toEqual(['pem']);
+    await c.client.close();
+  });
+
+  it('a reload callback that throws never breaks the tick or the last good agent', async () => {
+    await open();
+    const c = build({}, { onCredentialReload: () => { throw new Error('sink down'); } });
+    c.rotate();
+    expect(() => c.client.reloadCredentials()).not.toThrow();
     await c.client.close();
   });
 });

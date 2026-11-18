@@ -35,12 +35,21 @@ export interface CreateClientOptions {
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (handle: unknown) => void;
   createAgent?: typeof defaultCreateAgent;
+  /** called with ok only: true after a swap, false on every failing tick, never for an unchanged tick; a throw or a rejected promise is swallowed */
+  onCredentialReload?: (r: { ok: boolean }) => void;
 }
 export interface InstrumentInfo { operation: string; method: string }
 // unanchored on purpose: an id hidden inside a segment (encoded separator, prefix) is still masked
 const ID_SEGMENT = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\d{6,}/i;
 /** `noReplay`: on a 401 invalidate the token but never send the request a second time (a request that starts something must not be duplicated). */
 interface RequestOpts<T> { schema?: z.ZodType<T>; query?: Record<string, string>; operation?: string; noReplay?: boolean }
+
+/** validToDate comes from a native conversion whose failure is not reported as an exception: refuse a non-finite or non-positive time */
+function expiryOf(c: X509Certificate): number {
+  const t = c.validToDate.getTime();
+  if (!Number.isFinite(t) || t <= 0) throw new Error('bad notAfter');
+  return t;
+}
 
 export function createClient(o: CreateClientOptions) {
   const { config } = o;
@@ -51,6 +60,12 @@ export function createClient(o: CreateClientOptions) {
   const now = o.now ?? Date.now;
   const instrument = o.instrument ?? ((_i, run) => run());
   const make = o.createAgent ?? defaultCreateAgent;
+  let certExpiresAt: number;
+  try {
+    certExpiresAt = expiryOf(new X509Certificate(profile.cert.trim())); // before the agent: a bad mounted cert is a fixed-text config error, never a parser message
+  } catch {
+    throw new ConfigError('client certificate is not a valid PEM certificate');
+  }
   let agent: Dispatcher = make(profile, { ca: o.ca });
   const readFile = o.readFile ?? ((p: string) => readFileSync(p, 'utf8'));
   // Stryker disable next-line MethodExpression: equivalent, loadConfig already trims all three values, so trim() here is defensive only
@@ -59,6 +74,12 @@ export function createClient(o: CreateClientOptions) {
   let lastFailure: string | undefined;
   /** One tick: re-read the files; swap the agent only when the content changed and the new material loads. Failures keep the last good agent. */
   // ponytail: content compare, not mtime; one interval per client, so N profiles poll N times (cheap: three small files each)
+  const report = (ok: boolean) => {
+    try {
+      // Stryker disable next-line OptionalChaining: equivalent, calling an absent sink throws a TypeError that the surrounding catch swallows
+      void Promise.resolve(o.onCredentialReload?.({ ok })).catch(() => undefined); // a sink that returns a rejecting promise must not become an unhandled rejection
+    } catch { /* a broken sink must not break the tick */ }
+  };
   function reloadCredentials(): void {
     if (closed) return;
     let kind: 'read' | 'empty' | 'pem' | 'key' | undefined;
@@ -68,6 +89,7 @@ export function createClient(o: CreateClientOptions) {
       if (!next.cert || !next.key || next.passphrase === '') kind = 'empty';
       else if (next.cert !== current.cert || next.key !== current.key || next.passphrase !== current.passphrase) {
         let privateKey;
+        let expiresAt = 0;
         try {
           privateKey = createPrivateKey({ key: next.key, passphrase: next.passphrase });
         } catch {
@@ -76,7 +98,9 @@ export function createClient(o: CreateClientOptions) {
         // createAgent checks the key only, so the cert is parsed here and must belong to the key
         if (privateKey) {
           try {
-            if (!new X509Certificate(next.cert).checkPrivateKey(privateKey)) kind = 'key';
+            const x509 = new X509Certificate(next.cert);
+            expiresAt = expiryOf(x509);
+            if (!x509.checkPrivateKey(privateKey)) kind = 'key';
           } catch {
             kind = 'pem';
           }
@@ -85,12 +109,15 @@ export function createClient(o: CreateClientOptions) {
           const old = agent;
           agent = make({ id: profile!.id, ...next } as Profile, { ca: o.ca });
           current = next;
+          certExpiresAt = expiresAt;
+          report(true);
           void old.close().catch(() => undefined); // close, never destroy: in-flight requests finish
         }
       }
     } catch {
       kind = 'read';
     }
+    if (kind) report(false);
     if (kind && kind !== lastFailure) log.warn({ profile: profile!.id, kind }, 'credentials.reload_failed');
     lastFailure = kind;
   }
@@ -170,7 +197,9 @@ export function createClient(o: CreateClientOptions) {
       if (e instanceof StralforsError) {
         e.profile ??= ctx.profile;
         e.operation ??= operation;
-        log.warn({ ...ctx, method, pathTemplate, status: e.status, durationMs: now() - started, kind: e.kind, traceId: e.traceId }, 'request.failed');
+        // the heartbeat's error body is vendor-supplied and probed on a timer: its traceId is not logged
+        // the heartbeat probes every interval and main.ts logs the upstream.down transition once, so its failures are debug, not a warn per round
+        log[operation === 'healthV1' ? 'debug' : 'warn']({ ...ctx, method, pathTemplate, status: e.status, durationMs: now() - started, kind: e.kind, traceId: operation === 'healthV1' ? undefined : e.traceId }, 'request.failed');
       }
       throw e;
     }
@@ -184,6 +213,7 @@ export function createClient(o: CreateClientOptions) {
     post: <T = unknown>(path: string, body?: unknown, opts?: RequestOpts<T>) => request('POST', path, body, opts),
     delete: <T = unknown>(path: string, opts?: RequestOpts<T>) => request('DELETE', path, undefined, opts),
     reloadCredentials,
+    certExpiresAt: () => certExpiresAt,
     close: () => {
       clearTimer(timer);
       closed = true;

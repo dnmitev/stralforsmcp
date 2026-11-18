@@ -246,6 +246,35 @@ describe('error context and logging', () => {
     expect(lines.find((l) => l['msg'] === 'request.failed')).toMatchObject({ profile: 'a', operation: 'GET /rest/x', method: 'GET', pathTemplate: '/rest/x', status: 500, durationMs: 40, kind: 'upstream', traceId: 'tr', level: 40 });
   });
 
+  it('the heartbeat operation does not log the vendor traceId; other operations still do', async () => {
+    fake = await startFakeApi({ pki, api: (_q, res) => json(res, 500, { traceId: 'tr' }) });
+    const mem = memoryLogger();
+    const { client } = testClient(pki, fake, { logger: mem.logger });
+    try {
+      await caught(client.healthV1());
+      await caught(client.apiInfo());
+      const failed = mem.lines().filter((l) => l['msg'] === 'request.failed');
+      expect(failed.map((l) => [l['operation'], l['traceId']])).toEqual([['healthV1', undefined], ['apiInfo', 'tr']]);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('repeated failing health probes log request.failed at debug, never warn; other operations stay at warn', async () => {
+    fake = await startFakeApi({ pki, api: (_q, res) => json(res, 503, {}) });
+    const mem = memoryLogger();
+    const { client } = testClient(pki, fake, { logger: mem.logger });
+    try {
+      await caught(client.healthV1());
+      await caught(client.healthV1());
+      await caught(client.apiInfo());
+      const failed = mem.lines().filter((l) => l['msg'] === 'request.failed');
+      expect(failed.map((l) => [l['operation'], l['level']])).toEqual([['healthV1', 20], ['healthV1', 20], ['apiInfo', 40]]);
+    } finally {
+      await client.close();
+    }
+  });
+
   it('UpstreamError type for a 5xx', async () => {
     fake = await startFakeApi({ pki, api: (_q, res) => json(res, 502, {}) });
     expect(await caught(testClient(pki, fake).client.get('/rest/x'))).toBeInstanceOf(UpstreamError);

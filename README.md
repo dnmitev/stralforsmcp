@@ -183,6 +183,8 @@ Set `STRALFORS_ENV=prod` and point the profile `*_FILE` variables at the product
 | `MCP_TOOL_OUTPUT_MAX_BYTES` | no | `262144` | integer >= 1; a tool result larger than this is refused (`tool output too large`), never truncated |
 | `MCP_RULES_CACHE_S` | no | `3600` | integer 0-86400; per-pod TTL of cached Stralfors rules, `0` disables the cache |
 | `MCP_RATE_BURST` | no | `30` | integer >= 1, per-principal bucket size |
+| `MCP_READY_DELAY_MS` | no | `0` | integer 0-120000, on SIGTERM `/readyz` answers 503 this long before the listener closes |
+| `MCP_HEARTBEAT_S` | no | `60` | integer 0-3600, seconds between vendor health probes behind `stralfors.up`; `0` disables |
 | `MCP_TOKEN_STALE_MS` | no | `900000` | integer >= 1, a failing token list reload this long logs one `token_list.stale` line |
 | `MCP_METRICS_PORT` | no | `9464` | integer 0-65535 (`0` = random), the separate `/metrics` listener |
 | `MCP_METRICS_HOST` | no | `0.0.0.0` | metrics listen address, non-empty |
@@ -423,6 +425,10 @@ Spans: `POST /mcp` (server), `mcp.tool <name>` (internal), `stralfors.request` (
 | `stralfors_requests_total` | counter | `operation`, `outcome` (`ok`, `error`), `error_type` |
 | `stralfors_request_duration_{bucket,sum,count}` (seconds) | histogram | `operation`, `outcome`, `error_type` |
 | `mcp_token_list_stale_seconds` | gauge | none |
+| `mcp_token_list_reloads_total` | counter | `outcome` (`ok`, `failed`) |
+| `stralfors_client_cert_expiry_seconds` | gauge | none (seconds until the earliest client certificate not-after across profiles) |
+| `stralfors_credentials_reloads_total` | counter | `outcome` (`ok`, `failed`) |
+| `stralfors_up` | gauge | `api` (`omni`), `env` (1 when every profile's last v1 health probe was `UP`; absent when `MCP_HEARTBEAT_S=0` or before the first probe) |
 | `target_info` | info | `service_name`, `service_version`, `deployment_environment_name` |
 
 Units are `# UNIT` lines, not name suffixes. Health probes are not measured.
