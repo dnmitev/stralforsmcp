@@ -45,7 +45,7 @@
   ],
   "tools_generated": true,
   "prompts_generated": true,
-  "privacy_policies": ["https://github.com/dnmitev/stralforsmcp#readme"],
+  "privacy_policies": ["https://github.com/dnmitev/stralforsmcp#privacy-and-data-handling"],
   "compatibility": {
     "platforms": ["darwin", "win32"],
     "runtimes": { "node": ">=20" }

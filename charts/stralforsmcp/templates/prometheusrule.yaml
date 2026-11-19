@@ -1,0 +1,74 @@
+{{- if .Values.prometheusRule.enabled }}
+{{- $rb := .Values.prometheusRule.runbookUrl }}
+{{- $pod := include "stralforsmcp.fullname" . }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "stralforsmcp.fullname" . }}
+  labels:
+    {{- include "stralforsmcp.labels" . | nindent 4 }}
+    {{- with .Values.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: {{ include "stralforsmcp.fullname" . }}
+      rules:
+        - alert: StralforsMcpUpstreamErrors
+          # grouped per namespace and job so a TEST and a PROD release in one Prometheus never mask each other
+          expr: sum by (namespace, job) (rate(stralfors_requests_total{outcome="error"}[10m])) / sum by (namespace, job) (rate(stralfors_requests_total[10m])) > 0.2
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: More than 20 % of vendor requests fail
+            runbook_url: {{ printf "%s#upstream-errors" $rb | quote }}
+        - alert: StralforsMcpVendorDown
+          expr: stralfors_up == 0
+          for: 10m
+          labels: { severity: critical }
+          annotations:
+            summary: The vendor health probe reports DOWN
+            runbook_url: {{ printf "%s#vendor-heartbeat-down" $rb | quote }}
+        - alert: StralforsMcpCertExpirySoon
+          expr: stralfors_client_cert_expiry_seconds < 30 * 86400
+          for: 1h
+          labels: { severity: warning }
+          annotations:
+            summary: A client certificate expires within 30 days
+            runbook_url: {{ printf "%s#certificate-expiry" $rb | quote }}
+        - alert: StralforsMcpCertExpiryCritical
+          expr: stralfors_client_cert_expiry_seconds < 7 * 86400
+          for: 15m
+          labels: { severity: critical }
+          annotations:
+            summary: A client certificate expires within 7 days
+            runbook_url: {{ printf "%s#certificate-expiry" $rb | quote }}
+        - alert: StralforsMcpTokenListStale
+          expr: mcp_token_list_stale_seconds > 300
+          for: 5m
+          labels: { severity: critical }
+          annotations:
+            summary: The token list has not reloaded for over 5 minutes, so revocations are not applied
+            runbook_url: {{ printf "%s#token-list-reload-failing" $rb | quote }}
+        - alert: StralforsMcpCredentialReloadFailing
+          expr: increase(stralfors_credentials_reloads_total{outcome="failed"}[15m]) > 0
+          for: 15m
+          labels: { severity: warning }
+          annotations:
+            summary: Client certificate or key hot-swap keeps failing
+            runbook_url: {{ printf "%s#credential-reload-failing" $rb | quote }}
+        - alert: StralforsMcpServerErrors
+          expr: sum by (namespace, job) (rate(http_server_request_duration_count{http_response_status_code=~"5.."}[5m])) / sum by (namespace, job) (rate(http_server_request_duration_count[5m])) > 0.05
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: More than 5 % of inbound requests answer 5xx
+            runbook_url: {{ printf "%s#server-errors" $rb | quote }}
+        - alert: StralforsMcpRestarting
+          # needs kube-state-metrics
+          expr: increase(kube_pod_container_status_restarts_total{pod=~{{ printf "%s-.*" $pod | quote }}}[30m]) > 2
+          labels: { severity: warning }
+          annotations:
+            summary: The pod restarted more than twice in 30 minutes
+            runbook_url: {{ printf "%s#restarts" $rb | quote }}
+{{- end }}
