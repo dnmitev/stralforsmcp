@@ -15,7 +15,8 @@ spec:
     - name: {{ include "stralforsmcp.fullname" . }}
       rules:
         - alert: StralforsMcpUpstreamErrors
-          expr: sum(rate(stralfors_requests_total{outcome="error"}[10m])) / sum(rate(stralfors_requests_total[10m])) > 0.2
+          # grouped per namespace and job so a TEST and a PROD release in one Prometheus never mask each other
+          expr: sum by (namespace, job) (rate(stralfors_requests_total{outcome="error"}[10m])) / sum by (namespace, job) (rate(stralfors_requests_total[10m])) > 0.2
           for: 10m
           labels: { severity: warning }
           annotations:
@@ -57,7 +58,7 @@ spec:
             summary: Client certificate or key hot-swap keeps failing
             runbook_url: {{ printf "%s#credential-reload-failing" $rb | quote }}
         - alert: StralforsMcpServerErrors
-          expr: sum(rate(http_server_request_duration_count{http_response_status_code=~"5.."}[5m])) / sum(rate(http_server_request_duration_count[5m])) > 0.05
+          expr: sum by (namespace, job) (rate(http_server_request_duration_count{http_response_status_code=~"5.."}[5m])) / sum by (namespace, job) (rate(http_server_request_duration_count[5m])) > 0.05
           for: 10m
           labels: { severity: warning }
           annotations:

@@ -41,7 +41,7 @@ Tokens are `smcp_` strings. Only the SHA-256 hash is stored, in the token list S
 2. Update the Secret as above. Delete entries (and users with no tokens) in a later edit.
 3. Confirm the reload counter increased with `outcome="ok"`.
 
-**Latency.** The server re-reads the list every 60 seconds. A revoked token keeps working until the pod's next successful reload, plus the time Kubernetes takes to propagate the Secret into the pod (up to about a minute or more). Plan for roughly two minutes, and restart the pods (`kubectl rollout restart deploy/<release>-stralforsmcp`) for an immediate effect.
+**Latency.** The server re-reads the list every 60 seconds. A revoked token keeps working until the pod's next successful reload, plus the time Kubernetes takes to propagate the Secret into the pod (up to about a minute or more). Plan for roughly two minutes. To skip the wait, restart the pods (`kubectl rollout restart deploy/<release>-stralforsmcp -n <namespace>`) and wait for `kubectl rollout status deploy/<release>-stralforsmcp -n <namespace>`: the revocation applies as each pod is replaced.
 
 If the reload fails, the previous list stays in force, so a revocation is **not** applied: treat `mcp_token_list_stale_seconds > 0` during a revocation as an incident (see [Token list reload failing](#token-list-reload-failing)).
 
@@ -55,7 +55,7 @@ Certificates and keys are polled from the mounted Secret every `STRALFORS_CERT_R
 
 ## Rotating the OIDC client id or secret
 
-Client id and secret are read at start. Update the profile Secret, then `kubectl rollout restart deploy/<release>-stralforsmcp`. Check `stralfors_up` returns to 1 and a `list_channels` call works.
+Client id, client secret and `action-ids` are read at start. Update the profile Secret, then `kubectl rollout restart deploy/<release>-stralforsmcp -n <namespace>`. Check `stralfors_up` returns to 1 and a `list_channels` call works.
 
 ## Upstream errors
 
@@ -71,7 +71,7 @@ Alert `StralforsMcpVendorDown`: `stralfors_up` has been 0 for 10 minutes (the pr
 
 1. Confirm from another route that the vendor is up (status page, vendor contact). A vendor outage needs no action here beyond telling users.
 2. If the vendor is up, check egress from the pod (network policy, proxy, DNS) and the certificate and credential alerts.
-3. Do not restart pods as a first step: it does not help and drops sessions.
+3. Do not restart pods as a first step: it does not help and drops in-flight connections (the Desktop bridge does not reconnect).
 
 ## Certificate expiry
 
@@ -91,7 +91,7 @@ Alert `StralforsMcpTokenListStale`: the list has been served from the last good 
 
 ## Credential reload failing
 
-Alert `StralforsMcpCredentialReloadFailing`: a certificate or key swap failed within the last 15 minutes. The last good pair stays in use, so nothing is broken yet, but the next expiry is not covered.
+Alert `StralforsMcpCredentialReloadFailing`: certificate or key swaps have kept failing for about 15 minutes or more (a single failure does not alert; check the logs for `credentials.reload_failed` if you suspect one). The last good pair stays in use, so nothing is broken yet, but the next expiry is not covered.
 
 1. Read the logs for `credentials.reload_failed` and the `kind`.
 2. Check that the Secret holds a matching `client.pem` and `client.key` (and passphrase), readable by the pod.

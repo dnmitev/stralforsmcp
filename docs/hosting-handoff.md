@@ -28,14 +28,14 @@ The chart never creates a Secret. You create these (by hand or with an external 
 | Secret | Keys | Reload |
 |---|---|---|
 | token list (`tokenList.secretName`) | `token-list.json` | re-read every 60 s, last good list kept on failure (ADR 0006) |
-| one per vendor credential profile (`profiles[].secretName`) | `client-id`, `client-secret`, `client.pem`, `client.key`, optional `key-passphrase`, optional `action-ids` | certificate and key polled every `stralfors.certReloadS` (default 60 s); client id and secret need a pod restart (ADR 0013) |
+| one per vendor credential profile (`profiles[].secretName`) | `client-id`, `client-secret`, `client.pem`, `client.key`, optional `key-passphrase`, optional `action-ids` | certificate and key polled every `stralfors.certReloadS` (default 60 s); client id, client secret and `action-ids` need a pod restart (ADR 0013) |
 | OTLP headers (`otlp.headersSecret`) | `headers` | read at start |
 
 The pod needs no cloud permissions of its own. If your platform attaches roles to service accounts, use `serviceAccount.annotations`; this repository does not define the role. Secret values never go in `values.yaml` or `--set`.
 
 ## Network
 
-- **Inbound:** port 3000 (`/mcp`, `/healthz`, `/readyz`) from your ingress controller only; port 9464 (`/metrics`) from your Prometheus only, served by the separate `<release>-stralforsmcp-metrics` Service. With `networkPolicy.enabled` (the default) set `ingressControllerNamespace` and `prometheusNamespace` to the real namespaces on every install and upgrade, and make sure your CNI enforces NetworkPolicy.
+- **Inbound:** port 3000 (`/mcp`, `/healthz`, `/readyz`) from pods in `ingressControllerNamespace` only (the policy admits the whole namespace, so keep that namespace to the controller); port 9464 (`/metrics`) from your Prometheus only, served by the separate `<release>-stralforsmcp-metrics` Service. With `networkPolicy.enabled` (the default) set `ingressControllerNamespace` and `prometheusNamespace` to the real namespaces on every install and upgrade, and make sure your CNI enforces NetworkPolicy.
 - **Outbound:** HTTPS with mutual TLS to the vendor API (fixed base URLs per environment, ADR 0005), your OTLP collector if configured, and DNS. There is no egress policy in the chart; add one if your cluster standards require it.
 - **Hostnames:** `MCP_HOSTNAMES` (from the ingress hosts and `extraHostnames`) is checked against the Host header; requests for other names get 403.
 - **VPN and reachability:** PROD users reach the internal ingress over your VPN. A public TEST host is for users without VPN and must sit behind the ingress rate limits below.
@@ -76,7 +76,7 @@ Until then keep private material out of the deployment.
 
 ## Data handling
 
-No request or response payloads are logged. Audit lines carry the user id, tool, environment and outcome, with masked identifiers. Logs, audit lines and traces contain a user identifier, so their retention and access are set by your logging stack, not by this server. See the privacy section of the [README](../README.md#privacy-and-data-handling).
+No request or response payloads are logged. Audit lines carry the user id, tool, environment and outcome, with masked identifiers. Logs and audit lines carry a user identifier (traces do not), so their retention and access are set by your logging stack, not by this server. See the privacy section of the [README](../README.md#privacy-and-data-handling).
 
 ## Operating it without the author
 

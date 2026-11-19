@@ -611,7 +611,7 @@ const promNames = (): Set<string> => {
   const s = new Set<string>();
   for (const i of Object.values(INSTRUMENTS) as { name: string; kind: string }[]) {
     const b = i.name.replaceAll('.', '_');
-    s.add(b);
+    if (i.kind === 'observable_gauge') s.add(b); // counters and histograms are only exported with a suffix
     for (const x of i.kind === 'counter' ? ['_total'] : i.kind === 'histogram' ? ['_count', '_sum', '_bucket'] : []) s.add(b + x);
   }
   return s;
@@ -639,6 +639,20 @@ describe.skipIf(!helmOk)('05-03a alerts and ServiceMonitor', () => {
     for (const r of rs) {
       expect(['warning', 'critical'], r.alert).toContain(r.labels.severity);
       expect(r.annotations.runbook_url, r.alert).toMatch(/^https:\/\/runbook\.example\.invalid\/runbook\.md#[a-z0-9-]+$/);
+    }
+  });
+  it('the exporter-name set has no bare counter or histogram names', () => {
+    const n = promNames();
+    for (const bare of ['stralfors_requests', 'http_server_request_duration', 'mcp_tool_calls']) expect(n.has(bare), bare).toBe(false);
+    expect(n.has('stralfors_up')).toBe(true);
+  });
+  it('ratio alerts aggregate per namespace and job so releases cannot mask each other', () => {
+    const ratios = rules(render(on())).filter((r) => r.expr.includes(' / '));
+    expect(ratios.map((r) => r.alert).sort()).toEqual(['StralforsMcpServerErrors', 'StralforsMcpUpstreamErrors']);
+    for (const r of ratios) {
+      const sums = r.expr.match(/\bsum\b(?: by \([^)]*\))? \(/g) ?? [];
+      expect(sums.length, r.alert).toBe(2);
+      for (const x of sums) expect(x, r.alert).toMatch(/sum by \(namespace, job\) \(/);
     }
   });
   it('labels the rule object with prometheusRule.labels', () => {

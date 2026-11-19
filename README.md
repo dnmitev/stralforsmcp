@@ -465,9 +465,9 @@ Optional dashboard: enable the repository on the [Stryker dashboard](https://das
 
 What the server records and who owns it:
 
-- **Logs** (stderr) and **audit lines** (stdout) are fixed-text JSON lines. They never contain request or response payloads, recipient data, tokens or credentials. Identifiers in them (agreement, document) are masked. Each audit line carries the user id of the caller, the tool, the environment, the outcome and a trace id.
+- **Logs** (stderr) and **audit lines** (stdout) are fixed-text JSON lines. They never contain request or response payloads, recipient data, tokens or credentials. Identifiers in them (agreement, document) are masked. Each audit line for an authenticated caller carries the user id (lines for refused tokens have no principal), the tool, the environment, the outcome and a trace id.
 - **Metrics and traces** use closed label sets (tool, outcome, environment, route, status code); no user identifier and no payload.
-- **Retention and access** of logs, audit lines, metrics and traces are decided by the operator's logging stack. This server stores nothing on disk and keeps no state between requests; the token list is read-only input.
+- **Retention and access** of logs, audit lines, metrics and traces are decided by the operator's logging stack. This server stores nothing on disk. Its only state between requests is in memory per pod, never persisted: the per-principal rate limiter and the rules cache. The token list is read-only input.
 - **Personal data in tool inputs.** `channel_lookup` takes personal identifiers and never stores, logs, audits, traces or returns them. `validate_invoice` sends the document to the vendor's dry run: **use synthetic data only, never real recipients or customer data**. That rule is an instruction, not a control; the server cannot tell real data from synthetic data.
 - **Tokens** are stored only as hashes; the raw token exists only with its user.
 
