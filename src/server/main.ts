@@ -264,7 +264,7 @@ export async function start(env: Record<string, string | undefined>, deps: Start
   return { port: listening.port, metricsPort: metricsListening, close };
 }
 
-// import.meta.main needs Node 24.2; engines allows 24.0
+// import.meta.main needs Node 24.2; engines requires 24.12
 if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
   start(process.env).catch((e: unknown) => {
     process.stderr.write(`refusing to start: ${e instanceof ConfigError ? e.message : 'unexpected error'}\n`);

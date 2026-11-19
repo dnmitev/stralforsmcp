@@ -64,6 +64,24 @@
     "extraVolumes": { "type": "array", "items": { "type": "object", "required": ["name"] } },
     "extraVolumeMounts": { "type": "array", "items": { "type": "object", "required": ["name", "mountPath"] } },
     "terminationGracePeriodSeconds": { "type": "integer", "minimum": 0 },
+    "prometheusRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "labels": { "type": "object", "additionalProperties": { "type": "string" } },
+        "runbookUrl": { "type": "string", "pattern": "^https?://[^#\\s]+$" }
+      }
+    },
+    "serviceMonitor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "labels": { "type": "object", "additionalProperties": { "type": "string" } },
+        "interval": { "type": "string", "pattern": "^[0-9]+(ms|s|m|h)$" }
+      }
+    },
     "networkPolicy": {
       "type": "object",
       "additionalProperties": false,

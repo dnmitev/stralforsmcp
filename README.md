@@ -2,13 +2,13 @@
 
 > A hosted [Model Context Protocol](https://modelcontextprotocol.io) server for the Strålfors Output Management API — explore channels, inspect rules, validate invoices before sending and query delivery status from Claude Desktop, Cursor or Claude Code.
 
-**Status:** Phase 2 (MCP server). A typed Stralfors client library and a runnable stateless MCP server (token authentication, policy, audit, graceful shutdown, `whoami` tool) exist; the remaining tools follow in later phases. Packaged as a container image, a Helm chart and a Claude Desktop extension (`.mcpb`); the operator installs the server.
+**Status:** Phase 5 (hardening and hosting readiness). A typed Stralfors client, a stateless MCP server with token authentication, policy, audit, graceful shutdown, metrics and traces, eight tools, knowledge resources and prompts exist. `send_invoice` and Norway are not built yet. Packaged as a container image, a Helm chart and a Claude Desktop extension (`.mcpb`); the operator installs the server (see [docs/hosting-handoff.md](docs/hosting-handoff.md) and [docs/runbook.md](docs/runbook.md)).
 
 ## Why
 
 Integrating with the Strålfors Output Management API means working out channels, per-channel rules and payload shapes across several API products. This server puts the live API and a curated knowledge base behind an MCP interface, so developers, QA and product people can ask questions and validate payloads in plain language before anything is sent.
 
-## Planned capabilities
+## Tools
 
 | Tool | What it does |
 |------|--------------|
@@ -18,9 +18,11 @@ Integrating with the Strålfors Output Management API means working out channels
 | `get_example_invoice` | Returns the example invoice payload for 1-5 channels without the agreement id, plus fixed usage notes; allowed in PROD |
 | `validate_invoice` | Validates an invoice document in three stages and stops at the first stage with findings: input shape, a local check against the cached rules, then the API's own dry run. Findings are fixed plain-language sentences keyed by JSON path and rule id; `valid: true` only after the dry run accepts the document; `moreMayFollow` is true whenever it is false. The dry run creates nothing. Choose the agreement by label (optional when the profile has one). Hidden and denied in PROD unless `STRALFORS_PROD_VALIDATE_ENABLED=true` |
 | `channel_lookup` | **Test environment only.** Checks which lookup channels (for example Kivra) can reach each of 1 to 1000 candidate recipient identifiers, for 1 to 4 channels. Starts one vendor lookup, waits for the result (usually seconds, about 20 s at most) and returns `available` per candidate position. Candidates are personal identifiers: never stored, logged, audited, traced or returned. A channel that reports an error comes back as `failed` with a fixed `reason` (`not_configured`: the vendor has not set the channel up for this client; `error`: anything else); `unrecognised` counts matches that fit no candidate (a spelling difference), never values. See [ADR 0020](docs/adr/0020-channel-lookup-is-test-only-a-lookup-access-class-and-never-echoes-candidates.md) |
-| `track_document` | Reads the delivery status of an invoice by invoice number, external document id or document id (exactly one), through the read-only Track & Trace API. Returns per document and per channel an `outcome` (`delivered`, `in_progress`, `refused`, `failed`, `unknown`), the raw status, timestamps and optionally the delivery history of one document; recipient data and free text never leave the server. Status can lag by hours to days. Cursor paging (`hasMore`, `nextCursor`). Allowed in PROD |
-| `send_invoice` | Sends to the **test** environment only |
+| `track_document` | Reads the delivery status of an invoice by invoice number, external document id or document id (exactly one), through the read-only Track & Trace API. Returns per document and per channel an `outcome` (`delivered`, `in_progress`, `refused`, `failed`, `unknown`), the status only when it is exactly a known status name (anything else is shown as `other`), timestamps and optionally the delivery history of one document; recipient data and free text never leave the server. Status can lag by hours to days. Cursor paging (`hasMore`, `nextCursor`). Allowed in PROD |
+| `send_invoice` | **Planned, not implemented** (Norway phase): will send to the **test** environment only |
 | `search_docs` | Searches the knowledge base |
+
+Tools a caller's role or the environment does not allow are not registered: they do not appear in the tool list and a call to them is not audited.
 
 How to use the tools (vocabulary, a prompt per tool, what each error means, what we learned from the live API): [docs/using-the-tools.md](docs/using-the-tools.md).
 
@@ -59,8 +61,9 @@ CI publishes coverage, test pass rate and mutation score on every pull request.
 | 2 | MCP core: Streamable HTTP, per-user auth, policy, audit log, tracing and metrics, container image, Helm chart, Claude Desktop extension (the EKS deployment itself is done by the operator, outside this repository) |
 | 3 | Validation: rules, example payloads, dry-run validation, channel lookup, tracking |
 | 4 | Knowledge: searchable knowledge base, resources and prompts |
-| 5 | Additional countries and channels; test-environment sending |
-| 6 | Production: full Helm chart, dashboards and alerts, extension signing and distribution |
+| 5 | Hardening and hosting readiness: security and operations audit, shutdown and readiness, chart hardening, hosting handoff, runbook, alert rules, supply chain, first release (in progress) |
+| 6 | Norway: credential profile and `send_invoice` to TEST (deferred until Norway credentials exist) |
+| 7 | Production: PROD configuration and write-guard verification, dashboards, extension signing and distribution (deferred) |
 
 ## Stralfors client (library)
 
@@ -457,6 +460,18 @@ Without Docker the suite is skipped with a message; if `CI` is set it fails inst
 `npm run mutation` runs [StrykerJS](https://stryker-mutator.io) with the Vitest runner over the core modules (`src/stralfors/token.ts`, `errors.ts`, `http.ts`, `index.ts`, `config.ts`, `src/auth/token-store.ts`, `src/policy/policy.ts`, `src/audit/audit.ts`, `src/server/auth.ts`, `src/server/tools.ts`, `src/server/guards.ts`, `channels.ts`, `rate-limit.ts`, `context.ts`, and the knowledge store `src/knowledge/*.ts` with `src/server/search-tool.ts`). Target score is 80 %; the run fails below 70 % (`break`). Reports land in `reports/mutation/` (`mutation.html`, `mutation.json`). The incremental file `reports/stryker-incremental.json` is kept between runs, so a re-run only tests what changed. CI runs this as the `mutation` job on Node 24, publishes the score in the job summary and uploads the report as an artifact.
 
 Optional dashboard: enable the repository on the [Stryker dashboard](https://dashboard.stryker-mutator.io), then run `gh secret set STRYKER_DASHBOARD_API_KEY`. Until the secret exists, CI sends nothing.
+
+## Privacy and data handling
+
+What the server records and who owns it:
+
+- **Logs** (stderr) and **audit lines** (stdout) are fixed-text JSON lines. They never contain request or response payloads, recipient data, tokens or credentials. Identifiers in them (agreement, document) are masked. Each audit line carries the user id of the caller, the tool, the environment, the outcome and a trace id.
+- **Metrics and traces** use closed label sets (tool, outcome, environment, route, status code); no user identifier and no payload.
+- **Retention and access** of logs, audit lines, metrics and traces are decided by the operator's logging stack. This server stores nothing on disk and keeps no state between requests; the token list is read-only input.
+- **Personal data in tool inputs.** `channel_lookup` takes personal identifiers and never stores, logs, audits, traces or returns them. `validate_invoice` sends the document to the vendor's dry run: **use synthetic data only, never real recipients or customer data**. That rule is an instruction, not a control; the server cannot tell real data from synthetic data.
+- **Tokens** are stored only as hashes; the raw token exists only with its user.
+
+Details: ADR 0002, 0008, 0017, 0018 and 0020 in `docs/adr/`.
 
 ## Contributing
 

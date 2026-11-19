@@ -1,7 +1,7 @@
 // Chart tests (02-07, AC-1..AC-7). They render charts/stralforsmcp with `helm template` and assert the invariants.
 // All fixture values are throwaway placeholders; no credentials of any kind are used.
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -601,5 +601,72 @@ describe.skipIf(!helmOk)(helmOk ? 'chart' : 'chart (SKIPPED: helm binary not fou
       const names = new Set(emitted());
       for (const n of ['STRALFORS_ALLOW_WRITE', 'STRALFORS_PROD_VALIDATE_ENABLED', 'STRALFORS_CERT_RELOAD_S', 'MCP_ORIGINS', 'MCP_DRAIN_MS', 'OTEL_EXPORTER_OTLP_ENDPOINT', 'OTEL_EXPORTER_OTLP_HEADERS']) expect(names.has(n), n).toBe(true);
     });
+  });
+});
+
+// ---- 05-03a: opt-in PrometheusRule and ServiceMonitor ----
+import { INSTRUMENTS } from '../src/telemetry/instruments.ts';
+
+const promNames = (): Set<string> => {
+  const s = new Set<string>();
+  for (const i of Object.values(INSTRUMENTS) as { name: string; kind: string }[]) {
+    const b = i.name.replaceAll('.', '_');
+    s.add(b);
+    for (const x of i.kind === 'counter' ? ['_total'] : i.kind === 'histogram' ? ['_count', '_sum', '_bucket'] : []) s.add(b + x);
+  }
+  return s;
+};
+// metrics owned by other components the alerts depend on (documented in the runbook)
+const EXTERNAL = new Set(['kube_pod_container_status_restarts_total']);
+const METRIC = /\b(?:stralfors|mcp|http_server|kube)_[a-z_]+\b/g;
+const slug = (h: string) => h.toLowerCase().replace(/[^a-z0-9 -]/g, '').trim().replaceAll(' ', '-');
+const runbook = existsSync(join(ROOT, 'docs', 'runbook.md')) ? readFileSync(join(ROOT, 'docs', 'runbook.md'), 'utf8') : '';
+const runbookSlugs = new Set([...runbook.matchAll(/^#{2,4} (.+)$/gm)].map((m) => slug(m[1]!)));
+
+describe.skipIf(!helmOk)('05-03a alerts and ServiceMonitor', () => {
+  const on = (): Obj => ({ ...baseValues(), prometheusRule: { enabled: true, runbookUrl: 'https://runbook.example.invalid/runbook.md', labels: { release: 'example' } }, serviceMonitor: { enabled: true, interval: '30s', labels: { release: 'example' } } });
+  const rules = (docs: Obj[]): Obj[] => kind(docs, 'PrometheusRule')[0].spec.groups.flatMap((g: Obj) => g.rules);
+
+  it('renders neither object by default', () => {
+    const docs = render(baseValues());
+    expect(kind(docs, 'PrometheusRule')).toHaveLength(0);
+    expect(kind(docs, 'ServiceMonitor')).toHaveLength(0);
+  });
+  it('renders one alert per concern with severity and a runbook annotation', () => {
+    const rs = rules(render(on()));
+    const names = rs.map((r) => r.alert);
+    for (const n of ['StralforsMcpUpstreamErrors', 'StralforsMcpVendorDown', 'StralforsMcpCertExpirySoon', 'StralforsMcpCertExpiryCritical', 'StralforsMcpTokenListStale', 'StralforsMcpCredentialReloadFailing', 'StralforsMcpServerErrors', 'StralforsMcpRestarting']) expect(names, n).toContain(n);
+    for (const r of rs) {
+      expect(['warning', 'critical'], r.alert).toContain(r.labels.severity);
+      expect(r.annotations.runbook_url, r.alert).toMatch(/^https:\/\/runbook\.example\.invalid\/runbook\.md#[a-z0-9-]+$/);
+    }
+  });
+  it('labels the rule object with prometheusRule.labels', () => {
+    expect(kind(render(on()), 'PrometheusRule')[0].metadata.labels.release).toBe('example');
+  });
+  it('uses only metric names the server emits (or documented external ones)', () => {
+    const known = promNames();
+    for (const r of rules(render(on()))) {
+      const used = r.expr.match(METRIC) ?? [];
+      expect(used.length, r.alert).toBeGreaterThan(0);
+      for (const m of used) expect(known.has(m) || EXTERNAL.has(m), `${r.alert}: ${m}`).toBe(true);
+    }
+  });
+  it('every runbook_url anchor is a heading in docs/runbook.md', () => {
+    for (const r of rules(render(on()))) expect(runbookSlugs.has(String(r.annotations.runbook_url).split('#')[1]!), r.alert).toBe(true);
+  });
+  it('the ServiceMonitor selects the metrics Service by port name', () => {
+    const sm = kind(render(on()), 'ServiceMonitor')[0];
+    expect(sm.spec.endpoints).toEqual([{ port: 'metrics', interval: '30s', path: '/metrics' }]);
+    expect(sm.spec.selector.matchLabels['app.kubernetes.io/name']).toBe('stralforsmcp');
+    expect(sm.metadata.labels.release).toBe('example');
+  });
+  it('rejects unknown keys and a malformed interval', () => {
+    expect(helmError({ ...baseValues(), prometheusRule: { enabled: true, bogus: 1 } })).toMatch(/additional|bogus/i);
+    expect(helmError({ ...baseValues(), serviceMonitor: { enabled: true, interval: 'soon' } })).toMatch(/interval|pattern/i);
+  });
+  it('passes helm lint --strict with both enabled', () => {
+    const r = spawnSync(HELM, ['lint', '--strict', CHART, '-f', valuesFile(on())], { encoding: 'utf8' });
+    expect(r.status, r.stdout + r.stderr).toBe(0);
   });
 });

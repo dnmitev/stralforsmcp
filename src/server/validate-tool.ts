@@ -66,7 +66,7 @@ export function createValidateInvoice(deps: ValidateDeps): ToolDef<typeof valida
   return {
     spec: { name: 'validate_invoice', access: 'validate' },
     title: 'Validate invoice',
-    description: 'Dry-runs an invoice document and creates nothing. Three stages, stopping at the first with findings: input shape, a local check against the cached channel rules, then the native dry run. One round per call: when moreMayFollow is true, fix the findings and call again. valid is true only after the dry run accepts the document. See get_rules for the rules of a channel.',
+    description: 'Dry-runs an invoice document and creates nothing. Three stages, stopping at the first with findings: input shape, a local check against the cached channel rules, then the native dry run. One round per call: when moreMayFollow is true, fix the findings and call again. valid is true only after the dry run accepts the document. Use synthetic data only: never real recipients or customer data. See get_rules for the rules of a channel.',
     inputSchema: validateInput,
     outputSchema: validateOutput,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },

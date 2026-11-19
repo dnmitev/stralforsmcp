@@ -87,6 +87,19 @@ networkPolicy:
   prometheusNamespace: monitoring
   ingressControllerNamespace: ingress
 
+# Opt-in monitoring objects; they need the Prometheus Operator CRDs. The alert rules are examples
+# with fixed thresholds: copy and tune them in your own repository if they do not fit.
+prometheusRule:
+  enabled: false
+  labels: {}
+  # each alert links to <runbookUrl>#<section> in docs/runbook.md
+  runbookUrl: https://github.com/dnmitev/stralforsmcp/blob/main/docs/runbook.md
+
+serviceMonitor:
+  enabled: false
+  labels: {}
+  interval: 30s
+
 podAnnotations: {}
 nodeSelector: {}
 tolerations: []

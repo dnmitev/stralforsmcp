@@ -66,4 +66,8 @@ The knowledge overlay (`KNOWLEDGE_DIRS`) is deliberately not offered: resource a
 
 `networkPolicy.enabled` defaults to true. The policy this chart renders allows port 3000 from `networkPolicy.ingressControllerNamespace` and port 9464 from `networkPolicy.prometheusNamespace`, and nothing else. Isolation only holds if your CNI enforces NetworkPolicy and no other policy selecting the pod admits more; traffic from the pod's own node (kubelet probes) is exempt. **Set both namespaces to your cluster's real names before every install and upgrade** (the defaults are `ingress` and `monitoring`): with an enforcing CNI and a controller in, say, `ingress-nginx`, Helm succeeds but the route stops working. There is no egress policy yet.
 
-Not included: ExternalSecret or IRSA objects, ServiceMonitor, HPA. Pass IRSA-style annotations with `serviceAccount.annotations`.
+## Monitoring objects (opt-in)
+
+`prometheusRule.enabled` renders a `PrometheusRule` with example alerts (upstream errors, vendor heartbeat, certificate expiry at 30 and 7 days, stale token list, failing credential reload, 5xx rate, restarts). `serviceMonitor.enabled` renders a `ServiceMonitor` for the metrics Service. Both need the Prometheus Operator CRDs, so they default to off. Thresholds are fixed examples: copy the rules into your own repository to tune them. The restart alert needs kube-state-metrics. Each alert's `runbook_url` is `prometheusRule.runbookUrl` plus a section of [docs/runbook.md](../../docs/runbook.md); a chart test fails if a rule names a metric the server does not emit or a runbook section that does not exist. Set `prometheusRule.labels` / `serviceMonitor.labels` to what your Prometheus selects on.
+
+Not included: ExternalSecret or IRSA objects, HPA. Pass IRSA-style annotations with `serviceAccount.annotations`.
