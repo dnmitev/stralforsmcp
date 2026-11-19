@@ -653,6 +653,7 @@ describe.skipIf(!helmOk)('05-03a alerts and ServiceMonitor', () => {
     }
   });
   it('every runbook_url anchor is a heading in docs/runbook.md', () => {
+    expect(runbookSlugs.size, 'docs/runbook.md is missing or has no headings (Stryker sandbox must include docs/)').toBeGreaterThan(0);
     for (const r of rules(render(on()))) expect(runbookSlugs.has(String(r.annotations.runbook_url).split('#')[1]!), r.alert).toBe(true);
   });
   it('the ServiceMonitor selects the metrics Service by port name', () => {
