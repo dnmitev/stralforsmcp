@@ -1,0 +1,45 @@
+# Weekly, grouped, with a cooldown so a release is not adopted the day it appears.
+# Security updates are not delayed by the cooldown. Pins in workflows, the Dockerfile and package.json stay exact:
+# Dependabot rewrites the pin (full commit SHA, image digest, exact version) and the version comment.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+    groups:
+      # The OpenTelemetry packages are released and versioned in lockstep: one pull request for the set.
+      opentelemetry:
+        patterns:
+          - '@opentelemetry/*'
+      dev-dependencies:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns:
+          - '*'
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7

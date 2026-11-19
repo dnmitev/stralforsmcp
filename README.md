@@ -360,7 +360,7 @@ Port 9464 (Prometheus text) has no authentication. In a cluster, reach it from t
 `.github/workflows/image.yml` runs on every pull request and on pushes to `main` and `v*` tags.
 
 - `build-scan` (all events, read-only, no secrets, no registry login, nothing pushed): builds linux/amd64 (loaded, smoke-tested) and linux/arm64 (exported as an archive, scanned but never started), checks the image content, runs the smoke test on amd64 only, runs the same Trivy gate that fails on fixable HIGH/CRITICAL vulnerabilities on both images and on HIGH/CRITICAL misconfigurations in the `Dockerfile`, and uploads a CycloneDX SBOM and a Trivy report as the `image-sbom-and-scan` artifact (14 days; both are generated before the gates, so a failing gate still uploads them). Exceptions go only in `.trivyignore.yaml`; each entry needs a `statement` and an `expired_at` at most 90 days ahead (enforced by a test).
-- `publish` (push events only, never a pull request or a fork, the only job with `packages: write`): rebuilds linux/amd64 and linux/arm64, pushes to `ghcr.io/<owner>/stralforsmcp` with BuildKit SBOM and `provenance: mode=max` attestations. The pushed digest is a rebuild, not byte for byte the scanned image.
+- `publish` (push events only, never a pull request or a fork, the only job with `packages: write`): rebuilds linux/amd64 and linux/arm64, pushes to `ghcr.io/<owner>/stralforsmcp` with BuildKit SBOM and `provenance: mode=max` attestations. The pushed digest is a rebuild, not byte for byte the scanned image. After the push it scans that exact digest on both platforms with the same gate and then signs the digest keylessly with cosign (`id-token: write` is held only by this job, so a failing scan leaves no signature); verification is described in [docs/hosting-handoff.md](docs/hosting-handoff.md#verifying-the-image).
 
 Tags: `sha-<40 hex commit>` on every publish, `edge` on `main`, `X.Y.Z`, `X.Y` and `latest` on `v*` release tags only. Deploy by digest, never by `edge` or `latest`.
 
@@ -376,12 +376,13 @@ cid=$(docker create stralforsmcp:local) && { docker export "$cid" | tar -t | gre
 
 ### Bumping pins
 
-Every pin is updated by hand in one reviewed pull request; the image workflow is the test. No update bot is configured yet.
+Pins are updated in one reviewed pull request each; the image workflow is the test. Dependabot (`.github/dependabot.yml`) opens the weekly pull requests for npm (the OpenTelemetry packages as one group), GitHub Actions and the Dockerfile base images, with a 7-day cooldown; the pinned trivy and cosign binaries are not covered by it and are bumped by hand as below.
 
 - Base images: `docker buildx imagetools inspect gcr.io/distroless/nodejs26-debian13:nonroot` (and `node:26-trixie-slim`), then replace the index digest after `@sha256:` in the matching `FROM`.
 - Trivy: take the new version's `trivy_<version>_checksums.txt` from its GitHub release and update the version and the `Linux-64bit` sha256 in the "Install trivy" step.
 - Actions: resolve `git/ref/tags/<tag>` of the action (dereference annotated tags through `git/tags/<sha>`), then update the full commit SHA and the version comment.
-- The scan reflects the vulnerability database at build time and ignores findings without a fix; there is no scheduled rescan of published images yet.
+- The scan reflects the vulnerability database at build time and ignores findings without a fix. `.github/workflows/rescan.yml` re-scans the published `edge` image every week and fails when a fixable HIGH or CRITICAL finding appears.
+- Cosign: take the new version's `cosign_checksums.txt` from its GitHub release and update the version and the `cosign-linux-amd64` sha256 in the "Install cosign" step.
 
 ## Helm chart
 
@@ -404,7 +405,7 @@ Helm must be installed to run `test/chart.test.ts` locally (it renders the chart
 
 Claude Desktop cannot send a per-user bearer token to a private server on its own, so `extension/` is a small stdio-to-HTTP proxy packaged as a Desktop extension. Claude Code and Cursor need no extension: they send the header themselves (see the `.mcp.json` example under "Running").
 
-1. `npm run mcpb:build` writes `dist/stralforsmcp.mcpb` (unsigned; signing and distribution come in Phase 6).
+1. Get the file. CI builds it from a clean checkout on every pull request and push to main (the `mcpb` workflow uploads `stralforsmcp.mcpb` and `SHA256SUMS` as an artifact; the file carries the Apache-2.0 licence and a `THIRD-PARTY-NOTICES` list of the bundled packages). For a `v*` tag the workflow also records a build-provenance attestation. Check what you downloaded with `sha256sum -c SHA256SUMS` and, for a tagged build, `gh attestation verify stralforsmcp.mcpb --repo <owner>/<repo>`. To build locally instead, run `npm run mcpb:build`, which writes `dist/stralforsmcp.mcpb` (identical inputs give an identical file). The extension is attested, not code-signed, and a store listing is not set up yet.
 2. Open the file in Claude Desktop (Settings > Extensions) and fill in two fields:
    - **Server URL**: the `https://` address of the server, for example `https://<mcp-hostname>/mcp`. Plain `http://` is accepted only for localhost.
    - **Personal token**: your `smcp_` token. Desktop keeps it in the operating system secure store and passes it to the proxy by environment variable.
@@ -482,6 +483,8 @@ scripts/setup-hooks.sh
 ```
 
 This activates the commit hooks in `.githooks/`: every commit is scanned with [gitleaks](https://github.com/gitleaks/gitleaks) (must be installed) and, optionally, against a personal denylist of terms that must never be committed. Set `STRALFORSMCP_DENYLIST` to the denylist path (one case-insensitive regex per line); matches are reported as a count only. Run `sh scripts/test-leak-guard.sh` to verify the guard.
+
+In CI the same denylist is a repository secret (`STRALFORSMCP_DENYLIST`). The check fails when that secret is missing on a push to `main` or on a pull request from this repository; it only warns and skips for pull requests from forks and for Dependabot, which never receive Actions secrets. The commit hook reads a local file, and the private planning notes and the denylist itself live outside this repository.
 
 Pull requests to `main` need green CI (Node 24 and 26, leak scan) and a `review/confidence` status of at least 90 % from the principal-reviewer agent (`.claude/agents/`) on the head commit; a new push requires a new review. A pull request that changes documentation only (`docs/`, `README.md`, `GLOSSARY.md` and similar project docs, `LICENSE`) skips mutation testing and, when it comes from this repository, gets the status set to success automatically (a fork PR still needs the reviewer's status). One that changes only documentation plus pipeline or deployment files (`.github/`, `charts/`, `Dockerfile`, ignore and scanner configs) skips mutation testing but still needs the review. Mutation testing runs incrementally (without static mutants) on every pull request and push to `main`; the full run, static mutants included, is the weekly `mutation-full` workflow (also startable by hand), and its results are not reused by the incremental runs.
 

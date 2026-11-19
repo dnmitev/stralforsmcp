@@ -3,6 +3,7 @@ import { build } from 'esbuild';
 import { zipSync } from 'fflate';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { buildNotices, bundledPackageDirs } from './mcpb-notices.ts';
 
 const root = join(import.meta.dirname, '..');
 
@@ -30,9 +31,12 @@ export async function buildMcpb(): Promise<string> {
   const version = (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { version: string }).version;
   if ((JSON.parse(manifest) as { version: string }).version !== version) throw new Error(`extension/manifest.json version differs from package.json (${version})`);
   const stage = join(root, 'dist/stage');
-  const { file } = await bundleBridge(stage);
+  const { file, metafile } = await bundleBridge(stage);
+  const notices = buildNotices(bundledPackageDirs(Object.keys(metafile.inputs), root));
   const mtime = new Date(Date.UTC(2020, 0, 1)); // fixed so identical inputs give identical archives
   const entries = {
+    'LICENSE': readFileSync(join(root, 'LICENSE')),
+    'THIRD-PARTY-NOTICES': Buffer.from(notices),
     'README.md': readFileSync(join(root, 'extension/README.md')),
     'manifest.json': Buffer.from(manifest),
     'server/package.json': Buffer.from('{"type":"module"}\n'), // the extracted bundle is ESM with top-level await; without this Node may load it as CommonJS
