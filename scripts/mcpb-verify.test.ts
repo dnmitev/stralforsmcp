@@ -1,4 +1,8 @@
 import { zipSync } from 'fflate';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { verifyMcpb } from './mcpb-verify.ts';
 
@@ -40,5 +44,33 @@ describe('verifyMcpb', () => {
     const a = good();
     a['manifest.json'] = enc('not json');
     expect(verifyMcpb(zip(a), '1.2.3').join()).toMatch(/manifest/);
+  });
+});
+
+describe('verify CLI', () => {
+  const cli = join(import.meta.dirname, 'mcpb-verify.ts');
+  const run = (...args: string[]) => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
+  it('prints a fixed line and exits 1 when the archive cannot be read, without a stack or the OS error text', () => {
+    const r = run(join(tmpdir(), 'definitely-missing.mcpb'));
+    expect(r.status).toBe(1);
+    expect(r.stderr).toBe('mcpb-verify: cannot read the archive\n');
+    expect(r.stdout).toBe('');
+  });
+  it('exits 2 with usage when no file is given', () => {
+    const r = run();
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/usage/);
+  });
+  it('exits 1 on an archive that is not a zip', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'verify-cli-'));
+    try {
+      const f = join(dir, 'x.mcpb');
+      writeFileSync(f, 'not a zip');
+      const r = run(f);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain('not a readable zip');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

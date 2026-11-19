@@ -38,8 +38,9 @@ export function buildNotices(dirs: string[]): string {
     const files = readdirSync(dir)
       .filter((f) => LICENCE_FILE.test(f) && statSync(join(dir, f)).isFile())
       .sort();
-    if (files.length === 0) throw new Error(`${id}: no licence text found`);
-    const body = files.map((f) => `${f}:\n${readFileSync(join(dir, f), 'utf8').trimEnd()}`).join('\n\n');
+    const texts = files.map((f) => ({ f, t: readFileSync(join(dir, f), 'utf8').trim() })).filter((x) => x.t !== '');
+    if (texts.length === 0) throw new Error(`${id}: no licence text found`);
+    const body = texts.map(({ f, t }) => `${f}:\n${t}`).join('\n\n');
     return { id, name: pkg.name, text: `== ${id} ==\nLicense: ${license}\n\n${body}\n` };
   });
   entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));

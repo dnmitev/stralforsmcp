@@ -25,7 +25,7 @@ cosign verify \
 
 Run it in the deployment pipeline before a rollout (or enforce it with an admission policy) and deploy the digest it verified. The SBOM and the build provenance are attached to the image and can be read with `docker buildx imagetools inspect`. The Claude Desktop extension is built in the `mcpb` workflow: its SHA-256 and, for tags, its build-provenance attestation (`gh attestation verify`) are the checks.
 
-A weekly workflow (`rescan.yml`) re-scans the published `edge` image so a newly disclosed fixable vulnerability shows up as a failed run even when nothing is pushed; dependency updates arrive as grouped Dependabot pull requests.
+A weekly workflow (`rescan.yml`) re-scans the published `edge` image so a newly disclosed fixable vulnerability shows up as a failed run even when nothing is pushed; it scans the current `edge` digest, not an older digest that a deployment pinned, so operators must also rescan the digests they actually run (for example with trivy against the pinned digest on a schedule in their own pipeline). Dependency updates arrive as grouped Dependabot pull requests.
 
 ## One deployment per environment
 

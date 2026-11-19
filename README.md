@@ -364,7 +364,7 @@ Port 9464 (Prometheus text) has no authentication. In a cluster, reach it from t
 
 Tags: `sha-<40 hex commit>` on every publish, `edge` on `main`, `X.Y.Z`, `X.Y` and `latest` on `v*` release tags only. Deploy by digest, never by `edge` or `latest`.
 
-Find the digest in the workflow run summary or with `docker buildx imagetools inspect ghcr.io/<owner>/stralforsmcp:sha-<commit>`. The SBOM and provenance attestations are read with `docker buildx imagetools inspect <ref> --format '{{json .SBOM}}'` and `--format '{{json .Provenance}}'`; the Trivy SBOM is the workflow artifact. Signing (cosign) is not done yet.
+Find the digest in the workflow run summary or with `docker buildx imagetools inspect ghcr.io/<owner>/stralforsmcp:sha-<commit>`. The SBOM and provenance attestations are read with `docker buildx imagetools inspect <ref> --format '{{json .SBOM}}'` and `--format '{{json .Provenance}}'`; the Trivy SBOM is the workflow artifact. The published digest is signed by the publish job; see [Verifying the image](docs/hosting-handoff.md#verifying-the-image).
 
 The GHCR package is private after the first push. Making it public is the maintainer's irreversible decision in the GitHub package settings; the workflow never changes it.
 

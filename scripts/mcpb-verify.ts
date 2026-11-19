@@ -37,8 +37,23 @@ if (import.meta.main) {
     process.exit(2);
   }
   const root = join(import.meta.dirname, '..');
-  const version = (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { version: string }).version;
-  const problems = verifyMcpb(new Uint8Array(readFileSync(file)), version);
+  const fail = (msg: string): never => {
+    console.error(`mcpb-verify: ${msg}`); // fixed text: no OS error, path or stack
+    process.exit(1);
+  };
+  let version: string;
+  try {
+    version = (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { version: string }).version;
+  } catch {
+    version = fail('cannot read package.json');
+  }
+  let zip: Uint8Array;
+  try {
+    zip = new Uint8Array(readFileSync(file));
+  } catch {
+    zip = fail('cannot read the archive');
+  }
+  const problems = verifyMcpb(zip, version);
   if (problems.length > 0) {
     for (const p of problems) console.error(`mcpb-verify: ${p}`);
     process.exit(1);

@@ -244,6 +244,12 @@ describe('AC-5 the bundle', () => {
     }
   });
 
+  it('builds the same archive when started from another working directory (notice discovery uses the repository root)', () => {
+    const r = spawnSync(process.execPath, [join(root, 'scripts/build-mcpb.ts')], { cwd: join(root, 'scripts'), encoding: 'utf8' });
+    expect(r.stderr).toBe('');
+    expect(r.status).toBe(0);
+  });
+
   it('CLI boundary: a failing build prints one fixed line, exit 1', () => {
     const dir = mkdtempSync(join(tmpdir(), 'smcp-badbuild-'));
     try {

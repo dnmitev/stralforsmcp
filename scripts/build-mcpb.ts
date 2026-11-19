@@ -13,6 +13,7 @@ export async function bundleBridge(outDir: string) {
   const { metafile } = await build({
     entryPoints: [join(root, 'extension/src/proxy.ts')],
     outfile: file,
+    absWorkingDir: root, // metafile paths are relative to this; the notices step resolves them against root
     bundle: true,
     platform: 'node',
     format: 'esm',

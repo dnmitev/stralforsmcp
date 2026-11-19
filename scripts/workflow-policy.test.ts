@@ -466,7 +466,10 @@ export function signingProblems(text: string): string[] {
   const job = (name: string): string => (new RegExp(`^ {2}${name}:\\n([\\s\\S]*?)(?=^ {2}[\\w-]+:\\n|$(?![\\s\\S]))`, 'm').exec(text)?.[1] ?? '');
   const p = job('publish');
   const b = job('build-scan');
-  if (text.match(/id-token:\s*write/g)?.length !== 1 || !/id-token:\s*write/.test(p)) out.push('id-token: write must appear exactly once, in publish');
+  // parsed, so a commented-out permission does not count
+  const jobs = ((parse(text) as { jobs?: Record<string, { permissions?: Record<string, string> }> }).jobs ?? {});
+  const idJobs = Object.entries(jobs).filter(([, j]) => j.permissions?.['id-token'] === 'write').map(([n]) => n);
+  if (idJobs.length !== 1 || idJobs[0] !== 'publish') out.push(`id-token: write must be granted to publish only (found: ${idJobs.join(',') || 'none'})`);
   if (/id-token|cosign/.test(b)) out.push('build-scan must not sign or hold id-token');
   if (/attestations|contents:\s*write/.test(text)) out.push('attestations or contents: write present');
   if (/sigstore\/cosign-installer/.test(text)) out.push('cosign must be a pinned binary, not an action');
@@ -485,6 +488,12 @@ export function signingProblems(text: string): string[] {
 describe('signing rules (R-18)', () => {
   const real = wf('image.yml');
   it('the real image.yml has none', () => expect(signingProblems(real)).toEqual([]));
+  it('mutation: the id-token permission is commented out (a comment is not a permission)', () => {
+    expect(signingProblems(real.replace('      id-token: write # keyless', '      # id-token: write # keyless')).join()).toMatch(/id-token: write must/);
+  });
+  it('mutation: id-token granted to a second job', () => {
+    expect(signingProblems(real.replace('    runs-on: ubuntu-latest\n    timeout-minutes: 20\n    permissions:\n      contents: read\n', '    runs-on: ubuntu-latest\n    timeout-minutes: 20\n    permissions:\n      contents: read\n      id-token: write\n')).join()).toMatch(/id-token/);
+  });
   it('mutation: unpinned cosign (no checksum)', () => {
     expect(signingProblems(real.replace(/ \| sha256sum -c -\n( +)chmod \+x/, '\n$1chmod +x')).join()).toMatch(/pinned by sha256/);
   });
