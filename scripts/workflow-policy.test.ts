@@ -65,7 +65,8 @@ export function checkWorkflow(yamlText: string, file = ''): string[] {
 // The one accepted pull_request_target workflow (ADR 0024): runs base-branch code only, so it must never check out
 // or interpolate anything from the pull request, and its token may only write statuses and labels.
 const PRT_FILE = 'skip-confidence.yml';
-type Wf = { on?: unknown; permissions?: unknown; jobs?: Record<string, { permissions?: Record<string, string>; steps?: { uses?: string; run?: string }[] }> };
+const JOB_KEYS = ['name', 'if', 'runs-on', 'timeout-minutes', 'permissions', 'env', 'steps'];
+type Wf = { on?: unknown; permissions?: unknown; jobs?: Record<string, { [key: string]: unknown; permissions?: Record<string, string>; steps?: { uses?: string; run?: string }[] }> };
 export function checkPullRequestTarget(yamlText: string): string[] {
   const out: string[] = [];
   const wf = parse(yamlText) as Wf;
@@ -75,6 +76,10 @@ export function checkPullRequestTarget(yamlText: string): string[] {
   if (typeof top !== 'object' || top === null || Object.keys(top).length > 0)
     out.push('pull_request_target: top-level permissions must be {}');
   for (const [name, job] of Object.entries(wf.jobs ?? {})) {
+    // only these job keys: no job-level `uses:` (a reusable workflow could check out the PR head with this token), no
+    // container, services, needs or strategy
+    for (const k of Object.keys(job))
+      if (!JOB_KEYS.includes(k)) out.push(`pull_request_target: job ${name} uses the job key ${k} (not allowed)`);
     for (const [k, v] of Object.entries(job.permissions ?? {}))
       if (!(['pull-requests', 'statuses'].includes(k) && ['read', 'write'].includes(v)))
         out.push(`pull_request_target: job ${name} permission ${k}: ${v} is not allowed`);
@@ -91,8 +96,9 @@ export function checkPullRequestTarget(yamlText: string): string[] {
     if (l.trim().startsWith('#') || !l.includes('${{')) return;
     if (!/^\s*(- )?(if:|[A-Z][A-Z0-9_]*:)/.test(l)) out.push(`line ${i + 1}: pull_request_target: expression outside env: or if:`);
   });
-  // any mention of `secrets` outside a comment: secrets.X, secrets['X'] and toJSON(secrets) alike
-  if (/\bsecrets\b/.test(yamlText.split(/\r?\n/).filter((l) => !l.trim().startsWith('#')).join('\n')))
+  // any mention of `secrets` outside a comment, in any letter case (context names are case-insensitive):
+  // secrets.X, secrets['X'], toJSON(secrets), SECRETS.X
+  if (/\bsecrets\b/i.test(yamlText.split(/\r?\n/).filter((l) => !l.trim().startsWith('#')).join('\n')))
     out.push('pull_request_target: no secrets references (use the job token only)');
   return out;
 }
@@ -501,7 +507,7 @@ describe('image.yml (real file)', () => {
       ['v0.1.0', true],
       ['v1.2.3', true],
       ['v10.20.30', true],
-      ['v1.2.3-rc.1', true],
+      ['v1.2.3-rc.1', false], // prereleases are not published (main never carries a prerelease version)
       ['vnext', false],
       ['v1', false],
       ['v1.2', false],
@@ -512,10 +518,10 @@ describe('image.yml (real file)', () => {
       ['v1.2.3-rc.', false],
       ['v1.2.3-01', false],
       ['v1.2.3-rc.01', false],
-      ['v1.2.3-rc.0', true],
-      ['v1.2.3-0a', true],
+      ['v1.2.3-rc.0', false],
+      ['v1.2.3-0a', false],
       ['v1.2.3-00', false],
-      ['v1.2.3-rc-1.x-y', true],
+      ['v1.2.3-rc-1.x-y', false],
       ['1.2.3', false],
       ['v1.2.3 ', false],
       ['v1.2.3\nx', false],
@@ -713,6 +719,10 @@ describe('pull_request_target exception', () => {
     ["a secrets['X'] reference", real.replace('      LABEL: skip-confidence\n', "      LABEL: skip-confidence\n      S: ${{ secrets['X'] }}\n"), /no secrets references/],
     ['toJSON(secrets)', real.replace('      LABEL: skip-confidence\n', '      LABEL: skip-confidence\n      S: ${{ toJSON(secrets) }}\n'), /no secrets references/],
     ['an expression carried into run: by a YAML alias', real.replace('      LABEL: skip-confidence\n', '      LABEL: skip-confidence\n      T: &t echo ${{ github.event.pull_request.title }}\n').replace('gh api -X DELETE "repos/$REPO/issues/$PR/labels/$LABEL" || true', '*t'), /resolved run/],
+    ['SECRETS.X in capitals', real.replace('      LABEL: skip-confidence\n', '      LABEL: skip-confidence\n      S: ${{ SECRETS.X }}\n'), /no secrets references/],
+    ['a job-level reusable workflow call', real.replace('    timeout-minutes: 5\n', `    timeout-minutes: 5\n    uses: o/r/.github/workflows/x.yml@${SHA}\n`), /job key uses/],
+    ['a job container', real.replace('    timeout-minutes: 5\n', '    timeout-minutes: 5\n    container: node:24\n'), /job key container/],
+    ['job services', real.replace('    timeout-minutes: 5\n', '    timeout-minutes: 5\n    services:\n      x:\n        image: y\n'), /job key services/],
     ['a second trigger', real.replace('on:\n  pull_request_target:', 'on:\n  push:\n  pull_request_target:'), /only trigger/],
   ])('rejects %s', (_n, text, re) => {
     expect(text).not.toBe(real);

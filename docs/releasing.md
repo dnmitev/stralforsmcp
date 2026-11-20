@@ -18,13 +18,13 @@ These are repository settings that no workflow in this repository can apply for 
 
 1. **Bump the version** in one pull request: `npm version X.Y.Z --no-git-tag-version` (updates `package.json` and the lock file), `version` in `extension/manifest.json` and `appVersion` in `charts/stralforsmcp/Chart.yaml`. `test/release-version.test.ts` fails if one of the four differs. Bump the chart's own `version` too when templates or values changed since the last release (the chart version is independent of the app version).
 2. **Merge it** through the normal review. The tag goes on the merge commit.
-3. **Tag and push** (annotated; sign the tag if you have a signing key): `git tag -a vX.Y.Z <merge-commit> -m "vX.Y.Z"` then `git push origin vX.Y.Z`. The tag must be strict semver and equal the `package.json` version; the `image` workflow's first step refuses anything else (`vnext`, `v1.2`, `v1.2.3+x`, a version nobody bumped), before anything is pushed. A prerelease tag (`vX.Y.Z-rc.1`) needs a prerelease `package.json` version on a commit that is not on `main` (the version test forbids one there); it publishes only the full version tag, never `X.Y` or `latest`.
+3. **Tag and push** (annotated; sign the tag if you have a signing key): `git tag -a vX.Y.Z <merge-commit> -m "vX.Y.Z"` then `git push origin vX.Y.Z`. The tag must be plain `X.Y.Z` and equal the `package.json` version; the `image` workflow's first step refuses anything else (`vnext`, `v1.2`, `v1.2.3+x`, a version nobody bumped), before anything is pushed. Prereleases are not published: `main` never carries a prerelease version, so a `-rc` tag is refused.
 4. **Watch two runs:** `image` (tag check, build, push, scan of the pushed digest on both platforms, keyless signature) and `mcpb` (build, verify, checksum, attestation). A red `image` run means no signature exists for that digest; fix forward with a new patch version, never move or delete a tag.
 5. **Create the GitHub release by hand** (workflows never create releases): download the `mcpb` run's artifact with `gh run download <run-id> -R <owner>/<repo> -n mcpb`, check it (below), then `gh release create vX.Y.Z --verify-tag --title vX.Y.Z --notes "..." stralforsmcp.mcpb SHA256SUMS`.
 
 ## Checking what was published
 
-Take the digest from the `image` run summary. Image tags published for a release: `X.Y.Z`, `X.Y`, `latest`, plus `sha-<commit>` (a prerelease gets only `X.Y.Z-pre` and the `sha-` tag); `edge` keeps following `main`.
+Take the digest from the `image` run summary. Image tags published for a release: `X.Y.Z`, `X.Y`, `latest`, plus `sha-<commit>`; `edge` keeps following `main`.
 
 ```sh
 cosign verify \

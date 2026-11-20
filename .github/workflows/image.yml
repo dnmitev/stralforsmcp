@@ -25,15 +25,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # A v* tag must be strict semver and equal the package.json version. publish needs this job, so a bad tag
+      # A v* tag must be plain X.Y.Z (no prerelease: main never carries a prerelease version) and equal the package.json version. publish needs this job, so a bad tag
       # (vnext, v1, v1.2.3+x, a version nobody bumped) pushes, signs and tags nothing.
       - name: Check release tag
         if: github.ref_type == 'tag'
         env:
           REF_NAME: ${{ github.ref_name }}
         run: |
-          re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?$'
-          [[ "$REF_NAME" =~ $re ]] || { echo "tag is not a semver release tag (vX.Y.Z or vX.Y.Z-pre)"; exit 1; }
+          re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          [[ "$REF_NAME" =~ $re ]] || { echo "tag is not a semver release tag (vX.Y.Z)"; exit 1; }
           v=$(node -p "require('./package.json').version")
           [ "${REF_NAME#v}" = "$v" ] || { echo "tag does not match the package.json version $v"; exit 1; }
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -135,7 +135,7 @@ jobs:
           DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
         with:
           images: ghcr.io/${{ github.repository }}
-          # latest=auto: only a non-prerelease semver tag gets `latest`; sha and edge never do.
+          # latest=auto: the semver tags get `latest`, sha and edge never do.
           flavor: latest=auto
           tags: |
             type=sha,format=long
