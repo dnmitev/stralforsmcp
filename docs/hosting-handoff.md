@@ -10,7 +10,7 @@ What a team needs to deploy and operate stralforsmcp from its own repository: th
 | Helm chart | `charts/stralforsmcp` | Secrets by name, hardened pod, PROD guards in templates (ADR 0014); chart README is the reference for every value |
 | Desktop extension | `.mcpb` built by `npm run mcpb:build` | local bridge for Claude Desktop (ADR 0015) |
 
-**Image tags.** Pushes to `main` publish `edge` and `sha-<40 hex>`. A `v<semver>` tag publishes `<version>`, `<major>.<minor>` and `latest`. Pin by tag **and digest** (`image.digest`) in your deployment; never deploy `edge` or `latest` to PROD. No release exists until the release plan lands: until then pin a `sha-` tag (by digest).
+**Image tags.** Pushes to `main` publish `edge` and `sha-<40 hex>`. A strict `v<semver>` tag whose version equals `package.json` publishes `<version>`, `<major>.<minor>` and `latest`; any other `v*` tag is refused before anything is pushed. Pin by tag **and digest** (`image.digest`) in your deployment; never deploy `edge` or `latest` to PROD. How a release is cut, checked and rolled back: [docs/releasing.md](releasing.md). The first release, `v0.1.0`, is cut after plan 05-03c merges: until it exists, pin a `sha-` tag (by digest).
 
 ## Verifying the image
 
@@ -103,7 +103,7 @@ Before the original author steps back, agree and record in your own (private) do
 - [ ] Who holds the vendor credentials and certificates, where they are stored, who renews them and how far ahead (the expiry alerts start at 30 days).
 - [ ] How the token list is changed (who edits it, who reviews, how often tokens are cleaned up).
 - [ ] Who receives the alerts and what the escalation path is.
-- [ ] Who can merge and release in this repository, and a rehearsed rollback.
+- [ ] Who can merge and release in this repository, and a rehearsed rollback. The repository settings behind that (ruleset for `main`, ruleset for `v*` tags, GHCR visibility, who may add the `skip-confidence` label, whether code-owner review is required) are listed in [docs/releasing.md](releasing.md#maintainer-settings-once-before-the-first-release).
 - [ ] A dry run: the second operator performs a token issue and revoke and a certificate swap on TEST without help.
 
 ## Known limits

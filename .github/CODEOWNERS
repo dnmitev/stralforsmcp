@@ -1,0 +1,26 @@
+# Code owners of the paths that carry trust: the merge gate, the pipelines, what gets built and signed,
+# and the guard rails for agents. Ownership alone does not block a merge; whether a code-owner review is
+# required is a repository setting (docs/releasing.md, ADR 0024). scripts/codeowners.test.ts keeps this list
+# covering the paths the plan named.
+/.github/ @dnmitev
+/.claude/ @dnmitev
+/.githooks/ @dnmitev
+/scripts/ @dnmitev
+/Dockerfile @dnmitev
+/.dockerignore @dnmitev
+/.trivyignore.yaml @dnmitev
+/.gitleaks.toml @dnmitev
+/.coderabbit.yaml @dnmitev
+/.gitignore @dnmitev
+/.oxlintrc.json @dnmitev
+/.nvmrc @dnmitev
+/vitest.config.ts @dnmitev
+/vitest.integration.config.ts @dnmitev
+/vitest.stryker.config.ts @dnmitev
+/stryker.config.json @dnmitev
+/tsconfig.json @dnmitev
+/charts/ @dnmitev
+/extension/ @dnmitev
+/docs/adr/ @dnmitev
+/package.json @dnmitev
+/package-lock.json @dnmitev

@@ -1,0 +1,78 @@
+name: skip-confidence
+
+# Maintainer opt-out of the review/confidence gate for one head commit (for example a Dependabot bump the
+# review agent has not scored). Adding the `skip-confidence` label needs triage access, so the label is the
+# authorisation, and the workflow re-checks the sender: a human with maintain or admin permission, never an app.
+# Runs from the base branch and never checks out pull request code: it only reads the list of
+# changed files through the API (data, never executed) and writes one commit status.
+# It refuses when the pull request touches the files that make up the gate itself (workflows, scripts, agents,
+# image and chart, scanner configs): those need a real review.
+# The files are listed between the current tip of main and the head SHA from the event (never the live pull request
+# head), so a force-push during the run cannot swap the list under the check. The compare endpoint returns at most 300
+# files and no later pages, so 300 or more files refuse. Any doubt refuses.
+# A new push drops the label, so the next head commit needs a fresh review or a fresh label.
+# scripts/workflow-policy.test.ts allows pull_request_target for this one file only, under strict rules (ADR 0024).
+on:
+  pull_request_target:
+    branches: [main]
+    types: [labeled, synchronize]
+
+permissions: {}
+
+jobs:
+  skip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+      statuses: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      SENDER: ${{ github.event.sender.login }}
+      SENDER_TYPE: ${{ github.event.sender.type }}
+      LABEL: skip-confidence
+    steps:
+      - name: Grant skip on label
+        if: github.event.action == 'labeled' && github.event.label.name == 'skip-confidence'
+        shell: bash # bash -eo pipefail: a failing gh in a pipe must not be hidden by the command after it
+        run: |
+          # A refusal is visible in the run summary and takes the label off again, so the state matches what happened.
+          refuse() {
+            echo "skip-confidence refused: $1" | tee -a "$GITHUB_STEP_SUMMARY"
+            gh api -X DELETE "repos/$REPO/issues/$PR/labels/$LABEL" > /dev/null 2>&1 || true
+            exit 0
+          }
+          [ "$SENDER_TYPE" = User ] || refuse "the label was added by an app, not a person"
+          role=$(gh api "repos/$REPO/collaborators/$SENDER/permission" -q .role_name) || refuse "sender permission unavailable"
+          case "$role" in admin | maintain) ;; *) refuse "the label needs maintain or admin permission" ;; esac
+          # Current tip of main (the event's base.sha goes stale once main moves); the head stays the event commit.
+          base=$(gh api "repos/$REPO/branches/main" -q .commit.sha) || refuse "main unavailable"
+          [ -n "$base" ] || refuse "main unavailable"
+          rows=$(gh api "repos/$REPO/compare/$base...$HEAD_SHA" -q '.files[] | [.filename, (.previous_filename // "")] | @tsv') || refuse "file list unavailable"
+          [ -n "$rows" ] || refuse "empty file list"
+          # GitHub documents a total of 300 files for compare (observed: all on the first page, later pages empty): at 300
+          # the list may be cut, and a change to a gate file could sit past the cut, so refuse.
+          [ "$(printf '%s\n' "$rows" | wc -l | tr -d ' ')" -lt 300 ] || refuse "300 or more changed files: the file list may be incomplete"
+          # A rename counts as both its old and new path.
+          paths=$(printf '%s\n' "$rows" | tr '\t' '\n' | grep -v '^$' || true)
+          gate='^\.github/|^\.claude/|^\.githooks/|^scripts/|^extension/|^Dockerfile$|^charts/|^\.dockerignore$|^\.gitignore$|^\.gitleaks\.toml$|^\.trivyignore\.yaml$|^\.coderabbit\.yaml$|^\.oxlintrc\.json$|^\.nvmrc$|^vitest[^/]*\.config\.ts$|^stryker\.config\.json$|^tsconfig\.json$'
+          [ -z "$(printf '%s\n' "$paths" | grep -E "$gate" || true)" ] || refuse "the pull request changes gate or pipeline files; it needs a real review"
+          # package.json is fine to bump (dependencies), but its scripts block runs the tests and the build.
+          case $'\n'"$paths"$'\n' in
+            *$'\npackage.json\n'*)
+              raw='Accept: application/vnd.github.raw'
+              was=$(gh api -H "$raw" "repos/$REPO/contents/package.json?ref=$base" | jq -S -c '.scripts') || refuse "package.json unreadable"
+              now=$(gh api -H "$raw" "repos/$REPO/contents/package.json?ref=$HEAD_SHA" | jq -S -c '.scripts') || refuse "package.json unreadable"
+              { [ -n "$was" ] && [ "$was" != null ]; } || refuse "package.json scripts unreadable"
+              [ "$was" = "$now" ] || refuse "the pull request changes the scripts block of package.json"
+              ;;
+          esac
+          gh api "repos/$REPO/statuses/$HEAD_SHA" -f state=success -f context=review/confidence \
+            -f description="skipped by maintainer label ($LABEL)"
+          echo "review/confidence set to success for $HEAD_SHA by label" >> "$GITHUB_STEP_SUMMARY"
+      - name: Drop label on new push
+        if: github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'skip-confidence')
+        run: gh api -X DELETE "repos/$REPO/issues/$PR/labels/$LABEL" || true
