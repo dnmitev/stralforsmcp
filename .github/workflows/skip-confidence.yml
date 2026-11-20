@@ -6,7 +6,10 @@ name: skip-confidence
 # Runs from the base branch and never checks out pull request code: it only reads the list of
 # changed files through the API (data, never executed) and writes one commit status.
 # It refuses when the pull request touches the files that make up the gate itself (workflows, scripts, agents,
-# image and chart, scanner configs): those need a real review. Any doubt (listing fails, count or head differ) refuses.
+# image and chart, scanner configs): those need a real review.
+# The files are listed between the current tip of main and the head SHA from the event (never the live pull request
+# head), so a force-push during the run cannot swap the list under the check. The compare endpoint returns at most 300
+# files and no later pages, so 300 or more files refuse. Any doubt refuses.
 # A new push drops the label, so the next head commit needs a fresh review or a fresh label.
 # scripts/workflow-policy.test.ts allows pull_request_target for this one file only, under strict rules (ADR 0024).
 on:
@@ -28,7 +31,6 @@ jobs:
       REPO: ${{ github.repository }}
       PR: ${{ github.event.pull_request.number }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-      BASE_SHA: ${{ github.event.pull_request.base.sha }}
       SENDER: ${{ github.event.sender.login }}
       SENDER_TYPE: ${{ github.event.sender.type }}
       LABEL: skip-confidence
@@ -46,11 +48,14 @@ jobs:
           [ "$SENDER_TYPE" = User ] || refuse "the label was added by an app, not a person"
           role=$(gh api "repos/$REPO/collaborators/$SENDER/permission" -q .role_name) || refuse "sender permission unavailable"
           case "$role" in admin | maintain) ;; *) refuse "the label needs maintain or admin permission" ;; esac
-          # The files changed between the two commits of the event (the compare endpoint takes SHAs, which cannot move).
-          rows=$(gh api --paginate "repos/$REPO/compare/$BASE_SHA...$HEAD_SHA" -q '.files[] | [.filename, (.previous_filename // "")] | @tsv') || refuse "file list unavailable"
+          # Current tip of main (the event's base.sha goes stale once main moves); the head stays the event commit.
+          base=$(gh api "repos/$REPO/branches/main" -q .commit.sha) || refuse "main unavailable"
+          [ -n "$base" ] || refuse "main unavailable"
+          rows=$(gh api "repos/$REPO/compare/$base...$HEAD_SHA" -q '.files[] | [.filename, (.previous_filename // "")] | @tsv') || refuse "file list unavailable"
           [ -n "$rows" ] || refuse "empty file list"
-          # The compare endpoint lists at most 3,000 files.
-          [ "$(printf '%s\n' "$rows" | wc -l | tr -d ' ')" -lt 3000 ] || refuse "file list may be incomplete"
+          # Sorted by path, 300 files on the first page and an empty list on every later page: at 300 the list may be cut,
+          # and a change to a gate file could sit past the cut, so refuse.
+          [ "$(printf '%s\n' "$rows" | wc -l | tr -d ' ')" -lt 300 ] || refuse "300 or more changed files: the file list may be incomplete"
           # A rename counts as both its old and new path.
           paths=$(printf '%s\n' "$rows" | tr '\t' '\n' | grep -v '^$' || true)
           gate='^\.github/|^\.claude/|^\.githooks/|^scripts/|^extension/|^Dockerfile$|^charts/|^\.dockerignore$|^\.gitignore$|^\.gitleaks\.toml$|^\.trivyignore\.yaml$|^\.coderabbit\.yaml$|^\.oxlintrc\.json$|^\.nvmrc$|^vitest[^/]*\.config\.ts$|^stryker\.config\.json$|^tsconfig\.json$'
@@ -59,7 +64,7 @@ jobs:
           case $'\n'"$paths"$'\n' in
             *$'\npackage.json\n'*)
               raw='Accept: application/vnd.github.raw'
-              was=$(gh api -H "$raw" "repos/$REPO/contents/package.json?ref=$BASE_SHA" | jq -S -c '.scripts') || refuse "package.json unreadable"
+              was=$(gh api -H "$raw" "repos/$REPO/contents/package.json?ref=$base" | jq -S -c '.scripts') || refuse "package.json unreadable"
               now=$(gh api -H "$raw" "repos/$REPO/contents/package.json?ref=$HEAD_SHA" | jq -S -c '.scripts') || refuse "package.json unreadable"
               { [ -n "$was" ] && [ "$was" != null ]; } || refuse "package.json scripts unreadable"
               [ "$was" = "$now" ] || refuse "the pull request changes the scripts block of package.json"
