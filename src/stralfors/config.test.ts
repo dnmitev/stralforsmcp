@@ -141,14 +141,13 @@ describe('R1 configuration loading', () => {
     expect(e.message).not.toContain('not-a-uuid');
   });
 
-  it('duplicate agreement labels in one profile are refused, naming the variable and label only', () => {
+  it('duplicate agreement labels in one profile are refused with fixed text: no variable name, label or id', () => {
     const [g1, g2] = [randomUUID(), randomUUID()];
     const { env } = two();
     env['STRALFORS_PROFILE_A_ACTION_IDS'] = `billing:${g1}, billing:${g2}`;
     const e = throwsConfig(() => loadConfig(env));
-    expect(e.message).toContain('STRALFORS_PROFILE_A_ACTION_IDS');
-    expect(e.message).toContain('duplicate agreement label');
-    expect(e.message).toContain('billing');
+    expect(e.message).toBe('duplicate agreement label in ACTION_IDS');
+    expect(e.message).not.toContain('billing');
     expect(e.message).not.toContain(g1);
     expect(e.message).not.toContain(g2);
   });

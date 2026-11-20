@@ -99,7 +99,7 @@ export function loadConfig(
     const labels = new Set<string>();
     for (const a of agreements) {
       if (a.label === undefined) continue;
-      if (labels.has(a.label)) throw new ConfigError(`${actionName}: duplicate agreement label (label ${a.label})`);
+      if (labels.has(a.label)) throw new ConfigError('duplicate agreement label in ACTION_IDS');
       labels.add(a.label);
     }
     const files: Profile['files'] = { cert: need(`${P}_CERT_FILE`), key: need(`${P}_KEY_FILE`) };
