@@ -213,7 +213,7 @@ describe('AC-5 the bundle', () => {
     expect(readFileSync(b.file, 'utf8')).not.toContain('sourceMappingURL');
   });
 
-  it('buildMcpb writes dist/stralforsmcp.mcpb with only manifest, bridge bundle and README/icon', async () => {
+  it('buildMcpb writes dist/stralforsmcp.mcpb with only manifest, bridge bundle, README/icon, LICENSE and notices', async () => {
     const { buildMcpb } = await import('../scripts/build-mcpb.ts');
     const file = await buildMcpb();
     expect(file).toBe(join(root, 'dist/stralforsmcp.mcpb'));
@@ -221,7 +221,9 @@ describe('AC-5 the bundle', () => {
     expect(names).toContain('manifest.json');
     expect(names).toContain('server/index.js');
     expect(names).toContain('server/package.json');
-    const allowed = [/^manifest\.json$/, /^server\/index\.js$/, /^server\/package\.json$/, /^README\.md$/, /^icon\.png$/];
+    const allowed = [/^manifest\.json$/, /^server\/index\.js$/, /^server\/package\.json$/, /^README\.md$/, /^icon\.png$/, /^LICENSE$/, /^THIRD-PARTY-NOTICES$/];
+    expect(names).toContain('LICENSE');
+    expect(names).toContain('THIRD-PARTY-NOTICES');
     expect(names.filter((n) => !allowed.some((a) => a.test(n)))).toEqual([]);
   });
 
@@ -242,12 +244,19 @@ describe('AC-5 the bundle', () => {
     }
   });
 
+  it('builds the same archive when started from another working directory (notice discovery uses the repository root)', () => {
+    const r = spawnSync(process.execPath, [join(root, 'scripts/build-mcpb.ts')], { cwd: join(root, 'scripts'), encoding: 'utf8' });
+    expect(r.stderr).toBe('');
+    expect(r.status).toBe(0);
+  });
+
   it('CLI boundary: a failing build prints one fixed line, exit 1', () => {
     const dir = mkdtempSync(join(tmpdir(), 'smcp-badbuild-'));
     try {
       mkdirSync(join(dir, 'scripts'));
       mkdirSync(join(dir, 'extension'));
       copyFileSync(join(root, 'scripts/build-mcpb.ts'), join(dir, 'scripts/build-mcpb.ts'));
+      copyFileSync(join(root, 'scripts/mcpb-notices.ts'), join(dir, 'scripts/mcpb-notices.ts'));
       symlinkSync(join(root, 'node_modules'), join(dir, 'node_modules'));
       writeFileSync(join(dir, 'package.json'), '{"type":"module","version":"1.0.0"}');
       writeFileSync(join(dir, 'extension/manifest.json'), '{"version":"2.0.0"}');

@@ -10,7 +10,22 @@ What a team needs to deploy and operate stralforsmcp from its own repository: th
 | Helm chart | `charts/stralforsmcp` | Secrets by name, hardened pod, PROD guards in templates (ADR 0014); chart README is the reference for every value |
 | Desktop extension | `.mcpb` built by `npm run mcpb:build` | local bridge for Claude Desktop (ADR 0015) |
 
-**Image tags.** Pushes to `main` publish `edge` and `sha-<40 hex>`. A `v<semver>` tag publishes `<version>`, `<major>.<minor>` and `latest`. Pin by tag **and digest** (`image.digest`) in your deployment; never deploy `edge` or `latest` to PROD. No release exists until the release plan lands: until then pin a `sha-` tag.
+**Image tags.** Pushes to `main` publish `edge` and `sha-<40 hex>`. A `v<semver>` tag publishes `<version>`, `<major>.<minor>` and `latest`. Pin by tag **and digest** (`image.digest`) in your deployment; never deploy `edge` or `latest` to PROD. No release exists until the release plan lands: until then pin a `sha-` tag (by digest).
+
+## Verifying the image
+
+Every image pushed from `main` or a `v*` tag is scanned by digest (both platforms, fixable HIGH and CRITICAL findings fail the job) and then signed keylessly with cosign, from the `image.yml` workflow of this repository. A failing scan stops the job before the signature, so **a valid signature means the digest passed the scan at publish time**. The tag is pushed before the scan, so an unsigned tag can exist: deployments must verify the signature and pin by digest.
+
+```sh
+cosign verify \
+  --certificate-identity-regexp '^https://github.com/<owner>/<repo>/\.github/workflows/image\.yml@refs/(heads/main|tags/v.*)$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/<owner>/<repo>@sha256:<digest>
+```
+
+Run it in the deployment pipeline before a rollout (or enforce it with an admission policy) and deploy the digest it verified. The SBOM and the build provenance are attached to the image and can be read with `docker buildx imagetools inspect`. The Claude Desktop extension is built in the `mcpb` workflow: its SHA-256 and, for tags, its build-provenance attestation (`gh attestation verify`) are the checks.
+
+A weekly workflow (`rescan.yml`) re-scans the published `edge` image so a newly disclosed fixable vulnerability shows up as a failed run even when nothing is pushed; it scans the current `edge` digest, not an older digest that a deployment pinned, so operators must also rescan the digests they actually run (for example with trivy against the pinned digest on a schedule in their own pipeline). Dependency updates arrive as grouped Dependabot pull requests.
 
 ## One deployment per environment
 

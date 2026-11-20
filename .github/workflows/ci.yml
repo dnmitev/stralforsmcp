@@ -196,9 +196,16 @@ jobs:
           DL: ${{ secrets.STRALFORSMCP_DENYLIST }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
+          # Actions secrets are delivered to pushes and to same-repository pull requests, but never to fork pull requests
+          # or to runs started by dependabot[bot] (those read a separate Dependabot secret store).
+          SECRET_EXPECTED: ${{ github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]') }}
         run: |
           if [ -z "$DL" ]; then
-            echo "::warning::denylist secret not available, skipped"
+            if [ "$SECRET_EXPECTED" = true ]; then
+              echo "::error::denylist secret is missing, so the leak guard cannot run"
+              exit 1
+            fi
+            echo "::warning::denylist secret not available on this event, skipped"
             exit 0
           fi
           umask 077

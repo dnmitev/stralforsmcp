@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 
 const SHA = 'a'.repeat(40);
 const UNTRUSTED =
@@ -420,8 +421,8 @@ describe('image.yml (real file)', () => {
       expect(b).toContain('sha256sum -c');
       expect(b).toContain('--exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed');
     });
-    it('trivy is a pinned binary, not the action; no QEMU; no cosign', () => {
-      expect(real).not.toMatch(/aquasecurity\/trivy-action|setup-qemu-action|cosign/);
+    it('trivy is a pinned binary, not the action; no QEMU; cosign is not an action either', () => {
+      expect(real).not.toMatch(/aquasecurity\/trivy-action|setup-qemu-action|sigstore\/cosign-installer/);
     });
     it('publish: gated, needs build-scan, GITHUB_TOKEN only, packages: write exactly once', () => {
       const p = job('publish');
@@ -431,7 +432,6 @@ describe('image.yml (real file)', () => {
       expect(real.match(/packages:\s*write/g)).toHaveLength(1);
       expect(p).toMatch(/packages: write/);
       expect([...real.matchAll(/secrets\.(\w+)/g)].map((m) => m[1])).toEqual(['GITHUB_TOKEN']);
-      expect(real).not.toMatch(/id-token|attestations|contents:\s*write/);
       expect(p).toMatch(/platforms:\s*linux\/amd64,linux\/arm64/);
       expect(p).toMatch(/provenance:\s*mode=max/);
       expect(p).toMatch(/sbom:\s*true/);
@@ -448,5 +448,157 @@ describe('image.yml (real file)', () => {
         expect(real).toContain(t);
       expect(real.match(/^\s+type=/gm)).toHaveLength(5);
     });
+  });
+});
+
+// ---- 05-03b: mcpb, signing, rescan, dependabot, denylist ---------------------------------------
+
+const wfDir = join(import.meta.dirname, '..', '.github', 'workflows');
+const wf = (name: string): string => readFileSync(join(wfDir, name), 'utf8');
+const jobOf = (text: string, name: string): string => {
+  const m = new RegExp(`^ {2}${name}:\\n([\\s\\S]*?)(?=^ {2}[\\w-]+:\\n|$(?![\\s\\S]))`, 'm').exec(text);
+  return (m?.[1] ?? '').split('\n').filter((l) => !l.trim().startsWith('#')).join('\n');
+};
+
+/** R-18 rules for image.yml: cosign is a pinned binary, id-token only in publish, the pushed digest is scanned before it is signed. */
+export function signingProblems(text: string): string[] {
+  const out: string[] = [];
+  const job = (name: string): string => (new RegExp(`^ {2}${name}:\\n([\\s\\S]*?)(?=^ {2}[\\w-]+:\\n|$(?![\\s\\S]))`, 'm').exec(text)?.[1] ?? '');
+  const p = job('publish');
+  const b = job('build-scan');
+  // parsed, so a commented-out permission does not count
+  const jobs = ((parse(text) as { jobs?: Record<string, { permissions?: Record<string, string> }> }).jobs ?? {});
+  const idJobs = Object.entries(jobs).filter(([, j]) => j.permissions?.['id-token'] === 'write').map(([n]) => n);
+  if (idJobs.length !== 1 || idJobs[0] !== 'publish') out.push(`id-token: write must be granted to publish only (found: ${idJobs.join(',') || 'none'})`);
+  if (/id-token|cosign/.test(b)) out.push('build-scan must not sign or hold id-token');
+  if (/attestations|contents:\s*write/.test(text)) out.push('attestations or contents: write present');
+  if (/sigstore\/cosign-installer/.test(text)) out.push('cosign must be a pinned binary, not an action');
+  const install = /- name: Install cosign[\s\S]*?(?=\n {6}- name:)/.exec(p)?.[0] ?? '';
+  if (!/cosign-linux-amd64/.test(install) || !/[0-9a-f]{64}\s+\S*cosign[\s\S]*sha256sum -c/.test(install)) out.push('cosign binary is not pinned by sha256');
+  const scan = p.indexOf('--platform "$p"');
+  const sign = p.indexOf('cosign" sign');
+  if (scan < 0) out.push('pushed digest is not scanned');
+  if (sign < 0) out.push('image is not signed');
+  if (scan >= 0 && sign >= 0 && sign < scan) out.push('signature comes before the scan of the pushed digest');
+  if (!/linux\/amd64 linux\/arm64/.test(p) || !p.includes('--exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed')) out.push('scan gate must cover both platforms with the HIGH/CRITICAL gate');
+  if (!/image="ghcr\.io\/\$\{GITHUB_REPOSITORY,,\}@\$\{DIGEST\}"/.test(p) || !/cosign" sign --yes "ghcr\.io\/\$\{GITHUB_REPOSITORY,,\}@\$\{DIGEST\}"/.test(p)) out.push('scan and signature must use the pushed digest');
+  return out;
+}
+
+describe('signing rules (R-18)', () => {
+  const real = wf('image.yml');
+  it('the real image.yml has none', () => expect(signingProblems(real)).toEqual([]));
+  it('mutation: the id-token permission is commented out (a comment is not a permission)', () => {
+    expect(signingProblems(real.replace('      id-token: write # keyless', '      # id-token: write # keyless')).join()).toMatch(/id-token: write must/);
+  });
+  it('mutation: id-token granted to a second job', () => {
+    expect(signingProblems(real.replace('    runs-on: ubuntu-latest\n    timeout-minutes: 20\n    permissions:\n      contents: read\n', '    runs-on: ubuntu-latest\n    timeout-minutes: 20\n    permissions:\n      contents: read\n      id-token: write\n')).join()).toMatch(/id-token: write must be granted to publish only \(found: [^)]*build-scan/);
+  });
+  it('mutation: unpinned cosign (no checksum)', () => {
+    expect(signingProblems(real.replace(/ \| sha256sum -c -\n( +)chmod \+x/, '\n$1chmod +x')).join()).toMatch(/pinned by sha256/);
+  });
+  it('mutation: cosign installed through an action', () => {
+    expect(signingProblems(real + '\n      - uses: sigstore/cosign-installer@' + 'a'.repeat(40)).join()).toMatch(/not an action/);
+  });
+  it('mutation: id-token in build-scan', () => {
+    expect(signingProblems(real.replace('  build-scan:\n    runs-on: ubuntu-latest', '  build-scan:\n    runs-on: ubuntu-latest\n    permissions-x: id-token')).join()).toMatch(/build-scan/);
+  });
+  it('mutation: signing before the scan', () => {
+    const scanStep = /      - name: Scan the pushed digest[\s\S]*?(?=      - name: Install cosign)/.exec(real)?.[0] ?? '';
+    expect(scanStep).not.toBe('');
+    const moved = real.replace(scanStep, '').replace('      - name: Digest\n', scanStep + '      - name: Digest\n');
+    expect(signingProblems(moved)).toEqual([]); // scan still first: sanity of the splice
+    const signStep = /      - name: Sign the scanned digest[\s\S]*$/.exec(real)?.[0] ?? '';
+    const swapped = real.replace(signStep, '').replace('      - name: Install trivy (pinned sha256)\n        run: |\n          f=trivy_0.76.2_Linux-64bit.tar.gz\n          curl -fsSL -o "$RUNNER_TEMP/$f" "https://github.com/aquasecurity/trivy/releases/download/v0.76.2/$f"\n          echo "bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf  $RUNNER_TEMP/$f" | sha256sum -c -\n          tar -xzf "$RUNNER_TEMP/$f" -C "$RUNNER_TEMP" trivy\n      - name: Scan the pushed', signStep + '      - name: Install trivy (pinned sha256)\n        run: |\n          f=trivy_0.76.2_Linux-64bit.tar.gz\n          curl -fsSL -o "$RUNNER_TEMP/$f" "https://github.com/aquasecurity/trivy/releases/download/v0.76.2/$f"\n          echo "bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf  $RUNNER_TEMP/$f" | sha256sum -c -\n          tar -xzf "$RUNNER_TEMP/$f" -C "$RUNNER_TEMP" trivy\n      - name: Scan the pushed');
+    expect(signingProblems(swapped).join()).toMatch(/before the scan|not scanned|not signed/);
+  });
+  it('mutation: signing a tag instead of the digest', () => {
+    expect(signingProblems(real.replace('cosign" sign --yes "ghcr.io/${GITHUB_REPOSITORY,,}@${DIGEST}"', 'cosign" sign --yes "ghcr.io/${GITHUB_REPOSITORY,,}:edge"')).join()).toMatch(/pushed digest/);
+  });
+});
+
+describe('mcpb.yml (real file)', () => {
+  const real = wf('mcpb.yml');
+  it('triggers only on pull_request and push (main, v* tags); no dispatch, schedule or workflow_run', () => {
+    const on = /^on:\n([\s\S]*?)^\S/m.exec(real)?.[1] ?? '';
+    expect([...on.matchAll(/^ {2}(\w+):/gm)].map((m) => m[1])).toEqual(['pull_request', 'push']);
+    expect(real).not.toMatch(/workflow_dispatch|schedule:|workflow_run/);
+    expect(on).toMatch(/tags:\s*\['v\*'\]/);
+  });
+  it('build: read-only, no secrets, runs a clean npm ci, build, verify and checksum', () => {
+    const b = jobOf(real, 'build');
+    expect(b).toMatch(/permissions:\n\s+contents: read\n/);
+    expect(b).not.toMatch(/id-token|attestations|secrets\./);
+    for (const s of ['npm ci', 'npm run mcpb:build', 'node scripts/mcpb-verify.ts', 'sha256sum']) expect(b, s).toContain(s);
+  });
+  it('id-token and attestations: write appear exactly once, in the tag-gated attest job', () => {
+    expect(real.match(/id-token:\s*write/g)).toHaveLength(1);
+    expect(real.match(/attestations:\s*write/g)).toHaveLength(1);
+    const a = jobOf(real, 'attest');
+    expect(a).toMatch(/id-token:\s*write/);
+    expect(a).toMatch(/attestations:\s*write/);
+    expect(a).toMatch(/if:\s*startsWith\(github\.ref, 'refs\/tags\/v'\)/);
+    expect(a).toMatch(/github\.event\.repository\.fork/);
+    expect(a).toMatch(/needs: build/);
+    expect(a).toContain('actions/attest-build-provenance@');
+    expect(real).not.toMatch(/contents:\s*write/);
+  });
+});
+
+describe('rescan.yml (real file)', () => {
+  const real = wf('rescan.yml');
+  it('runs on a schedule and on demand only', () => {
+    const on = /^on:\n([\s\S]*?)^\S/m.exec(real)?.[1] ?? '';
+    expect([...on.matchAll(/^ {2}(\w+):/gm)].map((m) => m[1])).toEqual(['schedule', 'workflow_dispatch']);
+    expect(on).toMatch(/cron:\s*'\d+ \d+ \* \* \d'/);
+  });
+  it('is read-only: packages: read, no write permission, no id-token, no secret but GITHUB_TOKEN', () => {
+    expect(real).not.toMatch(/:\s*write\b/);
+    expect(real).not.toMatch(/id-token|attestations/);
+    expect(real).toMatch(/packages:\s*read/);
+    expect([...real.matchAll(/secrets\.(\w+)/g)].map((m) => m[1])).toEqual(['GITHUB_TOKEN']);
+  });
+  it('scans the published edge image with the pinned trivy binary and the fixable HIGH/CRITICAL gate', () => {
+    expect(real).toContain('bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf');
+    expect(real).toContain('sha256sum -c');
+    expect(real).toContain('--exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed');
+    expect(real).toMatch(/ghcr\.io\/\$\{GITHUB_REPOSITORY,,\}:edge/);
+    expect(real).not.toMatch(/aquasecurity\/trivy-action/);
+    expect(real).toMatch(/!github\.event\.repository\.fork/);
+  });
+});
+
+describe('dependabot.yml', () => {
+  const text = readFileSync(join(import.meta.dirname, '..', '.github', 'dependabot.yml'), 'utf8');
+  const cfg = parse(text) as { version: number; updates: { 'package-ecosystem': string; directory: string; cooldown?: { 'default-days'?: number }; groups?: Record<string, { patterns?: string[] }>; 'open-pull-requests-limit'?: number }[] };
+  it('covers npm, github-actions and docker at the repository root', () => {
+    expect(cfg.version).toBe(2);
+    expect(cfg.updates.map((u) => u['package-ecosystem']).sort()).toEqual(['docker', 'github-actions', 'npm']);
+    for (const u of cfg.updates) expect(u.directory).toBe('/');
+  });
+  it('waits before adopting releases and keeps the open PR count low', () => {
+    for (const u of cfg.updates) {
+      expect(u.cooldown?.['default-days'], u['package-ecosystem']).toBeGreaterThanOrEqual(7);
+      expect(u['open-pull-requests-limit'], u['package-ecosystem']).toBeLessThanOrEqual(5);
+    }
+  });
+  it('moves the OpenTelemetry lockstep set as one group', () => {
+    const npm = cfg.updates.find((u) => u['package-ecosystem'] === 'npm');
+    expect(npm?.groups?.['opentelemetry']?.patterns).toEqual(['@opentelemetry/*']);
+  });
+});
+
+describe('ci.yml denylist step (R-26)', () => {
+  const real = wf('ci.yml');
+  const step = /- name: Denylist\n([\s\S]*?)(?=\n {2}[\w-]+:\n|\n {6}- name:|$(?![\s\S]))/.exec(real)?.[1] ?? '';
+  it('exists and still checks the content, the commit metadata and the PR text', () => {
+    expect(step).toContain('denylist-check.sh');
+    expect(step).toContain('git log --format');
+  });
+  it('fails closed when the secret is missing and one is expected; warns only where Actions secrets are never delivered', () => {
+    expect(step).toMatch(/SECRET_EXPECTED:\s*\$\{\{[^}]*github\.event_name == 'push'[^}]*\}\}/);
+    expect(step).toMatch(/SECRET_EXPECTED:[^\n]*github\.event\.pull_request\.head\.repo\.full_name == github\.repository/);
+    expect(step).toMatch(/SECRET_EXPECTED:[^\n]*github\.actor != 'dependabot\[bot\]'/);
+    expect(step).toMatch(/if \[ -z "\$DL" \]; then\n\s+if \[ "\$SECRET_EXPECTED" = true \]; then\n\s+echo "::error::[^\n]*"\n\s+exit 1\n\s+fi\n\s+echo "::warning::[^\n]*"\n\s+exit 0/);
   });
 });
