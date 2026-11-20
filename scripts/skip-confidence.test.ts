@@ -11,11 +11,16 @@ type Wf = { jobs: { skip: { steps: { name: string; run?: string }[] } } };
 const wf = parse(readFileSync(join(import.meta.dirname, '..', '.github', 'workflows', 'skip-confidence.yml'), 'utf8')) as Wf;
 const step = wf.jobs.skip.steps.find((s) => s.name === 'Grant skip on label')?.run ?? '';
 
+// The stub answers like `gh api`: JSON bodies, and when the caller passes -q it applies that jq expression with raw output
+// (gh's behaviour). A step that dropped or changed its -q would therefore see raw JSON here too and fail these tests.
 const STUB = `#!/bin/bash
+q=""; prev=""
+for a in "$@"; do [ "$prev" = -q ] && q="$a"; prev="$a"; done
+emit() { if [ -n "$q" ]; then printf '%s' "$1" | jq -r "$q"; else printf '%s\\n' "$1"; fi; }
 case "$*" in
-  *collaborators*) echo "\${ROLE:-admin}" ;;
-  *branches/main*) [ "\${NO_MAIN:-}" = 1 ] && exit 1; echo maintip ;;
-  *compare/maintip...head*) [ "\${NO_COMPARE:-}" = 1 ] && exit 1; cat "$ROWS_FILE" ;;
+  *collaborators*) emit "{\\"role_name\\":\\"\${ROLE:-admin}\\"}" ;;
+  *branches/main*) [ "\${NO_MAIN:-}" = 1 ] && exit 1; emit '{"commit":{"sha":"maintip"}}' ;;
+  *compare/maintip...head*) [ "\${NO_COMPARE:-}" = 1 ] && exit 1; emit "$(cat "$FILES_JSON")" ;;
   *"contents/package.json?ref=maintip"*) echo "$PKG_BASE" ;;
   *"contents/package.json?ref=head"*) echo "$PKG_HEAD" ;;
   *statuses*) echo "STATUS $*" >> "$LOG" ;;
@@ -31,11 +36,13 @@ beforeAll(() => {
 });
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-const tsv = (files: string[]): string => files.map((f) => `${f}\t\n`).join('');
+type F = string | { filename: string; previous_filename: string };
+const json = (files: F[]): string =>
+  JSON.stringify({ files: files.map((f) => (typeof f === 'string' ? { filename: f } : f)) });
 const many = (n: number): string[] => Array.from({ length: n }, (_, i) => `docs/page-${String(i).padStart(4, '0')}.md`);
 
-function run(files: string[], env: Record<string, string> = {}): { posted: boolean; refused: string; labelDeleted: boolean } {
-  writeFileSync(join(dir, 'rows'), tsv(files));
+function run(files: F[], env: Record<string, string> = {}): { posted: boolean; refused: string; labelDeleted: boolean } {
+  writeFileSync(join(dir, 'files.json'), json(files));
   writeFileSync(join(dir, 'log'), '');
   writeFileSync(join(dir, 'summary'), '');
   const r = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', step], {
@@ -43,7 +50,7 @@ function run(files: string[], env: Record<string, string> = {}): { posted: boole
     env: {
       PATH: `${dir}:${process.env.PATH ?? ''}`,
       REPO: 'o/r', PR: '1', LABEL: 'skip-confidence', SENDER: 'me', SENDER_TYPE: 'User', HEAD_SHA: 'head',
-      ROWS_FILE: join(dir, 'rows'), LOG: join(dir, 'log'), GITHUB_STEP_SUMMARY: join(dir, 'summary'),
+      FILES_JSON: join(dir, 'files.json'), LOG: join(dir, 'log'), GITHUB_STEP_SUMMARY: join(dir, 'summary'),
       PKG_BASE: '{"scripts":{"test":"a"},"dependencies":{"x":"1"}}', PKG_HEAD: '{"scripts":{"test":"a"},"dependencies":{"x":"2"}}',
       ...env,
     },
@@ -89,7 +96,7 @@ describe('skip-confidence step (stub gh)', () => {
     expect(run(['package.json'], { PKG_BASE: '{}', PKG_HEAD: '{}' }).posted).toBe(false);
     expect(run(['package.json'], { PKG_BASE: '', PKG_HEAD: '' }).posted).toBe(false);
   });
-  // The compare endpoint returns 300 files on page 1 and nothing after, sorted by path: a gate file can sit past the cut.
+  // GitHub documents a total of 300 files for compare (all on page 1): a gate file can sit past the cut.
   it('300 files are refused, 299 are not', () => {
     const cut = run([...many(299), 'scripts/hidden.ts']);
     expect(cut.posted).toBe(false);
@@ -103,6 +110,12 @@ describe('skip-confidence step (stub gh)', () => {
     const r = run(['package-lock.json'], env);
     expect(r.posted).toBe(false);
     expect(r.refused).toMatch(/unavailable/);
+  });
+  it('a rename counts as both paths: a gate path as the old name is refused', () => {
+    const r = run([{ filename: 'docs/x.ts', previous_filename: 'scripts/x.ts' }]);
+    expect(r.posted).toBe(false);
+    expect(r.refused).toMatch(/gate or pipeline/);
+    expect(run([{ filename: 'docs/b.md', previous_filename: 'docs/a.md' }]).posted).toBe(true);
   });
   it('an empty file list is refused', () => {
     expect(run([]).posted).toBe(false);

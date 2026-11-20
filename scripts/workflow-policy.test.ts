@@ -91,8 +91,9 @@ export function checkPullRequestTarget(yamlText: string): string[] {
     if (l.trim().startsWith('#') || !l.includes('${{')) return;
     if (!/^\s*(- )?(if:|[A-Z][A-Z0-9_]*:)/.test(l)) out.push(`line ${i + 1}: pull_request_target: expression outside env: or if:`);
   });
-  if (/\bsecrets\./.test(yamlText.split(/\r?\n/).filter((l) => !l.trim().startsWith('#')).join('\n')))
-    out.push('pull_request_target: no secrets. references (use the job token only)');
+  // any mention of `secrets` outside a comment: secrets.X, secrets['X'] and toJSON(secrets) alike
+  if (/\bsecrets\b/.test(yamlText.split(/\r?\n/).filter((l) => !l.trim().startsWith('#')).join('\n')))
+    out.push('pull_request_target: no secrets references (use the job token only)');
   return out;
 }
 
@@ -708,7 +709,9 @@ describe('pull_request_target exception', () => {
     ['git in run:', real.replace('gh api -X DELETE "repos/$REPO/issues/$PR/labels/$LABEL"', 'git fetch origin pull/1/head'), /fetches or checks out/],
     ['gh pr checkout in run:', real.replace('gh api -X DELETE "repos/$REPO/issues/$PR/labels/$LABEL"', 'gh pr checkout 1'), /fetches or checks out/],
     ['an expression in a with: value', real.replace('    steps:\n', '    steps:\n      - name: x\n        with:\n          y: ${{ github.event.pull_request.title }}\n        run: echo\n'), /expression outside env/],
-    ['a secrets reference', real.replace('      LABEL: skip-confidence\n', '      LABEL: skip-confidence\n      S: ${{ secrets.X }}\n'), /secrets\./],
+    ['a secrets.X reference', real.replace('      LABEL: skip-confidence\n', '      LABEL: skip-confidence\n      S: ${{ secrets.X }}\n'), /no secrets references/],
+    ["a secrets['X'] reference", real.replace('      LABEL: skip-confidence\n', "      LABEL: skip-confidence\n      S: ${{ secrets['X'] }}\n"), /no secrets references/],
+    ['toJSON(secrets)', real.replace('      LABEL: skip-confidence\n', '      LABEL: skip-confidence\n      S: ${{ toJSON(secrets) }}\n'), /no secrets references/],
     ['an expression carried into run: by a YAML alias', real.replace('      LABEL: skip-confidence\n', '      LABEL: skip-confidence\n      T: &t echo ${{ github.event.pull_request.title }}\n').replace('gh api -X DELETE "repos/$REPO/issues/$PR/labels/$LABEL" || true', '*t'), /resolved run/],
     ['a second trigger', real.replace('on:\n  pull_request_target:', 'on:\n  push:\n  pull_request_target:'), /only trigger/],
   ])('rejects %s', (_n, text, re) => {

@@ -53,8 +53,8 @@ jobs:
           [ -n "$base" ] || refuse "main unavailable"
           rows=$(gh api "repos/$REPO/compare/$base...$HEAD_SHA" -q '.files[] | [.filename, (.previous_filename // "")] | @tsv') || refuse "file list unavailable"
           [ -n "$rows" ] || refuse "empty file list"
-          # Sorted by path, 300 files on the first page and an empty list on every later page: at 300 the list may be cut,
-          # and a change to a gate file could sit past the cut, so refuse.
+          # GitHub documents a total of 300 files for compare (observed: all on the first page, later pages empty): at 300
+          # the list may be cut, and a change to a gate file could sit past the cut, so refuse.
           [ "$(printf '%s\n' "$rows" | wc -l | tr -d ' ')" -lt 300 ] || refuse "300 or more changed files: the file list may be incomplete"
           # A rename counts as both its old and new path.
           paths=$(printf '%s\n' "$rows" | tr '\t' '\n' | grep -v '^$' || true)
