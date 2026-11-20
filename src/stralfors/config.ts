@@ -93,7 +93,7 @@ export function loadConfig(
       // Stryker disable next-line EqualityOperator: c === 0 gives label '' (original) or undefined (mutant); both mean no label
       const label = c < 0 ? undefined : entry.slice(0, c).trim();
       const id = entry.slice(c + 1).trim();
-      if (!UUID.test(id)) throw new ConfigError(`${actionName}: invalid agreement id (${label ? `label ${label}` : `entry ${i + 1}`})`);
+      if (!UUID.test(id)) throw new ConfigError(`${actionName}: invalid agreement id (entry ${i + 1})`);
       return label ? { label, id } : { id };
     });
     const labels = new Set<string>();

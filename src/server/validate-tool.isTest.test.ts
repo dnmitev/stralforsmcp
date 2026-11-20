@@ -31,6 +31,7 @@ describe.each([
     const e = await rejection(x.run({ document: doc() }));
     expect(e).toBeInstanceOf(StralforsError);
     expect((e as StralforsError).message).toBe('validate response did not confirm a dry run');
+    expect((e as StralforsError).kind).toBe('not_dry_run');
     expect(JSON.stringify(e)).not.toContain(GUID);
   });
 });
@@ -45,6 +46,7 @@ describe('env prod: only isTest true proves a dry run', () => {
     const e = await rejection(x.run({ document: doc() }));
     expect(e).toBeInstanceOf(StralforsError);
     expect((e as StralforsError).message).toBe('validate response did not confirm a dry run');
+    expect((e as StralforsError).kind).toBe('not_dry_run');
   });
   it('isTest as a string fails the client schema: refused as well', async () => {
     const x = await world(PROD);

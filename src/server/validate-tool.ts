@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import * as z from 'zod/v4';
-import { AgreementNotFoundError, BadRequestError, RequestValidationError, SchemaError, StralforsError, ValidationFailedError } from '../stralfors/errors.ts';
+import { AgreementNotFoundError, BadRequestError, NotDryRunError, RequestValidationError, StralforsError, ValidationFailedError } from '../stralfors/errors.ts';
 import { fromBadRequest, fromFields, fromViolations, type Finding } from '../stralfors/findings.ts';
 import type { Config, StralforsClient } from '../stralfors/index.ts';
 import { localCheck } from '../stralfors/local-check.ts';
@@ -116,7 +116,7 @@ export function createValidateInvoice(deps: ValidateDeps): ToolDef<typeof valida
       }
       // Fail closed: PROD needs proof that the vendor treated this as a dry run; an explicit isTest false is refused everywhere.
       const isTest = 'isTest' in answer ? answer.isTest : undefined;
-      if (isTest === false || (prod && isTest !== true)) throw new SchemaError(NOT_A_DRY_RUN, { issues: [] });
+      if (isTest === false || (prod && isTest !== true)) throw new NotDryRunError(NOT_A_DRY_RUN);
       return unavailable.length > 0 ? result('dry_run', unavailable) : { valid: true, stage: 'passed', findings: [], moreMayFollow: false };
     },
   };

@@ -10,7 +10,7 @@
  *     Config/Profile have toString/toJSON/inspect.custom that never reveal them.
  *   - Env additions beyond R1: STRALFORS_PROD_VALIDATE_ENABLED=true|false (default false).
  *   - File contents are trimmed (trailing newline) before use.
- *   - Errors: ConfigError from errors.ts; message names the env variable (or label), never a value.
+ *   - Errors: ConfigError from errors.ts; message names the env variable (or entry position), never a value or a label.
  */
 import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
@@ -116,7 +116,8 @@ describe('R1 configuration loading', () => {
     env['STRALFORS_PROFILE_A_ACTION_IDS'] = 'billing:not-a-uuid';
     const e = throwsConfig(() => loadConfig(env));
     expect(e.message).toContain('ACTION_IDS');
-    expect(e.message).toContain('billing');
+    expect(e.message).toContain('entry 1');
+    expect(e.message).not.toContain('billing');
     expect(e.message).not.toContain('not-a-uuid');
   });
 
@@ -132,12 +133,13 @@ describe('R1 configuration loading', () => {
     expect(load(`  :${g3}`)).toEqual([{ id: g3 }]);
   });
 
-  it('ACTION_IDS invalid id still names the variable and label only, even with whitespace', () => {
+  it('ACTION_IDS invalid id names the variable and entry position only, even with whitespace', () => {
     const { env } = two();
     env['STRALFORS_PROFILE_A_ACTION_IDS'] = ' billing : not-a-uuid ';
     const e = throwsConfig(() => loadConfig(env));
     expect(e.message).toContain('ACTION_IDS');
-    expect(e.message).toContain('billing');
+    expect(e.message).toContain('entry 1');
+    expect(e.message).not.toContain('billing');
     expect(e.message).not.toContain('not-a-uuid');
   });
 

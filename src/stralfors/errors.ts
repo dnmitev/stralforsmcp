@@ -10,7 +10,7 @@ export interface Violation {
 export const STRALFORS_ERROR_KINDS = [
   'config', 'tls', 'auth', 'forbidden', 'agreement_not_found', 'route_not_found', 'bad_request',
   'validation_failed', 'conflict', 'rate_limited', 'upstream', 'timeout', 'too_large', 'schema',
-  'write_blocked', 'token_format', 'request_invalid',
+  'write_blocked', 'token_format', 'request_invalid', 'not_dry_run',
 ] as const;
 export type StralforsErrorKind = (typeof STRALFORS_ERROR_KINDS)[number];
 interface Base {
@@ -67,6 +67,8 @@ export class SchemaError extends make<{ issues: { path: string }[] }>('schema') 
 export class WriteBlockedError extends make('write_blocked') {}
 export class TokenFormatError extends make('token_format') {}
 export class RequestValidationError extends make<{ fields: string[] }>('request_invalid') {}
+/** A validate answer that does not prove a dry run: in PROD the vendor may have ignored test=true. Its own kind so the audit line is not mistaken for schema drift. */
+export class NotDryRunError extends make('not_dry_run') {}
 
 const PARAM = /^#(\d+)(?::([^:]+))?:(.+)$/;
 const ENGINE = 'Unexpected error occurred';
