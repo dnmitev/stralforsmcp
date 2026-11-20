@@ -60,6 +60,10 @@ run_case aws reject "$AWS" "aws_access_key_id = $AWS" "add aws" "$MISSING"
 SM="smcp""_$(rnd 'A-Za-z0-9' 40)"
 run_case smcp reject "$SM" "token = $SM" "add token" "$MISSING"
 
+# smcp base64url: '-' and '_' in the first 32 characters, no alphanumeric run of 32 (05-04a, AEGIS R-27)
+SMB="smcp""_$(rnd 'A-Za-z0-9' 8)-$(rnd 'A-Za-z0-9' 8)_$(rnd 'A-Za-z0-9' 27)"
+run_case smcp-b64url reject "$SMB" "$SMB" "add token" "$MISSING"
+
 # denylist in staged content (different case than the term)
 run_case denylist-content reject "$CANARY" "Hello CANARY-ZZ-TERM" "add hello" "$TMP/denylist"
 

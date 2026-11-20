@@ -13,6 +13,7 @@ status: accepted
 4. **The dry run is authoritative.** `valid: true` is returned only after it accepts the document and no finding exists. One dry-run round per call; `moreMayFollow` is true whenever the result is not valid, because faults arrive per layer.
 5. **Nothing identifying is returned or recorded**: the identifier the dry run echoes, the consignment identifier (generated when absent), the agreement identifier and the document content never reach the result, the audit line, logs or spans.
 6. **The tool is a validate-level tool**: hidden and denied in PROD unless the dry run is enabled there. It declares no scope.
+7. **The dry run must prove it was one.** The response carries an `isTest` flag. In PROD the tool returns `valid: true` only when it is `true`; an empty or flag-less answer is refused as a schema error with fixed text. In every environment an explicit `false` is refused. In PROD the tool is annotated as not read-only, because its route is a write verb whose safety rests on the vendor honouring `test=true`. Enabling the PROD dry run additionally needs a recorded vendor confirmation of that behaviour.
 
 ## Consequences
 

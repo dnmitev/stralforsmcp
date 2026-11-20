@@ -4,4 +4,4 @@ useDefault = true
 [[rules]]
 id = "smcp-token"
 description = "stralforsmcp API token"
-regex = '''smcp_[A-Za-z0-9]{32,}'''
+regex = '''smcp_[A-Za-z0-9_-]{32,}'''

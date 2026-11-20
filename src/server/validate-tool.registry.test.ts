@@ -48,6 +48,7 @@ describe('AC-1 gate', () => {
 
   it('prod, flag on: listed; a call reaches the stub with PUT .../validate?test=true', async () => {
     const { x, s, c } = await setup('prod', true);
+    x.routes[VALIDATE] = (_q, res) => json(res, 200, JSON.stringify({ isTest: true })); // PROD needs proof of a dry run (05-04a)
     expect(await names(c)).toContain('validate_invoice');
     const r = await call(c, doc(), { consignmentId: CANARY.consignment, profile: 'b' });
     expect(r.isError).toBeFalsy();

@@ -2,7 +2,7 @@ import { McpServer, type AuthInfo, type McpServerFactory } from '@modelcontextpr
 import type { Audit } from '../audit/index.ts';
 import type { Env, Principal } from '../auth/index.ts';
 import { serverInfo as defaultInfo } from '../server-info.ts';
-import type { ScopeHolder } from '../policy/index.ts';
+import { decide, type ScopeHolder, type ToolSpec } from '../policy/index.ts';
 import type { Telemetry } from '../telemetry/index.ts';
 import type { KnowledgeDoc } from '../knowledge/index.ts';
 import { registerPrompts } from './prompts.ts';
@@ -25,6 +25,9 @@ export interface McpDeps {
   knowledge?: { docs: KnowledgeDoc[] };
 }
 
+/** Resources and prompts stand in for a read tool: they are offered only to a principal for whom a plain read tool passes the policy (env, role). */
+const KNOWLEDGE_ACCESS: ToolSpec = { name: 'knowledge', access: 'read' };
+
 /** The per-request factory: cheap, no I/O, a fresh McpServer per call, only the caller's visible tools. No principal, no tools (fail closed). */
 export function buildMcp(deps: McpDeps): McpServerFactory {
   assertClaimsWired(deps.tools, deps.claimsFor);
@@ -34,7 +37,7 @@ export function buildMcp(deps: McpDeps): McpServerFactory {
     const claims = deps.claimsFor?.(ctx.authInfo);
     const tools = claims ? deps.tools : deps.tools.filter((t) => !needsScope(t.spec));
     if (principal) registerAll(server, principal, tools, { env: deps.env, allowWrite: deps.allowWrite, prodValidateEnabled: deps.prodValidateEnabled, claims, audit: deps.audit, now: deps.now, telemetry: deps.telemetry, maxOutputBytes: deps.maxOutputBytes });
-    if (principal) {
+    if (principal && decide({ principal, env: deps.env, allowWrite: deps.allowWrite, prodValidateEnabled: deps.prodValidateEnabled, claims, tool: KNOWLEDGE_ACCESS }).allow) {
       if (deps.knowledge) registerKnowledgeResources(server, deps.knowledge.docs, principal, deps);
       registerPrompts(server, principal, deps);
     }
