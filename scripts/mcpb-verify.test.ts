@@ -40,6 +40,26 @@ describe('verifyMcpb', () => {
       expect(verifyMcpb(zip(a), '1.2.3').join(), n).toMatch(/unexpected/);
     }
   });
+  it('flags a duplicate entry name (a map would silently keep one)', () => {
+    const a = good();
+    a['LICENSX'] = enc('second');
+    const bytes = zip(a);
+    const patched = new Uint8Array(bytes.length);
+    patched.set(bytes);
+    const text = Buffer.from(patched);
+    let at = text.indexOf('LICENSX');
+    while (at >= 0) {
+      text.write('LICENSE', at);
+      at = text.indexOf('LICENSX', at + 7);
+    }
+    expect(verifyMcpb(new Uint8Array(text), '1.2.3').join()).toMatch(/duplicate entry: LICENSE/);
+  });
+  it('flags an oversized entry without unpacking it', () => {
+    const a = good();
+    a['server/index.js'] = new Uint8Array(2001);
+    expect(verifyMcpb(zip(a), '1.2.3', 2000).join()).toMatch(/entry too large: server\/index\.js/);
+    expect(verifyMcpb(zip(a), '1.2.3', 2001)).toEqual([]); // at the limit is fine
+  });
   it('flags an unreadable manifest', () => {
     const a = good();
     a['manifest.json'] = enc('not json');

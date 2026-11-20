@@ -3,20 +3,33 @@ import { unzipSync } from 'fflate';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+const MAX_ENTRY_BYTES = 64 * 1024 * 1024; // the real bundle is about 1.5 MB
 const EXPECTED = ['LICENSE', 'README.md', 'THIRD-PARTY-NOTICES', 'manifest.json', 'server/index.js', 'server/package.json'];
 const dec = (b: Uint8Array) => new TextDecoder().decode(b);
 
 /** Returns a list of problems (empty when the archive is fine). */
-export function verifyMcpb(zip: Uint8Array, packageVersion: string): string[] {
+export function verifyMcpb(zip: Uint8Array, packageVersion: string, maxEntryBytes = MAX_ENTRY_BYTES): string[] {
   const out: string[] = [];
+  const seen = new Set<string>();
   let files: Record<string, Uint8Array>;
   try {
-    files = unzipSync(zip);
+    // The filter sees every entry before it is inflated: duplicates would collapse in the result map and an oversized entry is skipped, not unpacked.
+    files = unzipSync(zip, {
+      filter: (f) => {
+        if (seen.has(f.name)) out.push(`duplicate entry: ${f.name}`);
+        seen.add(f.name);
+        if (f.originalSize > maxEntryBytes) {
+          out.push(`entry too large: ${f.name}`);
+          return false;
+        }
+        return true;
+      },
+    });
   } catch {
     return ['archive is not a readable zip'];
   }
   for (const n of Object.keys(files)) if (!EXPECTED.includes(n)) out.push(`unexpected entry: ${n}`);
-  for (const n of EXPECTED) if (files[n] === undefined) out.push(`missing entry: ${n}`);
+  for (const n of EXPECTED) if (files[n] === undefined && !seen.has(n)) out.push(`missing entry: ${n}`);
   for (const n of ['LICENSE', 'THIRD-PARTY-NOTICES']) if (files[n] !== undefined && files[n].length === 0) out.push(`${n} is empty`);
   if (files['manifest.json'] !== undefined) {
     try {
