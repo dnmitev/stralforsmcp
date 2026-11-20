@@ -13,7 +13,8 @@ const indentOf = (l: string): number => l.length - l.trimStart().length;
 const isBlank = (l: string): boolean => l.trim() === '' || l.trim().startsWith('#');
 
 // ponytail: line-based, not a YAML parser; assumes block-style YAML (no flow-style steps/run).
-export function checkWorkflow(yamlText: string): string[] {
+export function checkWorkflow(yamlText: string, file = ''): string[] {
+  const prtAllowed = file === PRT_FILE;
   const lines = yamlText.split(/\r?\n/);
   const out: string[] = [];
   const at = (i: number, msg: string): number => out.push(`line ${i + 1}: ${msg}`);
@@ -22,7 +23,7 @@ export function checkWorkflow(yamlText: string): string[] {
 
   lines.forEach((l, i) => {
     if (l.trim().startsWith('#')) return;
-    if (l.includes('pull_request_target')) at(i, 'pull_request_target trigger is forbidden');
+    if (l.includes('pull_request_target') && !prtAllowed) at(i, 'pull_request_target trigger is forbidden');
 
     const u = /^\s*(?:- )?uses:\s*(\S+)(.*)$/.exec(l);
     if (u) {
@@ -57,6 +58,29 @@ export function checkWorkflow(yamlText: string): string[] {
     }
   });
   checkImageRules(lines, out);
+  if (prtAllowed) out.push(...checkPullRequestTarget(yamlText));
+  return out;
+}
+
+// The one accepted pull_request_target workflow (ADR 0024): runs base-branch code only, so it must never check out
+// or interpolate anything from the pull request, and its token may only write statuses and labels.
+const PRT_FILE = 'skip-confidence.yml';
+type Wf = { permissions?: unknown; jobs?: Record<string, { permissions?: Record<string, string>; steps?: { uses?: string; run?: string }[] }> };
+export function checkPullRequestTarget(yamlText: string): string[] {
+  const out: string[] = [];
+  const wf = parse(yamlText) as Wf;
+  const top = wf.permissions;
+  if (typeof top !== 'object' || top === null || Object.keys(top).length > 0)
+    out.push('pull_request_target: top-level permissions must be {}');
+  for (const [name, job] of Object.entries(wf.jobs ?? {})) {
+    for (const [k, v] of Object.entries(job.permissions ?? {}))
+      if (!(['pull-requests', 'statuses'].includes(k) && ['read', 'write'].includes(v)))
+        out.push(`pull_request_target: job ${name} permission ${k}: ${v} is not allowed`);
+    for (const step of job.steps ?? []) {
+      if (/checkout/.test(step.uses ?? '')) out.push(`pull_request_target: job ${name} checks out code`);
+      if (/\$\{\{/.test(step.run ?? '')) out.push(`pull_request_target: job ${name} interpolates an expression in run: (use env:)`);
+    }
+  }
   return out;
 }
 
@@ -235,7 +259,7 @@ describe('real workflows', () => {
   });
 
   it.each(files)('%s satisfies the policy', (f) => {
-    expect(checkWorkflow(readFileSync(join(dir, f), 'utf8'))).toEqual([]);
+    expect(checkWorkflow(readFileSync(join(dir, f), 'utf8'), f)).toEqual([]);
   });
 
   // M2: a cancelled push run on main leaves no green CI and no Stryker baseline. Only pull_request runs may be cancelled.
@@ -436,17 +460,48 @@ describe('image.yml (real file)', () => {
       expect(p).toMatch(/provenance:\s*mode=max/);
       expect(p).toMatch(/sbom:\s*true/);
     });
-    it('tag policy lines are exactly the five from the design', () => {
-      expect(real).toMatch(/flavor:\s*latest=false/);
+    it('tag policy lines are exactly the four from the design; latest only through flavor auto', () => {
+      expect(real).toMatch(/flavor:\s*latest=auto/);
+      expect(real).not.toMatch(/type=raw,value=latest/);
+      expect(real).not.toMatch(/flavor:\s*latest=(true|false)/);
       for (const t of [
         'type=sha,format=long',
         'type=edge,branch=main',
         'type=semver,pattern={{version}}',
         'type=semver,pattern={{major}}.{{minor}}',
-        "type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}",
       ])
         expect(real).toContain(t);
-      expect(real.match(/^\s+type=/gm)).toHaveLength(5);
+      expect(real.match(/^\s+type=/gm)).toHaveLength(4);
+    });
+    // 05-03c (R-19): a bad tag must stop before anything is pushed. publish needs build-scan, which runs this first.
+    it('checks the release tag in build-scan, before any build, from env, tags only', () => {
+      const b = job('build-scan');
+      expect(real).toMatch(/publish:[\s\S]*?needs: build-scan/);
+      const step = /- name: Check release tag\n([\s\S]*?)(?=\n {6}- uses:)/.exec(b)?.[1] ?? '';
+      expect(step).toMatch(/if: github\.ref_type == 'tag'/);
+      expect(step).toMatch(/REF_NAME: \$\{\{ github\.ref_name \}\}/);
+      expect(step).toMatch(/package\.json/);
+      expect(b.indexOf('Check release tag')).toBeGreaterThan(b.indexOf('actions/checkout'));
+      expect(b.indexOf('Check release tag')).toBeLessThan(b.indexOf('docker/build-push-action'));
+    });
+    it.each([
+      ['v0.1.0', true],
+      ['v1.2.3', true],
+      ['v10.20.30', true],
+      ['v1.2.3-rc.1', true],
+      ['vnext', false],
+      ['v1', false],
+      ['v1.2', false],
+      ['v01.2.3', false],
+      ['v1.2.3+meta', false],
+      ['v1.2.3-', false],
+      ['1.2.3', false],
+      ['v1.2.3 ', false],
+      ['v1.2.3\nx', false],
+    ])('tag regex: %j -> %s', (tag, ok) => {
+      const m = /re='(\^v[^']+\$)'/.exec(real);
+      expect(m, 'tag regex line missing').not.toBeNull();
+      expect(new RegExp(m?.[1] ?? '').test(tag)).toBe(ok);
     });
   });
 });
@@ -600,5 +655,58 @@ describe('ci.yml denylist step (R-26)', () => {
     expect(step).toMatch(/SECRET_EXPECTED:[^\n]*github\.event\.pull_request\.head\.repo\.full_name == github\.repository/);
     expect(step).toMatch(/SECRET_EXPECTED:[^\n]*github\.actor != 'dependabot\[bot\]'/);
     expect(step).toMatch(/if \[ -z "\$DL" \]; then\n\s+if \[ "\$SECRET_EXPECTED" = true \]; then\n\s+echo "::error::[^\n]*"\n\s+exit 1\n\s+fi\n\s+echo "::warning::[^\n]*"\n\s+exit 0/);
+  });
+});
+
+// ---- 05-03c: the single pull_request_target exception ------------------------------------------
+
+describe('pull_request_target exception', () => {
+  const real = readFileSync(join(import.meta.dirname, '..', '.github', 'workflows', 'skip-confidence.yml'), 'utf8');
+
+  it('the real skip-confidence workflow passes under its own name', () => {
+    expect(checkWorkflow(real, 'skip-confidence.yml')).toEqual([]);
+  });
+  it('the same text under any other name is still forbidden', () => {
+    expect(checkWorkflow(real, 'other.yml').join()).toMatch(/pull_request_target trigger is forbidden/);
+    expect(checkWorkflow(real).join()).toMatch(/pull_request_target trigger is forbidden/);
+  });
+  it('no other real workflow uses the trigger', () => {
+    const dir = join(import.meta.dirname, '..', '.github', 'workflows');
+    const users = readdirSync(dir)
+      .filter((f) => f.endsWith('.yml'))
+      .filter((f) => readFileSync(join(dir, f), 'utf8').split('\n').some((l) => !l.trim().startsWith('#') && l.includes('pull_request_target')));
+    expect(users).toEqual(['skip-confidence.yml']);
+  });
+  it.each([
+    ['a checkout', real.replace('    steps:\n', `    steps:\n      - uses: actions/checkout@${SHA}\n        with:\n          persist-credentials: false\n`), /checks out code/],
+    ['contents: write', real.replace('      statuses: write\n', '      statuses: write\n      contents: write\n'), /contents: write is not allowed/],
+    ['id-token: write', real.replace('      statuses: write\n', '      statuses: write\n      id-token: write\n'), /id-token/],
+    ['a non-empty top-level permissions', real.replace('permissions: {}', 'permissions:\n  contents: read'), /top-level permissions must be/],
+    ['a missing top-level permissions', real.replace('permissions: {}\n', ''), /permissions/],
+    ['an expression in run:', real.replace('gh api -X DELETE "repos/$REPO/issues/$PR/labels/$LABEL"', 'echo ${{ github.event.pull_request.head.ref }}'), /interpolates/],
+  ])('rejects %s', (_n, text, re) => {
+    expect(text).not.toBe(real);
+    expect(checkWorkflow(text, 'skip-confidence.yml').join('\n')).toMatch(re);
+  });
+  it.each([
+    ['.github/workflows/ci.yml', true],
+    ['.claude/agents/principal-reviewer.md', true],
+    ['scripts/workflow-policy.test.ts', true],
+    ['Dockerfile', true],
+    ['charts/stralforsmcp/values.yaml', true],
+    ['.gitleaks.toml', true],
+    ['.trivyignore.yaml', true],
+    ['.coderabbit.yaml', true],
+    ['.dockerignore', true],
+    ['package.json', false],
+    ['src/server/http.ts', false],
+    ['docs/runbook.md', false],
+    ['README.md', false],
+    ['Dockerfile.md', false],
+    ['mydocs/.github/x', false],
+  ])('skip refuses gate-bearing path %s: %s', (path, refused) => {
+    const m = /gate='([^']+)'/.exec(real);
+    expect(m, 'gate regex line missing').not.toBeNull();
+    expect(new RegExp(m?.[1] ?? '').test(path)).toBe(refused);
   });
 });
