@@ -65,10 +65,12 @@ export function checkWorkflow(yamlText: string, file = ''): string[] {
 // The one accepted pull_request_target workflow (ADR 0024): runs base-branch code only, so it must never check out
 // or interpolate anything from the pull request, and its token may only write statuses and labels.
 const PRT_FILE = 'skip-confidence.yml';
-type Wf = { permissions?: unknown; jobs?: Record<string, { permissions?: Record<string, string>; steps?: { uses?: string; run?: string }[] }> };
+type Wf = { on?: unknown; permissions?: unknown; jobs?: Record<string, { permissions?: Record<string, string>; steps?: { uses?: string; run?: string }[] }> };
 export function checkPullRequestTarget(yamlText: string): string[] {
   const out: string[] = [];
   const wf = parse(yamlText) as Wf;
+  const triggers = typeof wf.on === 'object' && wf.on !== null ? Object.keys(wf.on) : [String(wf.on)];
+  if (triggers.join() !== 'pull_request_target') out.push(`pull_request_target: it must be the only trigger (found ${triggers.join()})`);
   const top = wf.permissions;
   if (typeof top !== 'object' || top === null || Object.keys(top).length > 0)
     out.push('pull_request_target: top-level permissions must be {}');
@@ -77,10 +79,18 @@ export function checkPullRequestTarget(yamlText: string): string[] {
       if (!(['pull-requests', 'statuses'].includes(k) && ['read', 'write'].includes(v)))
         out.push(`pull_request_target: job ${name} permission ${k}: ${v} is not allowed`);
     for (const step of job.steps ?? []) {
-      if (/checkout/.test(step.uses ?? '')) out.push(`pull_request_target: job ${name} checks out code`);
-      if (/\$\{\{/.test(step.run ?? '')) out.push(`pull_request_target: job ${name} interpolates an expression in run: (use env:)`);
+      // no `uses:` at all: no action (checkout included, or one that checks out inside) runs in this privileged context
+      if (step.uses) out.push(`pull_request_target: job ${name} uses ${step.uses} (no actions allowed)`);
+      if (/\bgit\b|checkout|\bgh pr\b/.test(step.run ?? '')) out.push(`pull_request_target: job ${name} fetches or checks out code in run:`);
     }
   }
+  // expressions only as env values or in an if: (never in run:, with:, a script: or a name)
+  yamlText.split(/\r?\n/).forEach((l, i) => {
+    if (l.trim().startsWith('#') || !l.includes('${{')) return;
+    if (!/^\s*(- )?(if:|[A-Z][A-Z0-9_]*:)/.test(l)) out.push(`line ${i + 1}: pull_request_target: expression outside env: or if:`);
+  });
+  if (/\bsecrets\./.test(yamlText.split(/\r?\n/).filter((l) => !l.trim().startsWith('#')).join('\n')))
+    out.push('pull_request_target: no secrets. references (use the job token only)');
   return out;
 }
 
@@ -252,7 +262,7 @@ describe('checkWorkflow fixtures', () => {
 
 describe('real workflows', () => {
   const dir = join(import.meta.dirname, '..', '.github', 'workflows');
-  const files = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.yml')) : [];
+  const files = existsSync(dir) ? readdirSync(dir).filter((f) => /\.ya?ml$/.test(f)) : [];
 
   it('has at least one workflow in .github/workflows/', () => {
     expect(files.length, `no .github/workflows/*.yml found in ${dir}`).toBeGreaterThan(0);
@@ -495,6 +505,9 @@ describe('image.yml (real file)', () => {
       ['v01.2.3', false],
       ['v1.2.3+meta', false],
       ['v1.2.3-', false],
+      ['v1.2.3-rc..1', false],
+      ['v1.2.3-rc.', false],
+      ['v1.2.3-rc-1.x-y', true],
       ['1.2.3', false],
       ['v1.2.3 ', false],
       ['v1.2.3\nx', false],
@@ -673,17 +686,23 @@ describe('pull_request_target exception', () => {
   it('no other real workflow uses the trigger', () => {
     const dir = join(import.meta.dirname, '..', '.github', 'workflows');
     const users = readdirSync(dir)
-      .filter((f) => f.endsWith('.yml'))
+      .filter((f) => /\.ya?ml$/.test(f))
       .filter((f) => readFileSync(join(dir, f), 'utf8').split('\n').some((l) => !l.trim().startsWith('#') && l.includes('pull_request_target')));
     expect(users).toEqual(['skip-confidence.yml']);
   });
   it.each([
-    ['a checkout', real.replace('    steps:\n', `    steps:\n      - uses: actions/checkout@${SHA}\n        with:\n          persist-credentials: false\n`), /checks out code/],
+    ['a checkout', real.replace('    steps:\n', `    steps:\n      - uses: actions/checkout@${SHA}\n        with:\n          persist-credentials: false\n`), /no actions allowed/],
     ['contents: write', real.replace('      statuses: write\n', '      statuses: write\n      contents: write\n'), /contents: write is not allowed/],
     ['id-token: write', real.replace('      statuses: write\n', '      statuses: write\n      id-token: write\n'), /id-token/],
     ['a non-empty top-level permissions', real.replace('permissions: {}', 'permissions:\n  contents: read'), /top-level permissions must be/],
     ['a missing top-level permissions', real.replace('permissions: {}\n', ''), /permissions/],
-    ['an expression in run:', real.replace('gh api -X DELETE "repos/$REPO/issues/$PR/labels/$LABEL"', 'echo ${{ github.event.pull_request.head.ref }}'), /interpolates/],
+    ['an expression in run:', real.replace('gh api -X DELETE "repos/$REPO/issues/$PR/labels/$LABEL"', 'echo ${{ github.event.pull_request.head.ref }}'), /expression outside env/],
+    ['an action step', real.replace('    steps:\n', `    steps:\n      - uses: actions/github-script@${SHA}\n        with:\n          script: x\n`), /no actions allowed/],
+    ['git in run:', real.replace('gh api -X DELETE "repos/$REPO/issues/$PR/labels/$LABEL"', 'git fetch origin pull/1/head'), /fetches or checks out/],
+    ['gh pr checkout in run:', real.replace('gh api -X DELETE "repos/$REPO/issues/$PR/labels/$LABEL"', 'gh pr checkout 1'), /fetches or checks out/],
+    ['an expression in a with: value', real.replace('    steps:\n', '    steps:\n      - name: x\n        with:\n          y: ${{ github.event.pull_request.title }}\n        run: echo\n'), /expression outside env/],
+    ['a secrets reference', real.replace('      LABEL: skip-confidence\n', '      LABEL: skip-confidence\n      S: ${{ secrets.X }}\n'), /secrets\./],
+    ['a second trigger', real.replace('on:\n  pull_request_target:', 'on:\n  push:\n  pull_request_target:'), /only trigger/],
   ])('rejects %s', (_n, text, re) => {
     expect(text).not.toBe(real);
     expect(checkWorkflow(text, 'skip-confidence.yml').join('\n')).toMatch(re);
@@ -698,6 +717,12 @@ describe('pull_request_target exception', () => {
     ['.trivyignore.yaml', true],
     ['.coderabbit.yaml', true],
     ['.dockerignore', true],
+    ['.githooks/pre-commit', true],
+    ['.gitignore', true],
+    ['vitest.config.ts', true],
+    ['vitest.integration.config.ts', true],
+    ['stryker.config.json', true],
+    ['tsconfig.json', true],
     ['package.json', false],
     ['src/server/http.ts', false],
     ['docs/runbook.md', false],

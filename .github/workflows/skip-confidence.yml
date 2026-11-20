@@ -2,7 +2,8 @@ name: skip-confidence
 
 # Maintainer opt-out of the review/confidence gate for one head commit (for example a Dependabot bump the
 # review agent has not scored). Adding the `skip-confidence` label needs triage access, so the label is the
-# authorisation. Runs from the base branch and never checks out pull request code: it only reads the list of
+# authorisation, and the workflow re-checks the sender: a human with maintain or admin permission, never an app.
+# Runs from the base branch and never checks out pull request code: it only reads the list of
 # changed files through the API (data, never executed) and writes one commit status.
 # It refuses when the pull request touches the files that make up the gate itself (workflows, scripts, agents,
 # image and chart, scanner configs): those need a real review. Any doubt (listing fails, count or head differ) refuses.
@@ -27,22 +28,45 @@ jobs:
       REPO: ${{ github.repository }}
       PR: ${{ github.event.pull_request.number }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      SENDER: ${{ github.event.sender.login }}
+      SENDER_TYPE: ${{ github.event.sender.type }}
       LABEL: skip-confidence
     steps:
       - name: Grant skip on label
         if: github.event.action == 'labeled' && github.event.label.name == 'skip-confidence'
         run: |
-          refuse() { echo "skip-confidence refused: $1" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; }
+          # A refusal is visible in the run summary and takes the label off again, so the state matches what happened.
+          refuse() {
+            echo "skip-confidence refused: $1" | tee -a "$GITHUB_STEP_SUMMARY"
+            gh api -X DELETE "repos/$REPO/issues/$PR/labels/$LABEL" > /dev/null 2>&1 || true
+            exit 0
+          }
+          [ "$SENDER_TYPE" = User ] || refuse "the label was added by an app, not a person"
+          perm=$(gh api "repos/$REPO/collaborators/$SENDER/permission" -q .permission) || refuse "sender permission unavailable"
+          case "$perm" in admin | maintain) ;; *) refuse "the label needs maintain or admin permission" ;; esac
+          # The pull request is read twice, before and after the file list: base and head must be the same both times,
+          # the base must be main and the head the event commit, so the list belongs to the commit that gets the status.
+          meta() { gh api "repos/$REPO/pulls/$PR" -q '.base.ref, .head.sha, .changed_files'; }
+          m1=$(meta) || refuse "pull request unavailable"
           rows=$(gh api --paginate "repos/$REPO/pulls/$PR/files" -q '.[] | [.filename, (.previous_filename // "")] | @tsv') || refuse "file list unavailable"
           [ -n "$rows" ] || refuse "empty file list"
-          meta=$(gh api "repos/$REPO/pulls/$PR" -q '.changed_files, .head.sha') || refuse "pull request unavailable"
-          # The files endpoint stops at 3,000 entries; the head must still be the event commit, the count the PR's own.
-          [ "$(printf '%s\n' "$rows" | wc -l | tr -d ' ')" = "$(printf '%s\n' "$meta" | sed -n 1p)" ] || refuse "file list incomplete"
-          [ "$(printf '%s\n' "$meta" | sed -n 2p)" = "$HEAD_SHA" ] || refuse "head moved since the label event"
+          m2=$(meta) || refuse "pull request unavailable"
+          [ "$m1" = "$m2" ] || refuse "the pull request changed while it was checked"
+          [ "$(printf '%s\n' "$m1" | sed -n 1p)" = main ] || refuse "the base branch is not main"
+          [ "$(printf '%s\n' "$m1" | sed -n 2p)" = "$HEAD_SHA" ] || refuse "head moved since the label event"
+          # The files endpoint stops at 3,000 entries.
+          [ "$(printf '%s\n' "$rows" | wc -l | tr -d ' ')" = "$(printf '%s\n' "$m1" | sed -n 3p)" ] || refuse "file list incomplete"
           # A rename counts as both its old and new path.
           paths=$(printf '%s\n' "$rows" | tr '\t' '\n' | grep -v '^$' || true)
-          gate='^\.github/|^\.claude/|^scripts/|^Dockerfile$|^charts/|^\.dockerignore$|^\.gitleaks\.toml$|^\.trivyignore\.yaml$|^\.coderabbit\.yaml$'
+          gate='^\.github/|^\.claude/|^\.githooks/|^scripts/|^Dockerfile$|^charts/|^\.dockerignore$|^\.gitignore$|^\.gitleaks\.toml$|^\.trivyignore\.yaml$|^\.coderabbit\.yaml$|^vitest[^/]*\.config\.ts$|^stryker\.config\.json$|^tsconfig\.json$'
           [ -z "$(printf '%s\n' "$paths" | grep -E "$gate" || true)" ] || refuse "the pull request changes gate or pipeline files; it needs a real review"
+          # package.json is fine to bump (dependencies), but its scripts block runs the tests and the build.
+          if printf '%s\n' "$paths" | grep -qx 'package.json'; then
+            raw='Accept: application/vnd.github.raw'
+            was=$(gh api -H "$raw" "repos/$REPO/contents/package.json?ref=main" | jq -S -c '.scripts') || refuse "package.json unreadable"
+            now=$(gh api -H "$raw" "repos/$REPO/contents/package.json?ref=$HEAD_SHA" | jq -S -c '.scripts') || refuse "package.json unreadable"
+            [ "$was" = "$now" ] || refuse "the pull request changes the scripts block of package.json"
+          fi
           gh api "repos/$REPO/statuses/$HEAD_SHA" -f state=success -f context=review/confidence \
             -f description="skipped by maintainer label ($LABEL)"
           echo "review/confidence set to success for $HEAD_SHA by label" >> "$GITHUB_STEP_SUMMARY"
