@@ -1,6 +1,6 @@
 /*
  * R17: StralforsError.kind is a literal union at the source. The type legs are enforced by `npm run typecheck`
- * (a missing export or an unused @ts-expect-error is a compile error); the runtime legs pin the 17 kinds.
+ * (a missing export or an unused @ts-expect-error is a compile error); the runtime legs pin the 18 kinds.
  */
 import { describe, expect, it } from 'vitest';
 import { StralforsError, type StralforsErrorKind } from './errors.ts';
@@ -17,10 +17,10 @@ describe('StralforsErrorKind', () => {
   });
 
   it('the table covers every exported subclass exactly once and the kinds are distinct', () => {
-    expect(KINDS).toHaveLength(17);
-    expect(exportedKindClasses()).toHaveLength(17);
-    expect(new Set(KINDS.map(([C]) => C)).size).toBe(17);
-    expect(new Set(KINDS.map(([, k]) => k)).size).toBe(17);
+    expect(KINDS).toHaveLength(18);
+    expect(exportedKindClasses()).toHaveLength(18);
+    expect(new Set(KINDS.map(([C]) => C)).size).toBe(18);
+    expect(new Set(KINDS.map(([, k]) => k)).size).toBe(18);
     for (const C of exportedKindClasses()) expect(KINDS.some(([K]) => K === C)).toBe(true);
   });
 
@@ -28,7 +28,7 @@ describe('StralforsErrorKind', () => {
     const all: Record<StralforsErrorKind, true> = {
       config: true, tls: true, auth: true, forbidden: true, agreement_not_found: true, route_not_found: true, bad_request: true,
       validation_failed: true, conflict: true, rate_limited: true, upstream: true, timeout: true, too_large: true, schema: true,
-      write_blocked: true, token_format: true, request_invalid: true,
+      write_blocked: true, token_format: true, request_invalid: true, not_dry_run: true,
     };
     expect(Object.keys(all).sort()).toEqual(KINDS.map(([, k]) => k).sort());
   });

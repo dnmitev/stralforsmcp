@@ -39,3 +39,7 @@ knowledge/*
 # AEGIS audit output is private (symlink into the private repo)
 .aegis
 .aegis-backup-*
+
+# release download artifacts (docs/releasing.md)
+/SHA256SUMS
+/stralforsmcp.mcpb

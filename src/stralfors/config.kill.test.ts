@@ -124,9 +124,9 @@ describe('profiles and agreement ids', () => {
     expect(load({ [`${A}_ACTION_IDS`]: `:${UUID}` }).profiles['a']!.agreements).toEqual([{ id: UUID }]);
   });
 
-  it('invalid id: error names the label or the 1-based entry, never the value', () => {
+  it('invalid id: error names the 1-based entry, never the value or the label', () => {
     const msg = (v: string) => err(() => load({ [`${A}_ACTION_IDS`]: v })).message;
-    expect(msg('lbl:not-a-uuid')).toBe(`${A}_ACTION_IDS: invalid agreement id (label lbl)`);
+    expect(msg('lbl:not-a-uuid')).toBe(`${A}_ACTION_IDS: invalid agreement id (entry 1)`);
     expect(msg('nope')).toBe(`${A}_ACTION_IDS: invalid agreement id (entry 1)`);
     expect(msg(`${UUID}, nope`)).toBe(`${A}_ACTION_IDS: invalid agreement id (entry 2)`);
   });

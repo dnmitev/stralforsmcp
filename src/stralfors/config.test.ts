@@ -10,7 +10,7 @@
  *     Config/Profile have toString/toJSON/inspect.custom that never reveal them.
  *   - Env additions beyond R1: STRALFORS_PROD_VALIDATE_ENABLED=true|false (default false).
  *   - File contents are trimmed (trailing newline) before use.
- *   - Errors: ConfigError from errors.ts; message names the env variable (or label), never a value.
+ *   - Errors: ConfigError from errors.ts; message names the env variable (or entry position), never a value or a label.
  */
 import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
@@ -116,7 +116,8 @@ describe('R1 configuration loading', () => {
     env['STRALFORS_PROFILE_A_ACTION_IDS'] = 'billing:not-a-uuid';
     const e = throwsConfig(() => loadConfig(env));
     expect(e.message).toContain('ACTION_IDS');
-    expect(e.message).toContain('billing');
+    expect(e.message).toContain('entry 1');
+    expect(e.message).not.toContain('billing');
     expect(e.message).not.toContain('not-a-uuid');
   });
 
@@ -132,13 +133,42 @@ describe('R1 configuration loading', () => {
     expect(load(`  :${g3}`)).toEqual([{ id: g3 }]);
   });
 
-  it('ACTION_IDS invalid id still names the variable and label only, even with whitespace', () => {
+  it('ACTION_IDS invalid id names the variable and entry position only, even with whitespace', () => {
     const { env } = two();
     env['STRALFORS_PROFILE_A_ACTION_IDS'] = ' billing : not-a-uuid ';
     const e = throwsConfig(() => loadConfig(env));
     expect(e.message).toContain('ACTION_IDS');
-    expect(e.message).toContain('billing');
+    expect(e.message).toContain('entry 1');
+    expect(e.message).not.toContain('billing');
     expect(e.message).not.toContain('not-a-uuid');
+  });
+
+  it('duplicate agreement labels in one profile are refused with fixed text: no variable name, label or id', () => {
+    const [g1, g2] = [randomUUID(), randomUUID()];
+    const { env } = two();
+    env['STRALFORS_PROFILE_A_ACTION_IDS'] = `billing:${g1}, billing:${g2}`;
+    const e = throwsConfig(() => loadConfig(env));
+    expect(e.message).toBe('duplicate agreement label in ACTION_IDS');
+    expect(e.message).not.toContain('billing');
+    expect(e.message).not.toContain(g1);
+    expect(e.message).not.toContain(g2);
+  });
+
+  it('the same label in two different profiles, and unlabelled entries, are fine', () => {
+    const [g1, g2, g3] = [randomUUID(), randomUUID(), randomUUID()];
+    const { env } = two();
+    env['STRALFORS_PROFILE_A_ACTION_IDS'] = `billing:${g1}, ${g2}, ${g3}`;
+    expect(loadConfig(env).profiles['a']!.agreements).toHaveLength(3);
+  });
+
+  it.each([['a,A'], ['a,a'], ['a-b,a_b']])('duplicate profile ids %s are refused without printing paths', (ids) => {
+    const { env } = two();
+    env['STRALFORS_PROFILES'] = ids;
+    // the first id of 'a-b,a_b' needs its own variables so the load reaches the second id
+    for (const [k, v] of Object.entries({ ...env })) if (k.startsWith('STRALFORS_PROFILE_A_')) env[k.replace('STRALFORS_PROFILE_A_', 'STRALFORS_PROFILE_A_B_')] = v;
+    const e = throwsConfig(() => loadConfig(env));
+    expect(e.message).toContain('profile id twice');
+    expect(e.message).not.toContain(pki.dir);
   });
 
   it('prod refuses write', () => {

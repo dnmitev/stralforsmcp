@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import * as z from 'zod/v4';
-import { AgreementNotFoundError, BadRequestError, RequestValidationError, StralforsError, ValidationFailedError } from '../stralfors/errors.ts';
+import { AgreementNotFoundError, BadRequestError, NotDryRunError, RequestValidationError, StralforsError, ValidationFailedError } from '../stralfors/errors.ts';
 import { fromBadRequest, fromFields, fromViolations, type Finding } from '../stralfors/findings.ts';
 import type { Config, StralforsClient } from '../stralfors/index.ts';
 import { localCheck } from '../stralfors/local-check.ts';
@@ -43,7 +43,7 @@ export const validateOutput = z.object({
 
 export interface ValidateDeps {
   clients: ReadonlyMap<string, Pick<StralforsClient, 'rules' | 'validateInvoice'>>;
-  config: Pick<Config, 'profiles'>;
+  config: Pick<Config, 'profiles' | 'env'>;
   cache: RulesCache;
   uuid?: () => string;
 }
@@ -61,15 +61,20 @@ const result = (stage: 'input' | 'local' | 'dry_run', found: Finding[]): z.infer
   return { valid: false, stage, findings, moreMayFollow: true };
 };
 
+/** Fixed text: the response is never echoed. */
+const NOT_A_DRY_RUN = 'validate response did not confirm a dry run';
+
 export function createValidateInvoice(deps: ValidateDeps): ToolDef<typeof validateInput, typeof validateOutput> {
   const uuid = deps.uuid ?? randomUUID;
+  const prod = deps.config.env === 'prod';
   return {
     spec: { name: 'validate_invoice', access: 'validate' },
     title: 'Validate invoice',
     description: 'Dry-runs an invoice document and creates nothing. Three stages, stopping at the first with findings: input shape, a local check against the cached channel rules, then the native dry run. One round per call: when moreMayFollow is true, fix the findings and call again. valid is true only after the dry run accepts the document. Use synthetic data only: never real recipients or customer data. See get_rules for the rules of a channel.',
     inputSchema: validateInput,
     outputSchema: validateOutput,
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    // In PROD the route is a write verb whose safety rests on the vendor honouring test=true: do not promise read-only.
+    annotations: { readOnlyHint: !prod, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async run(args) {
       const { profile, client } = resolveProfile(deps.clients, args.profile);
       const agreements = deps.config.profiles[profile]?.agreements ?? [];
@@ -99,8 +104,9 @@ export function createValidateInvoice(deps: ValidateDeps): ToolDef<typeof valida
       const found = localCheck(args.document, local);
       if (found.length > 0) return result('local', [...found, ...unavailable]);
 
+      let answer;
       try {
-        await client.validateInvoice({ actionId: agreement.id, consignmentId: args.consignmentId ?? `validate-${uuid()}`, document: { ...args.document, documentHeader, invoice } });
+        answer = await client.validateInvoice({ actionId: agreement.id, consignmentId: args.consignmentId ?? `validate-${uuid()}`, document: { ...args.document, documentHeader, invoice } });
       } catch (e) {
         if (e instanceof ValidationFailedError) return result('dry_run', [...rejected(fromViolations(e.violations)), ...unavailable]);
         if (e instanceof BadRequestError) return result('dry_run', [...rejected(fromBadRequest(e.errors ?? {})), ...unavailable]);
@@ -108,6 +114,9 @@ export function createValidateInvoice(deps: ValidateDeps): ToolDef<typeof valida
         if (e instanceof AgreementNotFoundError) throw new ToolInputError('agreement not found for this profile', 'agreement_not_found');
         throw e;
       }
+      // Fail closed: PROD needs proof that the vendor treated this as a dry run; an explicit isTest false is refused everywhere.
+      const isTest = 'isTest' in answer ? answer.isTest : undefined;
+      if (isTest === false || (prod && isTest !== true)) throw new NotDryRunError(NOT_A_DRY_RUN);
       return unavailable.length > 0 ? result('dry_run', unavailable) : { valid: true, stage: 'passed', findings: [], moreMayFollow: false };
     },
   };

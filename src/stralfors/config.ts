@@ -81,17 +81,27 @@ export function loadConfig(
   if (mode === 'prod' && allowWrite) throw new ConfigError('write is never allowed in prod (STRALFORS_ALLOW_WRITE)');
 
   const profiles: Record<string, Profile> = {};
+  const seen = new Set<string>();
   for (const id of need('STRALFORS_PROFILES').split(',').map((s) => s.trim()).filter(Boolean)) {
     const P = `STRALFORS_PROFILE_${id.toUpperCase().replaceAll('-', '_')}`;
+    // two ids that map to the same variable prefix (se / SE, a-b / a_b) would read the same files: refuse instead of silently overwriting
+    if (seen.has(P)) throw new ConfigError('STRALFORS_PROFILES lists a profile id twice (ids are compared case-insensitively, with - and _ equal)');
+    seen.add(P);
     const actionName = `${P}_ACTION_IDS`;
     const agreements = (vars[actionName] ?? '').split(',').map((e) => e.trim()).filter(Boolean).map((entry, i) => {
       const c = entry.indexOf(':');
       // Stryker disable next-line EqualityOperator: c === 0 gives label '' (original) or undefined (mutant); both mean no label
       const label = c < 0 ? undefined : entry.slice(0, c).trim();
       const id = entry.slice(c + 1).trim();
-      if (!UUID.test(id)) throw new ConfigError(`${actionName}: invalid agreement id (${label ? `label ${label}` : `entry ${i + 1}`})`);
+      if (!UUID.test(id)) throw new ConfigError(`${actionName}: invalid agreement id (entry ${i + 1})`);
       return label ? { label, id } : { id };
     });
+    const labels = new Set<string>();
+    for (const a of agreements) {
+      if (a.label === undefined) continue;
+      if (labels.has(a.label)) throw new ConfigError('duplicate agreement label in ACTION_IDS');
+      labels.add(a.label);
+    }
     const files: Profile['files'] = { cert: need(`${P}_CERT_FILE`), key: need(`${P}_KEY_FILE`) };
     if (vars[`${P}_KEY_PASSPHRASE_FILE`]) files.passphrase = need(`${P}_KEY_PASSPHRASE_FILE`);
     const profile: Profile = {

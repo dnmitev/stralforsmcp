@@ -25,6 +25,7 @@
     "src/stralfors/local-check.ts",
     "src/stralfors/findings.ts",
     "src/server/validate-tool.ts",
+    "src/server/mcp.ts",
     "src/server/track-tool.ts",
     "src/stralfors/tracking.ts",
     "src/stralfors/lookup.ts",

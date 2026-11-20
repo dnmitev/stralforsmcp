@@ -4,4 +4,6 @@ useDefault = true
 [[rules]]
 id = "smcp-token"
 description = "stralforsmcp API token"
-regex = '''smcp_[A-Za-z0-9]{32,}'''
+regex = '''smcp_[A-Za-z0-9_-]{32,}'''
+# real tokens are 43 random base64url characters; this keeps long snake_case names that start with smcp_ from matching
+entropy = 3.8
