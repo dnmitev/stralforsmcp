@@ -36,7 +36,9 @@ reviews:
         real-looking credentials or identifiers, timing-dependent assertions, and assertions that cannot fail.
     - path: ".github/workflows/**"
       instructions: |
-        Actions pinned to a full commit SHA with a version comment; no pull_request_target; untrusted event data
+        Actions pinned to a full commit SHA with a version comment; no pull_request_target except the one accepted
+        use, skip-confidence.yml (ADR 0024), which must keep no uses: step, no checkout, permissions {} at the top and only
+        pull-requests and statuses in the job; untrusted event data
         only through env:, never interpolated into run:; least-privilege permissions.
     - path: ".claude/agents/**"
       instructions: |

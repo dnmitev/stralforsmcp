@@ -81,6 +81,8 @@ export function checkPullRequestTarget(yamlText: string): string[] {
     for (const step of job.steps ?? []) {
       // no `uses:` at all: no action (checkout included, or one that checks out inside) runs in this privileged context
       if (step.uses) out.push(`pull_request_target: job ${name} uses ${step.uses} (no actions allowed)`);
+      // also on the parsed value, so a YAML alias (`run: *t`) cannot carry an expression past the line check below
+      if (/\$\{\{/.test(step.run ?? '')) out.push(`pull_request_target: job ${name} has an expression in a resolved run:`);
       if (/\bgit\b|checkout|\bgh pr\b/.test(step.run ?? '')) out.push(`pull_request_target: job ${name} fetches or checks out code in run:`);
     }
   }
@@ -507,6 +509,11 @@ describe('image.yml (real file)', () => {
       ['v1.2.3-', false],
       ['v1.2.3-rc..1', false],
       ['v1.2.3-rc.', false],
+      ['v1.2.3-01', false],
+      ['v1.2.3-rc.01', false],
+      ['v1.2.3-rc.0', true],
+      ['v1.2.3-0a', true],
+      ['v1.2.3-00', false],
       ['v1.2.3-rc-1.x-y', true],
       ['1.2.3', false],
       ['v1.2.3 ', false],
@@ -702,6 +709,7 @@ describe('pull_request_target exception', () => {
     ['gh pr checkout in run:', real.replace('gh api -X DELETE "repos/$REPO/issues/$PR/labels/$LABEL"', 'gh pr checkout 1'), /fetches or checks out/],
     ['an expression in a with: value', real.replace('    steps:\n', '    steps:\n      - name: x\n        with:\n          y: ${{ github.event.pull_request.title }}\n        run: echo\n'), /expression outside env/],
     ['a secrets reference', real.replace('      LABEL: skip-confidence\n', '      LABEL: skip-confidence\n      S: ${{ secrets.X }}\n'), /secrets\./],
+    ['an expression carried into run: by a YAML alias', real.replace('      LABEL: skip-confidence\n', '      LABEL: skip-confidence\n      T: &t echo ${{ github.event.pull_request.title }}\n').replace('gh api -X DELETE "repos/$REPO/issues/$PR/labels/$LABEL" || true', '*t'), /resolved run/],
     ['a second trigger', real.replace('on:\n  pull_request_target:', 'on:\n  push:\n  pull_request_target:'), /only trigger/],
   ])('rejects %s', (_n, text, re) => {
     expect(text).not.toBe(real);
@@ -718,6 +726,9 @@ describe('pull_request_target exception', () => {
     ['.coderabbit.yaml', true],
     ['.dockerignore', true],
     ['.githooks/pre-commit', true],
+    ['extension/src/proxy.ts', true],
+    ['.oxlintrc.json', true],
+    ['.nvmrc', true],
     ['.gitignore', true],
     ['vitest.config.ts', true],
     ['vitest.integration.config.ts', true],

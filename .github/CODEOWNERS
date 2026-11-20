@@ -12,6 +12,8 @@
 /.gitleaks.toml @dnmitev
 /.coderabbit.yaml @dnmitev
 /.gitignore @dnmitev
+/.oxlintrc.json @dnmitev
+/.nvmrc @dnmitev
 /vitest.config.ts @dnmitev
 /vitest.integration.config.ts @dnmitev
 /vitest.stryker.config.ts @dnmitev

@@ -24,6 +24,8 @@ const TRUST_PATHS = [
   '.claude/settings.json',
   '.githooks/pre-commit',
   '.gitignore',
+  '.oxlintrc.json',
+  '.nvmrc',
   'vitest.config.ts',
   'vitest.integration.config.ts',
   'vitest.stryker.config.ts',
@@ -47,6 +49,12 @@ describe('CODEOWNERS', () => {
 
   it.each(TRUST_PATHS)('%s has an owner', (p) => {
     expect(owners(text, p)).toEqual(['@dnmitev']);
+  });
+
+  it('every rule is `/path owner`: no rule shape the test matcher would skip', () => {
+    const rules = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== '' && !l.startsWith('#'));
+    expect(rules.length).toBeGreaterThan(0);
+    for (const r of rules) expect(r, r).toMatch(/^\/\S+ @\S+$/);
   });
 
   it('does not claim ordinary source files', () => {
