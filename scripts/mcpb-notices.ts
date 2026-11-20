@@ -3,7 +3,8 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const NM = 'node_modules/';
-const LICENCE_FILE = /^(licen[sc]e|copying|notice)([.-].*)?$/i;
+const LICENCE_FILE = /^(licen[sc]e|copying)([.-].*)?$/i;
+const NOTICE_FILE = /^notice([.-].*)?$/i;
 
 /** Package directories (absolute, unique, sorted) for the node_modules inputs of an esbuild metafile; own code is ignored. */
 export function bundledPackageDirs(inputs: string[], root: string): string[] {
@@ -28,19 +29,24 @@ const licenceOf = (p: Pkg): string | undefined => {
   return undefined;
 };
 
-/** Deterministic notices text. Throws when a package has no licence field or no licence/notice file. */
+/** Deterministic notices text. Throws when a package has no licence field or no licence file with text (a NOTICE alone does not count). */
 export function buildNotices(dirs: string[]): string {
   const entries = dirs.map((dir) => {
     const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as Pkg;
     const id = `${pkg.name} ${pkg.version}`;
     const license = licenceOf(pkg);
     if (license === undefined) throw new Error(`${id}: package.json has no license field`);
-    const files = readdirSync(dir)
-      .filter((f) => LICENCE_FILE.test(f) && statSync(join(dir, f)).isFile())
-      .sort();
-    const texts = files.map((f) => ({ f, t: readFileSync(join(dir, f), 'utf8').trim() })).filter((x) => x.t !== '');
-    if (texts.length === 0) throw new Error(`${id}: no licence text found`);
-    const body = texts.map(({ f, t }) => `${f}:\n${t}`).join('\n\n');
+    const names = readdirSync(dir).filter((f) => statSync(join(dir, f)).isFile());
+    const read = (re: RegExp) =>
+      names
+        .filter((f) => re.test(f))
+        .sort()
+        .map((f) => ({ f, t: readFileSync(join(dir, f), 'utf8').trim() }))
+        .filter((x) => x.t !== '');
+    // The licence text must come from a licence file: a NOTICE (copyright statement) is added to it, never a substitute.
+    const licences = read(LICENCE_FILE);
+    if (licences.length === 0) throw new Error(`${id}: no licence text found`);
+    const body = [...licences, ...read(NOTICE_FILE)].map(({ f, t }) => `${f}:\n${t}`).join('\n\n');
     return { id, name: pkg.name, text: `== ${id} ==\nLicense: ${license}\n\n${body}\n` };
   });
   entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));

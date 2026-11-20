@@ -19,6 +19,7 @@ pkg('node_modules/@scope/alpha', { name: '@scope/alpha', version: '2.1.0', licen
 pkg('node_modules/zeta/node_modules/nested', { name: 'nested', version: '0.3.0', license: 'ISC' }, { 'LICENSE.md': 'Nested licence' });
 pkg('node_modules/nolicence', { name: 'nolicence', version: '1.0.0', license: 'MIT' });
 pkg('node_modules/blank', { name: 'blank', version: '1.0.0', license: 'MIT' }, { LICENSE: '  \n\n' });
+pkg('node_modules/noticeonly', { name: 'noticeonly', version: '1.0.0', license: 'MIT' }, { LICENSE: ' \n', NOTICE: 'Copyright (c) Someone' });
 pkg('node_modules/nofield', { name: 'nofield', version: '1.0.0' }, { LICENSE: 'text' });
 
 describe('bundledPackageDirs', () => {
@@ -62,6 +63,13 @@ describe('buildNotices', () => {
   });
   it('fails when the only licence file is empty or whitespace', () => {
     expect(() => buildNotices([join(root, 'node_modules/blank')])).toThrow(/blank.*licen[cs]e text/i);
+  });
+  it('fails when only a NOTICE has text: a notice is not the licence text', () => {
+    expect(() => buildNotices([join(root, 'node_modules/noticeonly')])).toThrow(/noticeonly.*licen[cs]e text/i);
+  });
+  it('fails when a package has only a NOTICE file and no licence file', () => {
+    pkg('node_modules/noticefile', { name: 'noticefile', version: '1.0.0', license: 'Apache-2.0' }, { NOTICE: 'Copyright (c) Someone' });
+    expect(() => buildNotices([join(root, 'node_modules/noticefile')])).toThrow(/noticefile.*licen[cs]e text/i);
   });
   it('fails when a bundled package declares no licence', () => {
     expect(() => buildNotices([join(root, 'node_modules/nofield')])).toThrow(/nofield.*license field/i);

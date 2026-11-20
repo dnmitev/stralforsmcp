@@ -51,10 +51,15 @@ describe('verify CLI', () => {
   const cli = join(import.meta.dirname, 'mcpb-verify.ts');
   const run = (...args: string[]) => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
   it('prints a fixed line and exits 1 when the archive cannot be read, without a stack or the OS error text', () => {
-    const r = run(join(tmpdir(), 'definitely-missing.mcpb'));
-    expect(r.status).toBe(1);
-    expect(r.stderr).toBe('mcpb-verify: cannot read the archive\n');
-    expect(r.stdout).toBe('');
+    const dir = mkdtempSync(join(tmpdir(), 'verify-missing-'));
+    try {
+      const r = run(join(dir, 'absent.mcpb')); // unique directory: no dependence on shared temp contents
+      expect(r.status).toBe(1);
+      expect(r.stderr).toBe('mcpb-verify: cannot read the archive\n');
+      expect(r.stdout).toBe('');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
   it('exits 2 with usage when no file is given', () => {
     const r = run();

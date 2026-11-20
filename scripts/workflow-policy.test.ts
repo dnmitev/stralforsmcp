@@ -492,7 +492,7 @@ describe('signing rules (R-18)', () => {
     expect(signingProblems(real.replace('      id-token: write # keyless', '      # id-token: write # keyless')).join()).toMatch(/id-token: write must/);
   });
   it('mutation: id-token granted to a second job', () => {
-    expect(signingProblems(real.replace('    runs-on: ubuntu-latest\n    timeout-minutes: 20\n    permissions:\n      contents: read\n', '    runs-on: ubuntu-latest\n    timeout-minutes: 20\n    permissions:\n      contents: read\n      id-token: write\n')).join()).toMatch(/id-token/);
+    expect(signingProblems(real.replace('    runs-on: ubuntu-latest\n    timeout-minutes: 20\n    permissions:\n      contents: read\n', '    runs-on: ubuntu-latest\n    timeout-minutes: 20\n    permissions:\n      contents: read\n      id-token: write\n')).join()).toMatch(/id-token: write must be granted to publish only \(found: [^)]*build-scan/);
   });
   it('mutation: unpinned cosign (no checksum)', () => {
     expect(signingProblems(real.replace(/ \| sha256sum -c -\n( +)chmod \+x/, '\n$1chmod +x')).join()).toMatch(/pinned by sha256/);
