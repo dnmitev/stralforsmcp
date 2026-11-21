@@ -62,9 +62,11 @@ describe('documentOutcome (A7, AC-4)', () => {
     ['rejected + delivered', ['refused', 'delivered'], 'delivered'],
     ['delivered first', ['delivered', 'refused'], 'delivered'],
     ['rejected + registered', ['refused', 'in_progress'], 'in_progress'],
-    ['rejected + unknown', ['refused', 'unknown'], 'in_progress'],
-    ['failed + unknown', ['failed', 'unknown'], 'in_progress'],
-    ['unknown alone is still in progress', ['unknown'], 'in_progress'],
+    ['rejected + unknown: an unknown status may be a later success', ['refused', 'unknown'], 'unknown'],
+    ['failed + unknown', ['failed', 'unknown'], 'unknown'],
+    ['unknown alone is unknown, not progress', ['unknown'], 'unknown'],
+    ['unknown + in progress is in progress', ['unknown', 'in_progress'], 'in_progress'],
+    ['unknown + delivered is delivered', ['unknown', 'delivered'], 'delivered'],
     ['rejected', ['refused'], 'refused'],
     ['cancelled + rejected', ['failed', 'refused'], 'refused'],
     ['rejected + cancelled', ['refused', 'failed'], 'refused'],
@@ -175,7 +177,7 @@ describe('minimiseDocument', () => {
     const c = receiverCanaries();
     const m = minimiseDocument(rawDoc(c, { channels: [channel('Rejected'), channel('SomethingNew', { channelId: 3 })] })) as { outcome: string; channels: { outcome: string; status: string }[] };
     expect(m.channels.map((x) => [x.status, x.outcome])).toEqual([['Rejected', 'refused'], ['other', 'unknown']]);
-    expect(m.outcome).toBe('in_progress');
+    expect(m.outcome).toBe('unknown');
   });
   it('a document without channels is unknown with an empty list', () => {
     const m = minimiseDocument(rawDoc(receiverCanaries(), { channels: undefined })) as { outcome: string; channels: unknown[] };

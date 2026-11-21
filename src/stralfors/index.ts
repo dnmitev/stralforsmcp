@@ -4,7 +4,9 @@ import type { Dispatcher } from 'undici';
 import { z } from 'zod';
 import { serverInfo } from '../server-info.ts';
 import type { Config, Profile } from './config.ts';
-import { ConfigError, StralforsError, SchemaError, WriteBlockedError, mapHttpError } from './errors.ts';
+import { currentSignal } from './abort.ts';
+import type { UpstreamLimit } from './limit.ts';
+import { BusyError, CancelledError, ConfigError, StralforsError, SchemaError, WriteBlockedError, mapHttpError } from './errors.ts';
 import { createAgent as defaultCreateAgent, isAllowed, send } from './http.ts';
 import { createLogger, type Logger } from './log.ts';
 import { operations } from './operations.ts';
@@ -37,6 +39,8 @@ export interface CreateClientOptions {
   createAgent?: typeof defaultCreateAgent;
   /** called with ok only: true after a swap, false on every failing tick, never for an unchanged tick; a throw or a rejected promise is swallowed */
   onCredentialReload?: (r: { ok: boolean }) => void;
+  /** shared per-pod cap on concurrent upstream requests (token fetches excluded); unset means unlimited */
+  upstreamLimit?: UpstreamLimit;
 }
 export interface InstrumentInfo { operation: string; method: string }
 // unanchored on purpose: an id hidden inside a segment (encoded separator, prefix) is still masked
@@ -160,10 +164,14 @@ export function createClient(o: CreateClientOptions) {
     }
     return instrument({ operation: opts.operation ?? 'raw', method }, async (): Promise<T> => {
     const started = now();
+    let acquired = false;
     try {
+      const signal = currentSignal();
+      if (signal?.aborted) throw new CancelledError('request cancelled by the caller', ctx); // before any token fetch or socket
+      if (o.upstreamLimit && !(acquired = o.upstreamLimit.tryAcquire())) throw new BusyError('upstream busy, try again shortly', ctx);
       const attempt = (t: Token) =>
         send(agent, url, {
-          method, body: JSON.stringify(body), ...limits,
+          method, body: JSON.stringify(body), ...limits, signal,
           headers: {
             authorization: `Bearer ${t.bearer()}`, accept: 'application/json', 'user-agent': `${serverInfo.name}/${serverInfo.version}`,
             ...(body === undefined ? {} : { 'content-type': 'application/json' }),
@@ -202,6 +210,8 @@ export function createClient(o: CreateClientOptions) {
         log[operation === 'healthV1' ? 'debug' : 'warn']({ ...ctx, method, pathTemplate, status: e.status, durationMs: now() - started, kind: e.kind, traceId: operation === 'healthV1' ? undefined : e.traceId }, 'request.failed');
       }
       throw e;
+    } finally {
+      if (acquired) o.upstreamLimit!.release(); // every path: success, error, timeout, cancel
     }
     }) as Promise<T>;
   }

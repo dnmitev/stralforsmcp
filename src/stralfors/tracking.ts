@@ -19,7 +19,8 @@ export function documentOutcome(channels: { outcome: Outcome }[], hist?: { deliv
   const has = (o: Outcome) => channels.some((c) => c.outcome === o);
   if (has('delivered') || (hist !== undefined && hist.total > 0 && hist.delivered === hist.total)) return 'delivered';
   if (channels.length === 0) return 'unknown';
-  if (has('in_progress') || has('unknown')) return 'in_progress';
+  if (has('in_progress')) return 'in_progress';
+  if (has('unknown')) return 'unknown'; // a status we do not know may be a later success: never shown as progress or as final
   return has('refused') ? 'refused' : 'failed';
 }
 

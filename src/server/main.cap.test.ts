@@ -50,3 +50,30 @@ describe('MCP_RULES_CACHE_S', () => {
     await expect(go({ MCP_RULES_CACHE_S: v })).rejects.toThrow('MCP_RULES_CACHE_S is invalid');
   });
 });
+
+describe('MCP_UPSTREAM_CONCURRENCY', () => {
+  // one shared limit for every client; its size is observed by filling it
+  const capOf = async (env: Record<string, string | undefined>) => {
+    const f = fixture();
+    const limits: unknown[] = [];
+    const { createClient } = await import('../stralfors/index.ts');
+    const s = await start({ ...base, ...env }, {
+      readFile: (p) => (p === 'x' ? f.text() : readFileSync(p, 'utf8')), stderr: { write: () => true }, audit: sink().audit, now: () => T, onSignal: () => undefined,
+      clientFactory: (o) => (limits.push(o.upstreamLimit), createClient(o)),
+    });
+    started.push(s);
+    const l = limits[0] as { tryAcquire(): boolean };
+    expect(limits.every((x) => x === l)).toBe(true);
+    let n = 0;
+    while (l.tryAcquire() && n < 2000) n++;
+    return n;
+  };
+  it('defaults to 16 and passes a set value on', async () => {
+    expect(await capOf({})).toBe(16);
+    expect(await capOf({ MCP_UPSTREAM_CONCURRENCY: '1000' })).toBe(1000);
+    expect(await capOf({ MCP_UPSTREAM_CONCURRENCY: '1' })).toBe(1);
+  });
+  it.each(['0', '1001', 'abc', '-1', '1.5', ''])('refuses %j', async (v) => {
+    await expect(go({ MCP_UPSTREAM_CONCURRENCY: v })).rejects.toThrow('MCP_UPSTREAM_CONCURRENCY is invalid');
+  });
+});

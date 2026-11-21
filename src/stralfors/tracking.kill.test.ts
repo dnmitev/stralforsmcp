@@ -11,11 +11,12 @@ describe('boundaries', () => {
     expect(documentOutcome(r, { delivered: 2, total: 1 })).toBe('refused');
     expect(documentOutcome(r, { delivered: 0, total: 0 })).toBe('refused');
   });
-  it('priority is delivered > in_progress/unknown > refused > failed, both orders', () => {
+  it('priority is delivered > in_progress > unknown > refused > failed, both orders', () => {
     const pairs: [string[], string][] = [
       [['delivered', 'in_progress'], 'delivered'], [['in_progress', 'delivered'], 'delivered'],
       [['in_progress', 'refused'], 'in_progress'], [['refused', 'in_progress'], 'in_progress'],
-      [['unknown', 'refused'], 'in_progress'], [['unknown', 'failed'], 'in_progress'], [['failed', 'unknown'], 'in_progress'],
+      [['unknown', 'refused'], 'unknown'], [['unknown', 'failed'], 'unknown'], [['failed', 'unknown'], 'unknown'],
+      [['unknown', 'in_progress'], 'in_progress'], [['in_progress', 'unknown'], 'in_progress'],
       [['refused', 'failed'], 'refused'], [['failed', 'refused'], 'refused'],
     ];
     for (const [c, e] of pairs) expect(documentOutcome(c.map((outcome) => ({ outcome })) as never), c.join()).toBe(e);

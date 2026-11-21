@@ -1,5 +1,6 @@
 import * as z from 'zod/v4';
-import { AgreementNotFoundError } from '../stralfors/errors.ts';
+import { currentSignal, withSignal } from '../stralfors/abort.ts';
+import { AgreementNotFoundError, CancelledError } from '../stralfors/errors.ts';
 import type { StralforsClient } from '../stralfors/index.ts';
 import { lookupRequest } from '../stralfors/operations.ts';
 import { mapLookup } from '../stralfors/lookup.ts';
@@ -19,11 +20,14 @@ export interface LookupDeps {
   clients: ReadonlyMap<string, Pick<StralforsClient, 'channelLookup' | 'channelLookupResult'>>;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
+  /** Starts the budget timer; returns its cancel. Default setTimeout (unref'd). */
+  timer?: (fire: () => void, ms: number) => () => void;
 }
 
 export function createChannelLookup(deps: LookupDeps): ToolDef<typeof lookupInput, typeof lookupOutput> {
   const now = deps.now ?? Date.now;
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const timer = deps.timer ?? ((fire: () => void, ms: number) => { const h = setTimeout(fire, ms); h.unref(); return () => clearTimeout(h); });
   return {
     spec: { name: 'channel_lookup', access: 'lookup' },
     title: 'Channel lookup',
@@ -34,6 +38,22 @@ export function createChannelLookup(deps: LookupDeps): ToolDef<typeof lookupInpu
     async run(args) {
       const { profile, client } = resolveProfile(deps.clients, args.profile);
       const deadline = now() + MAX_WAIT_MS; // one budget for the whole call, the POST included
+      // The budget also aborts whatever upstream request is in flight when it runs out, so no request outlives the call.
+      const budget = new AbortController();
+      const caller = currentSignal();
+      const stop = timer(() => budget.abort(), MAX_WAIT_MS);
+      try {
+        return await withSignal(caller ? AbortSignal.any([caller, budget.signal]) : budget.signal, () => poll(args, profile, client, deadline));
+      } catch (e) {
+        if (e instanceof CancelledError && budget.signal.aborted && !caller?.aborted) throw new ToolInputError(STILL_RUNNING, 'timeout');
+        throw e;
+      } finally {
+        stop();
+      }
+    },
+  };
+
+  async function poll(args: z.infer<typeof lookupInput>, profile: string, client: Pick<StralforsClient, 'channelLookup' | 'channelLookupResult'>, deadline: number): Promise<z.infer<typeof lookupOutput>> {
       const { correlationId } = await client.channelLookup({ channels: args.channels, candidates: args.candidates });
       for (let answer; ; ) {
         if (now() >= deadline) throw new ToolInputError(STILL_RUNNING, 'timeout');
@@ -47,6 +67,5 @@ export function createChannelLookup(deps: LookupDeps): ToolDef<typeof lookupInpu
         const { results, unrecognised } = mapLookup(args.channels, args.candidates, answer.results);
         return { profile, results, unrecognised, checkedAt: new Date(now()).toISOString() };
       }
-    },
-  };
+  }
 }

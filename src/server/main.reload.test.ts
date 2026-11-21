@@ -59,7 +59,7 @@ describe('cert reload through start()', () => {
     const r = rig();
     await go({}, r.clientFactory);
     expect(r.timers.map((t) => t.ms)).toEqual([60_000]);
-    expect(Object.keys(r.options[0]!).sort()).toEqual(['config', 'instrument', 'logger', 'now', 'onBlocked', 'onCredentialReload', 'profileId']);
+    expect(Object.keys(r.options[0]!).sort()).toEqual(['config', 'instrument', 'logger', 'now', 'onBlocked', 'onCredentialReload', 'profileId', 'upstreamLimit']);
     expect(r.options[0]!.config.certReloadS).toBe(60);
   });
 
