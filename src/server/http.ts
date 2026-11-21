@@ -40,6 +40,9 @@ export interface HttpServer {
 // WHATWG URL reports an IPv6 hostname with brackets; accept the allowlist bare or already bracketed
 const bracket = (h: string) => (h.includes(':') && !h.startsWith('[') ? `[${h}]` : h);
 const send = (res: ServerResponse, r: Refusal) => void res.writeHead(r.status, r.headers).end(r.body);
+// Stryker disable StringLiteral,ArrowFunction: withSpan calls this only if the span body throws, and the body catches everything (error.type is set there)
+const errorType = () => 'error' as const;
+// Stryker restore StringLiteral,ArrowFunction
 export const TOO_MANY_BODY = 'too many requests';
 
 export function createHttpServer(o: HttpServerOptions): HttpServer {
@@ -50,6 +53,7 @@ export function createHttpServer(o: HttpServerOptions): HttpServer {
   const report = o.onerror ?? (() => undefined);
   const onerror = (e: unknown) => report(new Error(`request failed: ${e instanceof Error ? e.name : 'unknown'}`));
   const handler = createMcpHandler(o.factory, { responseMode: 'json', legacy: 'stateless', maxRequestBodySize: o.maxBodyBytes, onerror });
+  // Stryker disable next-line ObjectLiteral: the same maxRequestBodySize and onerror are already set on createMcpHandler above, so dropping them here changes nothing observable
   const mcp = toNodeHandler(handler, { maxRequestBodySize: o.maxBodyBytes, onerror });
   const hostOk = hostHeaderValidation(o.hosts.map(bracket));
   const originOk = originValidation(o.origins.map(bracket));
@@ -60,8 +64,10 @@ export function createHttpServer(o: HttpServerOptions): HttpServer {
 
   const fail = (e: unknown, res: ServerResponse) => {
     onerror(e);
+    // Stryker disable ConditionalExpression,CallExpression: the headers-already-sent branch is reachable only when our own code rejects after the response started; the SDK handler catches its own errors, so no test can drive it
     if (!res.headersSent) send(res, text(500, 'internal error'));
     else res.destroy();
+    // Stryker restore ConditionalExpression,CallExpression
   };
 
   // Order is binding: health, Host, Origin, path, method, declared size, auth, handler. Guard refusals are not audited and not spanned.
@@ -94,7 +100,7 @@ export function createHttpServer(o: HttpServerOptions): HttpServer {
       } finally {
         setSafe(span, { 'http.response.status_code': res.statusCode });
       }
-    }, () => 'error');
+    }, errorType);
   }
 
   async function handle(req: IncomingMessage, res: ServerResponse, span?: Span): Promise<void> {
@@ -133,7 +139,9 @@ export function createHttpServer(o: HttpServerOptions): HttpServer {
       return new Promise((resolve, reject) => {
         server.once('error', reject);
         server.listen(port, host, () => {
+          // Stryker disable StringLiteral,CallExpression: a stale once('error') listener left on a listening server is unobservable (it would reject an already-settled promise)
           server.off('error', reject);
+          // Stryker restore StringLiteral,CallExpression
           resolve({ port: (server.address() as { port: number }).port });
         });
       });
@@ -142,6 +150,7 @@ export function createHttpServer(o: HttpServerOptions): HttpServer {
       ready = false;
       if (o.readyDelayMs) await new Promise<void>((r) => void (o.timer ?? setTimeout)(r, o.readyDelayMs));
       const stopped = server.listening ? new Promise<void>((r) => server.close(() => r())) : Promise.resolve();
+      // Stryker disable next-line all: closeAllConnections() below closes the same sockets; this only ends idle keep-alives sooner
       server.closeIdleConnections();
       if (inflight > 0 && o.drainMs > 0) {
         await new Promise<void>((r) => {

@@ -92,3 +92,7 @@ export const canaries = () => {
 /** Plain-JSON view of finished spans (ReadableSpan itself is circular). */
 export const dump = (spans: ReadableSpan[]): string =>
   JSON.stringify(spans.map((s) => ({ name: s.name, kind: s.kind, attributes: s.attributes, events: s.events, links: s.links, status: s.status, resource: s.resource.attributes, parent: s.parentSpanContext, ctx: s.spanContext() })));
+
+/** Scanner behind the privacy canary tests: every (sink, secret) pair where the secret shows up. Empty means clean. */
+export const leaks = (sinks: Record<string, string>, secrets: string[]): string[] =>
+  Object.entries(sinks).flatMap(([name, text]) => secrets.filter((v) => v !== '' && text.includes(v)).map((v) => `${name} has ${v.slice(0, 12)}`));
