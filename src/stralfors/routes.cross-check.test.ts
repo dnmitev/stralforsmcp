@@ -119,9 +119,11 @@ describe('route cross-check', () => {
     fake = await startFakeApi({ pki, api: (_r, res) => json(res, 500, { message: 'upstream down' }) });
     const mem = memoryLogger();
     const { client } = testClient(pki, fake, { logger: mem.logger });
+    // message plus every enumerable field: raw upstream data must stay non-enumerable
+    const shown = (e: Error) => `${e.message} ${JSON.stringify(e)}`;
     const errors = [
-      await client.channelLookup({ channels: ['EDI'], candidates: [ID.digits] }).then(() => '', (e: Error) => e.message),
-      await client.validateInvoice(validBody).then(() => '', (e: Error) => e.message),
+      await client.channelLookup({ channels: ['EDI'], candidates: [ID.digits] }).then(() => '', shown),
+      await client.validateInvoice(validBody).then(() => '', shown),
     ];
     await client.close();
     // presence control: both calls really went upstream, with the ids in their bodies
