@@ -125,10 +125,11 @@ describe('body size', () => {
 
   it('a chunked body above the limit is refused by the SDK and never reaches the factory', async () => {
     const h = await startHttp();
-    const r = await h.post({ body: 'x'.repeat(2048), headers: { 'transfer-encoding': 'chunked' } });
+    // keep-alive on purpose: node answers `connection: close` to a client that asked for it, which would hide which path refused
+    const r = await h.post({ body: 'x'.repeat(2048), headers: { 'transfer-encoding': 'chunked', connection: 'keep-alive' } });
     expect(r.status).toBe(413);
     expect(h.calls).toEqual([]);
-    // refused by our own toNodeHandler limit (maxBodyBytes), not the SDK's 4 MiB default: it closes the connection and does not call onerror
+    // refused by our own toNodeHandler limit (maxBodyBytes), not the SDK's 4 MiB default: only that path closes the connection, and it does not call onerror
     expect(r.headers.connection).toBe('close');
     expect(h.errors).toEqual([]);
   });
