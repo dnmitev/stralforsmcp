@@ -98,6 +98,43 @@ describe('localCheck certainty (never a false invalid)', () => {
     expect(localCheck(doc, [L('1', P, ['Frobnicate', 'ValidChannels: A', 'ValidDefaultChannel: A', 'StartDateNotPastEndDateExpected', 'ExactCasingExpected', 'FileNameExpected',
       'RequiredWhen: x = 1', 'InvalidWhen: x = 1', 'ValidationCriteria: note', 'ArrayWithValidItemsExpected', 'HasDependencies (AnyRequired): #2'])])).toEqual([]);
   });
+  describe('vendor regex dialect (.NET) and values where JS and .NET disagree', () => {
+    const one = (pattern: string, value: string) => localCheck({ a: { b: value } }, [L('1', P, [`ExpectedPattern: ${pattern}`])], TODAY).length;
+    it.each([
+      ['(?i)^abc$', 'ABC!'], ['(?x)^a b$', 'x'], ['^(?n:a)$', 'x'], ['\\Aabc', 'x'], ['abc\\Z', 'x'], ['abc\\z', 'x'], ['\\Gabc', 'x'],
+      ['^a(?#note)b$', 'x'], ['^(?>a+)b$', 'x'], ['^(?(a)b|c)$', 'x'], ['^(?<o>a)(?<c-o>b)$', 'x'], ["^(?'n'a)$", 'x'],
+      ['^\\p{IsGreek}+$', 'x'], ['^\\P{IsBasicLatin}$', 'x'], ['^\\p{L}+$', 'ABC'], ['^\\p{Lu}$', 'Q'], ['^\\P{N}$', 'a'],
+      ['^[a-z-[aeiou]]+$', 'b'], ['^[\\w-[\\d]]+$', 'x'],
+    ])('skips .NET-only syntax %s', (pattern, value) => {
+      expect(one(pattern, value)).toBe(0);
+    });
+    it.each([
+      ['^\\d{3}$', '12'], ['^[A-Z]{2}\\d+$', 'a1'], ['^(ab|cd)x$', 'abx!'], ['^(?:ab)$', 'x'], ['^(?i:abc)$', 'x'], ['^(?=a)a$', 'b'], ['^a\\\\Aq$', 'x'], ['^a\\\\p{L}$', 'x'], ['^[a\\-z]$', 'q'], ['^a-b$', 'x'], ['^(?<n>a)$', 'b'], ['^[(?i)]$', 'x'], ['^a\\\\Z$', 'aZ'],
+    ])('still checks common-subset pattern %s', (pattern, value) => {
+      expect(one(pattern, value)).toBe(1);
+    });
+    it.each(['^\\w+$', '^\\W*$', '^\\d+$', '^\\D+$', '^x\\b', '\\B', '^\\s*$', '^\\S+$'])('skips %s for a non-ASCII value', (pattern) => {
+      expect(one(pattern, 'Øresund 2')).toBe(0);
+    });
+    it('still checks shorthand classes against ASCII values, and non-shorthand patterns against non-ASCII values', () => {
+      expect(one('^\\w+$', 'a b')).toBe(1);
+      expect(one('^\\d+$', '12a')).toBe(1);
+      expect(one('^[a-z]+$', 'Øre')).toBe(1);
+      expect(one('^a\\\\w$', 'Ø')).toBe(1); // \\w is a literal backslash and w, not a class
+      expect(one('^[\\\\]d$', 'Ø')).toBe(1);
+    });
+    it('skips a pattern with an end anchor when the value ends with a line feed', () => {
+      expect(one('^abc$', 'abc\n')).toBe(0);
+      expect(one('^abd$', 'abc\n')).toBe(0);
+      expect(one('^abd', 'abc\n')).toBe(1); // no end anchor: same meaning in both engines
+      expect(one('^a[$]$', 'b')).toBe(1);
+      expect(one('^a\\$', 'b\n')).toBe(1); // escaped dollar is a literal
+      expect(one('^a[$]', 'b\n')).toBe(1); // a dollar inside a class is a literal
+      expect(one('^a[x$]', 'b\n')).toBe(1); // still inside the class after its first member
+      expect(one('^a[x]$', 'b\n')).toBe(0); // the class ends, the dollar after it is an anchor
+      expect(one('^a[\\]$]', 'b\n')).toBe(1); // an escaped bracket does not end the class, so its dollar stays literal
+    });
+  });
   it('an unknown kind does not hide a known one in the same rule', () => {
     expect(localCheck({ a: {} }, [L('1', P, ['Frobnicate', 'Required'])]).map((f) => f.kind)).toEqual(['required']);
   });

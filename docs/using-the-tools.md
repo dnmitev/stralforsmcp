@@ -57,7 +57,7 @@ Input: 1 to 5 `channels`. Returns the vendor's example shape without the agreeme
 
 > Validate this invoice for agreement `main` on channel EDI: `<paste the document>`
 
-Input: `document` (`documentHeader` and `invoice`), `agreement`, optional `consignmentId`. It creates nothing. Three stages, stopping at the first with findings: **input** shape, **local** check against the cached rules, the vendor's own **dry run**. `valid: true` only after the dry run accepts the document. If `moreMayFollow` is true, fix the findings and call again: the vendor reports header-level faults first and template-level faults on the next round. In PROD it is off unless the operator enabled it; use synthetic data only.
+Input: `document` (`documentHeader` and `invoice`), `agreement`, optional `consignmentId`. It creates nothing. Three stages, stopping at the first with findings: **input** shape, **local** check against the cached rules, the vendor's own **dry run**. The local stage stops the run only for a single channel whose rules were fetched in the last 5 minutes; otherwise the dry run decides. `templateParameter.standardId`, when given, must be a whole number from 0 to 1000000. `valid: true` only after the dry run accepts the document. If `moreMayFollow` is true, fix the findings and call again: the vendor reports header-level faults first and template-level faults on the next round. In PROD it is off unless the operator enabled it; use synthetic data only.
 
 ### `track_document`
 

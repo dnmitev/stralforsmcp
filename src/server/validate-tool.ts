@@ -15,6 +15,9 @@ const MAX_CHANNELS = 5;
 const CHANNEL_NAME = /^[A-Za-z0-9]{1,40}$/;
 const MAX_TEMPLATE_ID = 1_000_000;
 const CHANNEL_PATH = 'document.documentHeader.channelPriority';
+const TEMPLATE_PATH = 'document.documentHeader.templateParameter.standardId';
+// ponytail: fixed window; local findings from rules older than this no longer stop the dry run (a vendor relaxation must not block for the cache TTL)
+const LOCAL_AUTHORITY_MS = 300_000;
 
 const part = z.record(z.string(), z.unknown()).optional();
 export const validateInput = z.object({
@@ -46,6 +49,7 @@ export interface ValidateDeps {
   config: Pick<Config, 'profiles' | 'env'>;
   cache: RulesCache;
   uuid?: () => string;
+  now?: () => number;
 }
 
 const RULES_UNAVAILABLE: Finding = { source: 'local', path: '', kind: 'rules_unavailable', message: 'The rules of one channel could not be loaded, so they were not checked locally; the dry run still decides.' };
@@ -91,17 +95,26 @@ export function createValidateInvoice(deps: ValidateDeps): ToolDef<typeof valida
       if (channels.length > MAX_CHANNELS) return result('local', [{ source: 'local', path: CHANNEL_PATH, kind: 'shape', message: `${CHANNEL_PATH} may list at most ${MAX_CHANNELS} channels.` }]);
       if (channels.some((c) => !CHANNEL_NAME.test(c))) return result('local', [{ source: 'local', path: CHANNEL_PATH, kind: 'shape', message: `${CHANNEL_PATH} entries must be 1 to 40 letters or digits.` }]);
       const sid = (documentHeader.templateParameter as { standardId?: unknown } | undefined)?.standardId;
-      const templateStandardId = typeof sid === 'number' && Number.isInteger(sid) && sid >= 0 && sid <= MAX_TEMPLATE_ID ? sid : 0;
+      if (sid !== undefined && !(typeof sid === 'number' && Number.isInteger(sid) && sid >= 0 && sid <= MAX_TEMPLATE_ID)) {
+        return result('local', [{ source: 'local', path: TEMPLATE_PATH, kind: 'shape', message: `${TEMPLATE_PATH} must be a whole number from 0 to ${MAX_TEMPLATE_ID}.` }]);
+      }
+      const templateStandardId = sid ?? 0;
 
-      const settled = await Promise.allSettled(channels.map((c) => loadRules(deps.cache, client, profile, c, templateStandardId)));
+      const now = deps.now ?? Date.now;
+      const settled = await Promise.allSettled(channels.map((c) => loadRules(deps.cache, client, profile, c, templateStandardId, now)));
       const unavailable: Finding[] = [];
       const local = [];
+      // The vendor applies one channel's rules, not their union, and may relax a rule while ours is cached: local findings are
+      // certain (and stop the dry run) only for one channel with rules fetched in the last LOCAL_AUTHORITY_MS (ADR 0017 item 3).
+      let authoritative = channels.length === 1;
       for (const s of settled) {
-        if (s.status === 'fulfilled') local.push(...s.value.local);
-        else if (s.reason instanceof StralforsError) unavailable.push({ ...RULES_UNAVAILABLE });
+        if (s.status === 'fulfilled') {
+          local.push(...s.value.local);
+          if (now() - s.value.fetchedAt > LOCAL_AUTHORITY_MS) authoritative = false;
+        } else if (s.reason instanceof StralforsError) unavailable.push({ ...RULES_UNAVAILABLE });
         else throw s.reason;
       }
-      const found = localCheck(args.document, local);
+      const found = authoritative ? localCheck(args.document, local) : [];
       if (found.length > 0) return result('local', [...found, ...unavailable]);
 
       let answer;

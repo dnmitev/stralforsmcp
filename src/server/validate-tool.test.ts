@@ -108,11 +108,19 @@ describe('stage order and short circuit', () => {
     expect(x.requests(RULES).map((r) => queryOf(r.url).get('channel')).sort()).toEqual(['X', 'Y']);
   });
   it.each([
-    [{ standardId: 3 }, '3'], [{ standardId: 0 }, '0'], [{ standardId: -1 }, '0'], [{ standardId: 1.5 }, '0'], [{ standardId: 1_000_000 }, '1000000'], [{ standardId: 1_000_001 }, '0'], [{ standardId: '2' }, '0'], [undefined, '0'],
+    [{ standardId: 3 }, '3'], [{ standardId: 0 }, '0'], [{ standardId: 1_000_000 }, '1000000'], [{}, '0'], [undefined, '0'],
   ])('templateParameter %j requests templateStandardId %s', async (tp, expected) => {
     const x = await world();
     await x.run({ document: doc(['X'], {}, tp === undefined ? {} : { templateParameter: tp }) });
     expect(queryOf(x.requests(RULES)[0]!.url).get('templateStandardId')).toBe(expected);
+  });
+  it.each([[-1], [1.5], [1_000_001], ['2'], [null], [Number.NaN]])('standardId %j: shape finding at local, no rules fetch, no dry run', async (sid) => {
+    const x = await world();
+    const r = await x.run({ document: doc(['X'], {}, { templateParameter: { standardId: sid } }) });
+    expect(r).toEqual({ valid: false, stage: 'local', moreMayFollow: true, findings: [{ source: 'local', path: 'document.documentHeader.templateParameter.standardId', kind: 'shape',
+      message: 'document.documentHeader.templateParameter.standardId must be a whole number from 0 to 1000000.' }] });
+    expect(x.requests(RULES)).toHaveLength(0);
+    expect(x.requests(VALIDATE)).toHaveLength(0);
   });
   it('a channel name outside [A-Za-z0-9]{1,40}: shape finding on channelPriority, stage local, no upstream call', async () => {
     const x = await world();
@@ -264,13 +272,13 @@ describe('rules_unavailable', () => {
     expect(r.findings).toEqual([expect.objectContaining({ source: 'local', kind: 'rules_unavailable' })]);
     expect(JSON.stringify(r)).not.toContain('CHANCANARY');
   });
-  it('one finding per failing channel; the other channel is still checked and its findings stop the run at local', async () => {
+  it('one finding per failing channel; with two channels local findings do not stop the run, the dry run decides', async () => {
     const x = await world({ rules: { Y: [REQ_HEADER] } });
     x.routes[RULES] = (req, res) => (queryOf(req.url!).get('channel') === 'X' ? json(res, 403, {}) : json(res, 200, { channel: 'Y', rules: [REQ_HEADER] }));
     const r = await x.run({ document: doc(['X', 'Y']) });
-    expect(r.stage).toBe('local');
-    expect(r.findings.map((f) => f.kind).sort()).toEqual(['required', 'rules_unavailable']);
-    expect(x.requests(VALIDATE)).toHaveLength(0);
+    expect(r.stage).toBe('dry_run');
+    expect(r.findings.map((f) => f.kind)).toEqual(['rules_unavailable']);
+    expect(x.requests(VALIDATE)).toHaveLength(1);
   });
   it('both channels failing: two findings, dry run runs, never valid', async () => {
     const x = await world();
@@ -429,5 +437,42 @@ describe('rules cache shared with get_rules', () => {
     await x.run({ document: doc() });
     await x.run({ document: doc(['X'], {}, { templateParameter: { standardId: 2 } }) });
     expect(x.requests(RULES)).toHaveLength(2);
+  });
+});
+
+describe('local stage authority: one channel and rules fetched at most 300 s ago (ADR 0017 item 3)', () => {
+  const stub = () => {
+    const calls = { rules: 0, validate: 0 };
+    const client = {
+      rules: async () => { calls.rules++; return { channel: 'X', rules: [REQ_HEADER] }; },
+      validateInvoice: async () => { calls.validate++; return {}; },
+    };
+    return { calls, client };
+  };
+  const setup = async () => {
+    const x = await world();
+    const { calls, client } = stub();
+    let t = 1_000_000;
+    const tool = createValidateInvoice({ clients: new Map([['b', client as never]]), config: x.config, cache: createRulesCache({ ttlMs: 3_600_000, now: () => t }), now: () => t });
+    return { calls, run: (d = doc()) => tool.run({ profile: 'b', document: d } as never, ctx()), advance: (ms: number) => void (t += ms) };
+  };
+  it('fresh rules and one channel: local findings stop the run', async () => {
+    const s = await setup();
+    expect((await s.run()).stage).toBe('local');
+    s.advance(300_000);
+    expect((await s.run()).stage).toBe('local');
+    expect(s.calls).toEqual({ rules: 1, validate: 0 });
+  });
+  it('rules older than 300 s: the cached rules are used but the dry run decides, valid true possible', async () => {
+    const s = await setup();
+    await s.run();
+    s.advance(300_001);
+    expect(await s.run()).toEqual({ valid: true, stage: 'passed', findings: [], moreMayFollow: false });
+    expect(s.calls).toEqual({ rules: 1, validate: 1 });
+  });
+  it('two channels: local findings never stop the run', async () => {
+    const s = await setup();
+    expect((await s.run(doc(['X', 'Y']))).stage).toBe('passed');
+    expect(s.calls).toEqual({ rules: 2, validate: 1 });
   });
 });
