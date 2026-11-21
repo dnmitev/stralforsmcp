@@ -63,6 +63,16 @@ describe('PROD near-miss paths are denied', () => {
   ])('GET %s denied', (path) => expect(isAllowed(p, 'GET', path)).toBe(false));
 });
 
+describe('PROD policy with allowWrite forced on (config refuses it; the guard must hold anyway)', () => {
+  const p = { env: 'prod' as const, allowWrite: true, prodValidateEnabled: true };
+  it('opens nothing beyond the reads and the exact dry run', () => {
+    for (const path of PROD_GETS) for (const v of VERBS) expect(isAllowed(p, v, path), `${v} ${path}`).toBe(v === 'GET');
+    for (const path of ROUTES_NEVER_PROD.filter((x) => x !== VALIDATE)) for (const v of VERBS) expect(isAllowed(p, v, path), `${v} ${path}`).toBe(false);
+    expect(isAllowed(p, 'PUT', `${VALIDATE}?test=true`)).toBe(true);
+    for (const path of [VALIDATE, `${VALIDATE}?test=false`]) for (const v of VERBS) expect(isAllowed(p, v, path), `${v} ${path}`).toBe(false);
+  });
+});
+
 describe('TEST policy', () => {
   it('GET anything under a route, the exact dry run and the exact lookup POST; no other write', () => {
     expect(isAllowed(test, 'GET', `${A}/v2/invoices/anything`)).toBe(true);

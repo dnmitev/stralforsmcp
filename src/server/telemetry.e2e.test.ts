@@ -188,6 +188,8 @@ describe('privacy canary: every path, every sink', () => {
     expect(sinks.logs, 'logs present').not.toBe('');
     expect(sinks.audit, 'audit present').toContain('whoami');
     const secrets = [c.token, c.user, c.agreement, c.path, c.query, c.body, c.ua, A, ...W.state.tp.secrets, W.state.tp.uuid.a, W.state.tp.uuid.b, W.state.tp.uuid.aNoLabel];
+    // an accidentally empty canary would match nothing and pass: every secret must be a real, non-empty string
+    for (const v of secrets) expect(typeof v === 'string' && v.length > 0, `empty secret ${String(v)}`).toBe(true);
     expect(leaks(sinks, secrets)).toEqual([]);
     // the end user id (a token-list id) is in the audit only
     for (const name of ['spans', 'metrics', 'logs'] as const) expect(sinks[name], name).not.toContain('"u1"');

@@ -128,6 +128,9 @@ describe('body size', () => {
     const r = await h.post({ body: 'x'.repeat(2048), headers: { 'transfer-encoding': 'chunked' } });
     expect(r.status).toBe(413);
     expect(h.calls).toEqual([]);
+    // refused by our own toNodeHandler limit (maxBodyBytes), not the SDK's 4 MiB default: it closes the connection and does not call onerror
+    expect(r.headers.connection).toBe('close');
+    expect(h.errors).toEqual([]);
   });
 });
 

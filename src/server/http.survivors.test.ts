@@ -31,6 +31,11 @@ describe('listen after close', () => {
     await h.srv.close();
     await expect(h.srv.listen(0)).rejects.toThrow('server is closed');
   });
+
+  it('a successful listen leaves no startup error listener behind', async () => {
+    const h = await startHttp();
+    expect(h.srv.server.listenerCount('error')).toBe(0);
+  });
 });
 
 describe('duration histogram', () => {
