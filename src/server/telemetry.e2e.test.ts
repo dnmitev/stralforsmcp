@@ -6,7 +6,7 @@ import { SpanKind } from '@opentelemetry/api';
 import { describe, expect, it } from 'vitest';
 import { generateToken } from '../auth/index.ts';
 import { INSTRUMENTS } from '../telemetry/instruments.ts';
-import { canaries, get, hist, memTelemetry, pick, dump } from '../../test/helpers/telemetry.ts';
+import { canaries, get, hist, memTelemetry, pick, dump, leaks } from '../../test/helpers/telemetry.ts';
 import { useStartWorld } from '../../test/helpers/start.ts';
 import { send, INIT, MCP_HEADERS } from '../../test/helpers/server.ts';
 import { json } from '../../test/helpers/api.ts';
@@ -159,6 +159,11 @@ describe('correlation across spans, logs and audit', () => {
 });
 
 describe('privacy canary: every path, every sink', () => {
+  it('positive control: the scanner reports a canary that really is in a sink', () => {
+    const c = canaries();
+    expect(leaks({ spans: '{}', logs: `line ${c.token} end` }, [c.token, c.user])).toEqual([`logs has ${c.token.slice(0, 12)}`]);
+  });
+
   it('fake token, ids and payload text appear in no span, metric label, log line or audit line', async () => {
     const m = memTelemetry();
     const c = canaries();
@@ -174,11 +179,18 @@ describe('privacy canary: every path, every sink', () => {
     W.api.reply.current = (_q, res) => json(res, 200, ['eInvoice']);
     await W.call('modern', b.s.port, A, 'list_channels', { profile: 'a' }); // ok
     await W.call('modern', b.s.port, A, 'whoami', {});
-    await new Promise((r) => setTimeout(r, 30));
+    // presence control (R-32): scan only once every sink holds the data the calls above must have produced, so a slow export cannot make the check pass on empty sinks
+    await until(async () => { const t = (await get(b.s.metricsPort, '/metrics')).text; return t.includes('operation="channels"') && t.includes('tool="whoami"'); });
     const text = (await get(b.s.metricsPort, '/metrics')).text;
     const sinks = { spans: dump(m.spans()), metrics: text, logs: b.err.join(''), audit: JSON.stringify(b.audit()) };
+    expect(sinks.spans, 'spans present').toContain('stralfors.request');
+    expect(sinks.metrics, 'metrics present').toContain('operation="channels"');
+    expect(sinks.logs, 'logs present').not.toBe('');
+    expect(sinks.audit, 'audit present').toContain('whoami');
     const secrets = [c.token, c.user, c.agreement, c.path, c.query, c.body, c.ua, A, ...W.state.tp.secrets, W.state.tp.uuid.a, W.state.tp.uuid.b, W.state.tp.uuid.aNoLabel];
-    for (const [name, text] of Object.entries(sinks)) for (const v of secrets) expect(text, `${name} has ${v.slice(0, 12)}`).not.toContain(v);
+    // an accidentally empty canary would match nothing and pass: every secret must be a real, non-empty string
+    for (const v of secrets) expect(typeof v === 'string' && v.length > 0, `empty secret ${String(v)}`).toBe(true);
+    expect(leaks(sinks, secrets)).toEqual([]);
     // the end user id (a token-list id) is in the audit only
     for (const name of ['spans', 'metrics', 'logs'] as const) expect(sinks[name], name).not.toContain('"u1"');
     expect(sinks.metrics).not.toMatch(/="u1"/);

@@ -40,6 +40,9 @@ export interface HttpServer {
 // WHATWG URL reports an IPv6 hostname with brackets; accept the allowlist bare or already bracketed
 const bracket = (h: string) => (h.includes(':') && !h.startsWith('[') ? `[${h}]` : h);
 const send = (res: ServerResponse, r: Refusal) => void res.writeHead(r.status, r.headers).end(r.body);
+// Stryker disable StringLiteral,ArrowFunction: withSpan calls this only if the span body itself throws; handle() failures are caught there, so only a throwing `onerror` callback inside fail() gets here
+const errorType = () => 'error' as const;
+// Stryker restore StringLiteral,ArrowFunction
 export const TOO_MANY_BODY = 'too many requests';
 
 export function createHttpServer(o: HttpServerOptions): HttpServer {
@@ -49,8 +52,10 @@ export function createHttpServer(o: HttpServerOptions): HttpServer {
   // Only a fixed message and the error's class name leave here: SDK/URL errors can carry the request target or body in enumerable props.
   const report = o.onerror ?? (() => undefined);
   const onerror = (e: unknown) => report(new Error(`request failed: ${e instanceof Error ? e.name : 'unknown'}`));
-  const handler = createMcpHandler(o.factory, { responseMode: 'json', legacy: 'stateless', maxRequestBodySize: o.maxBodyBytes, onerror });
-  const mcp = toNodeHandler(handler, { maxRequestBodySize: o.maxBodyBytes, onerror });
+  // one options object for both: toNodeHandler reads the body itself (its own default is 4 MiB), so the two limits must never diverge
+  const limits = { maxRequestBodySize: o.maxBodyBytes, onerror };
+  const handler = createMcpHandler(o.factory, { responseMode: 'json', legacy: 'stateless', ...limits });
+  const mcp = toNodeHandler(handler, limits);
   const hostOk = hostHeaderValidation(o.hosts.map(bracket));
   const originOk = originValidation(o.origins.map(bracket));
   let ready = true;
@@ -61,6 +66,7 @@ export function createHttpServer(o: HttpServerOptions): HttpServer {
   const fail = (e: unknown, res: ServerResponse) => {
     onerror(e);
     if (!res.headersSent) send(res, text(500, 'internal error'));
+    // reachable only when our own code rejects after the response started; the SDK handler catches its own errors, so no test drives it (Stryker reports it as NoCoverage)
     else res.destroy();
   };
 
@@ -94,7 +100,7 @@ export function createHttpServer(o: HttpServerOptions): HttpServer {
       } finally {
         setSafe(span, { 'http.response.status_code': res.statusCode });
       }
-    }, () => 'error');
+    }, errorType);
   }
 
   async function handle(req: IncomingMessage, res: ServerResponse, span?: Span): Promise<void> {
@@ -142,6 +148,7 @@ export function createHttpServer(o: HttpServerOptions): HttpServer {
       ready = false;
       if (o.readyDelayMs) await new Promise<void>((r) => void (o.timer ?? setTimeout)(r, o.readyDelayMs));
       const stopped = server.listening ? new Promise<void>((r) => server.close(() => r())) : Promise.resolve();
+      // Stryker disable next-line all: closeAllConnections() below closes the same sockets; this only ends idle keep-alives sooner
       server.closeIdleConnections();
       if (inflight > 0 && o.drainMs > 0) {
         await new Promise<void>((r) => {

@@ -17,6 +17,7 @@
     "src/server/auth.ts",
     "src/server/tools.ts",
     "src/server/guards.ts",
+    "src/server/http.ts",
     "src/server/channels.ts",
     "src/server/profile.ts",
     "src/server/rules-tools.ts",
@@ -57,9 +58,9 @@
     "fileName": "reports/mutation/mutation.html"
   },
   "thresholds": {
-    "high": 80,
-    "low": 70,
-    "break": 70
+    "high": 95,
+    "low": 91,
+    "break": 91
   },
   "tsconfigFile": "none",
   "ignorePatterns": [
