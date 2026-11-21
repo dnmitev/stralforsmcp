@@ -64,6 +64,26 @@ function risky(p: string): boolean {
   }
   return false;
 }
+/**
+ * True for vendor (.NET) syntax that JS accepts but reads differently: \A \Z \z \G are identity escapes in JS, \p{Is...} a literal.
+ * Other .NET-only constructs (inline options, comments, atomic, conditional and balancing groups, quoted names) make
+ * new RegExp throw and are skipped there. Either way the dry run decides (ADR 0017 item 3).
+ */
+function dotnetOnly(p: string): boolean { return /(?<!\\)(?:\\\\)*\\(?:[AZzG]|[pP]\{Is)/.test(p); }
+/** Shorthand classes and word boundaries match Unicode in .NET but ASCII only in JS; an unescaped $ also matches before a final line feed in .NET. */
+function unicodeSensitive(p: string): boolean { return /(?<!\\)(?:\\\\)*\\[wWdDbBsS]/.test(p); }
+function endAnchored(p: string): boolean {
+  let inClass = false;
+  for (let i = 0; i < p.length; i++) {
+    const ch = p[i]!;
+    if (ch === '\\') { i++; continue; }
+    if (inClass) { if (ch === ']') inClass = false; continue; }
+    if (ch === '[') { inClass = true; continue; }
+    if (ch === '$') return true;
+  }
+  return false;
+}
+const NON_ASCII = /[^ -~\t\n\r]/; // anything outside printable ASCII and common whitespace
 // The scan above cannot be complete, so every match also runs under a hard time budget: the engine is interrupted when it overruns.
 const sandbox = createContext({ re: null, s: '' });
 const probe = new Script('re.test(s)');
@@ -82,7 +102,7 @@ function compile(pattern: string): RegExp | undefined {
   if (pattern.length > MAX_PATTERN) return undefined; // not cached: the cache bounds entries, not key size
   if (compiled.has(pattern)) return compiled.get(pattern);
   let re: RegExp | undefined;
-  if (!risky(pattern)) try { re = new RegExp(pattern); } catch { /* unparseable: dry run decides */ }
+  if (!risky(pattern) && !dotnetOnly(pattern)) try { re = new RegExp(pattern); } catch { /* unparseable: dry run decides */ }
   if (compiled.size >= 1000) compiled.clear(); // ponytail: patterns come from the cached rules of a few channels; the cap only bounds memory
   compiled.set(pattern, re);
   return re;
@@ -101,6 +121,9 @@ function violates(c: Criterion, v: unknown, parent: Obj, today: string): boolean
       if (typeof v !== 'string' || v.length > MAX_TEXT) return false;
       const re = compile(c.pattern);
       if (re === undefined) return false;
+      // engines disagree on this value: never a false invalid, the dry run decides (no timed-match budget spent)
+      if (NON_ASCII.test(v) && unicodeSensitive(c.pattern)) return false;
+      if (v.endsWith('\n') && endAnchored(c.pattern)) return false;
       if (timedLeft <= 0) return false; // over the budget: left to the dry run
       timedLeft--;
       const ok = matches(re, v);

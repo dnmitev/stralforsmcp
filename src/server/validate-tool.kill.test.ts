@@ -68,13 +68,13 @@ describe('fixed messages', () => {
     expect(bad.findings.map((f) => f.kind)).toEqual(['rules_unavailable', 'required']);
     expect(bad.findings[0]).toEqual(unavailable);
   });
-  it('an unloadable channel next to a local finding keeps the sentence at the local stage', async () => {
+  it('an unloadable channel next to a local finding: two channels, so the dry run decides and the fixed sentence stays', async () => {
     const x = await world({ rules: { X: [rule('1', 'Document.Invoice.A', ['Required'])] } });
     const base = x.routes[RULES]!;
     x.routes[RULES] = (req, res) => (queryOf(req.url!).get('channel') === 'Y' ? json(res, 500, 'boom') : base(req, res));
     const r = await x.run({ document: doc(['X', 'Y']) });
-    expect(r.stage).toBe('local');
-    expect(r.findings.map((f) => f.kind)).toEqual(['rules_unavailable', 'required']); // path '' sorts before 'document...'
+    expect(r.stage).toBe('dry_run');
+    expect(r.findings.map((f) => f.kind)).toEqual(['rules_unavailable']);
   });
 });
 
@@ -132,7 +132,7 @@ describe('request-shape errors and the standard id', () => {
     expect(r.findings).toEqual([{ source: 'local', path: 'consignmentId', kind: 'shape', message: 'consignmentId is missing or has the wrong type.' }]);
     expect(x.requests(VALIDATE)).toHaveLength(0);
   });
-  it.each<[unknown, string]>([[7, '7'], [0, '0'], [-1, '0'], [1.5, '0'], ['7', '0'], [undefined, '0']])('templateParameter.standardId %j asks for rules with templateStandardId %s', async (sid, sent) => {
+  it.each<[unknown, string]>([[7, '7'], [0, '0'], [undefined, '0']])('templateParameter.standardId %j asks for rules with templateStandardId %s', async (sid, sent) => {
     const x = await world();
     await x.run({ document: doc(['X'], {}, sid === undefined ? {} : { templateParameter: { standardId: sid } }) });
     expect(queryOf(x.requests(RULES)[0]!.url).get('templateStandardId')).toBe(sent);

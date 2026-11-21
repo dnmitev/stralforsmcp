@@ -81,12 +81,19 @@ describe('local stage', () => {
     const x = await world({ rules: { X: [rule('22', 'Document.Invoice.V', criteria)] } });
     expect((await x.run({ document: doc(['X'], { v: 'q' }) })).valid).toBe(true);
   });
-  it('two channels: both rule sets applied once each, a rule listed twice yields one finding', async () => {
+  it('a rule listed twice in one channel yields one finding', async () => {
     const shared = rule('30', 'Document.Invoice.S', ['Required']);
-    const x = await world({ rules: { X: [shared, rule('31', 'Document.Invoice.OnlyX', ['Required'])], Y: [shared, rule('32', 'Document.Invoice.OnlyY', ['Required'])] } });
+    const x = await world({ rules: { X: [shared, shared, rule('31', 'Document.Invoice.OnlyX', ['Required'])] } });
+    const r = await x.run({ document: doc(['X']) });
+    expect(r.findings.map((f) => [f.ruleId, f.path])).toEqual([['31', 'document.invoice.onlyX'], ['30', 'document.invoice.s']]);
+    expect(x.requests(RULES)).toHaveLength(1);
+  });
+  it('two channels: both rule sets are fetched, but their union never stops the dry run', async () => {
+    const x = await world({ rules: { X: [rule('31', 'Document.Invoice.OnlyX', ['Required'])], Y: [rule('32', 'Document.Invoice.OnlyY', ['Required'])] } });
     const r = await x.run({ document: doc(['X', 'Y']) });
-    expect(r.findings.map((f) => [f.ruleId, f.path])).toEqual([['31', 'document.invoice.onlyX'], ['32', 'document.invoice.onlyY'], ['30', 'document.invoice.s']].sort((a, b) => (a[1]! < b[1]! ? -1 : 1)));
+    expect(r).toEqual({ valid: true, stage: 'passed', findings: [], moreMayFollow: false });
     expect(x.requests(RULES)).toHaveLength(2);
+    expect(x.requests(VALIDATE)).toHaveLength(1);
   });
   it('templateStandardId reaches every channel request', async () => {
     const x = await world();

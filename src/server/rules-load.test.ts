@@ -14,10 +14,18 @@ describe('loadRules', () => {
   it('returns readable and local from one tree walk', async () => {
     const c = client();
     const r = await loadRules(createRulesCache({ ttlMs: 1000 }), c as never, 'a', 'X', 3);
-    expect(r).toEqual(flattenRulesWithCriteria(tree));
+    expect(r).toEqual({ ...flattenRulesWithCriteria(tree), fetchedAt: expect.any(Number) });
     expect(r.readable.map((x) => x.path)).toEqual(['document.invoice.a', 'document.invoice.line[].b']);
     expect(r.local.map((x) => [x.id, x.path, x.tag])).toEqual([['1', 'document.invoice.a', undefined], ['2', 'document.invoice.line[].b', 'Template0']]);
     expect(c.rules).toHaveBeenCalledExactlyOnceWith('X', { templateStandardId: 3 });
+  });
+  it('stamps fetchedAt from the injected clock once per fetch; a cache hit keeps the first stamp', async () => {
+    const c = client();
+    let t = 5;
+    const cache = createRulesCache({ ttlMs: 1000, now: () => 0 });
+    expect((await loadRules(cache, c as never, 'a', 'X', 3, () => t)).fetchedAt).toBe(5);
+    t = 9;
+    expect((await loadRules(cache, c as never, 'a', 'X', 3, () => t)).fetchedAt).toBe(5);
   });
   it('is cached per profile, channel and template', async () => {
     const c = client();
