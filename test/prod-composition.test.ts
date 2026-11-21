@@ -41,9 +41,8 @@ describe.each([[false], [true]])('PROD, validate flag %s', (validate) => {
     const visible = (await client.listTools()).tools.map((t) => t.name).sort();
 
     // policy: no write or lookup tool in PROD; the validate tool only with the flag
-    expect(visible).not.toContain('channel_lookup');
-    expect(visible.includes('validate_invoice')).toBe(validate);
-    expect(visible).toContain('whoami');
+    // the complete list, so a read tool that vanishes from PROD fails here instead of silently dropping its upstream checks below
+    expect(visible).toEqual(['get_example_invoice', 'get_rules', 'list_channels', 'search_docs', 'track_document', ...(validate ? ['validate_invoice'] : []), 'whoami'].sort());
     for (const name of visible) expect(ARGS[name], `no call row for visible tool ${name}`).toBeDefined();
 
     const before = W.api.fake.apiRequests.length;
