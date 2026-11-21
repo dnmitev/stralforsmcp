@@ -103,12 +103,13 @@ describe('localCheck certainty (never a false invalid)', () => {
     it.each([
       ['(?i)^abc$', 'ABC!'], ['(?x)^a b$', 'x'], ['^(?n:a)$', 'x'], ['\\Aabc', 'x'], ['abc\\Z', 'x'], ['abc\\z', 'x'], ['\\Gabc', 'x'],
       ['^a(?#note)b$', 'x'], ['^(?>a+)b$', 'x'], ['^(?(a)b|c)$', 'x'], ['^(?<o>a)(?<c-o>b)$', 'x'], ["^(?'n'a)$", 'x'],
-      ['^\\p{IsGreek}+$', 'x'], ['^\\P{IsBasicLatin}$', 'x'],
+      ['^\\p{IsGreek}+$', 'x'], ['^\\P{IsBasicLatin}$', 'x'], ['^\\p{L}+$', 'ABC'], ['^\\p{Lu}$', 'Q'], ['^\\P{N}$', 'a'],
+      ['^[a-z-[aeiou]]+$', 'b'], ['^[\\w-[\\d]]+$', 'x'],
     ])('skips .NET-only syntax %s', (pattern, value) => {
       expect(one(pattern, value)).toBe(0);
     });
     it.each([
-      ['^\\d{3}$', '12'], ['^[A-Z]{2}\\d+$', 'a1'], ['^(ab|cd)x$', 'abx!'], ['^(?:ab)$', 'x'], ['^(?i:abc)$', 'x'], ['^(?=a)a$', 'b'], ['^a\\\\Aq$', 'x'], ['^(?<n>a)$', 'b'], ['^[(?i)]$', 'x'], ['^a\\\\Z$', 'aZ'],
+      ['^\\d{3}$', '12'], ['^[A-Z]{2}\\d+$', 'a1'], ['^(ab|cd)x$', 'abx!'], ['^(?:ab)$', 'x'], ['^(?i:abc)$', 'x'], ['^(?=a)a$', 'b'], ['^a\\\\Aq$', 'x'], ['^a\\\\p{L}$', 'x'], ['^[a\\-z]$', 'q'], ['^a-b$', 'x'], ['^(?<n>a)$', 'b'], ['^[(?i)]$', 'x'], ['^a\\\\Z$', 'aZ'],
     ])('still checks common-subset pattern %s', (pattern, value) => {
       expect(one(pattern, value)).toBe(1);
     });

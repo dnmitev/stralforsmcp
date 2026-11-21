@@ -65,11 +65,12 @@ function risky(p: string): boolean {
   return false;
 }
 /**
- * True for vendor (.NET) syntax that JS accepts but reads differently: \A \Z \z \G are identity escapes in JS, \p{Is...} a literal.
- * Other .NET-only constructs (inline options, comments, atomic, conditional and balancing groups, quoted names) make
+ * True for vendor (.NET) syntax that JS accepts but reads differently: \A \Z \z \G are identity escapes in JS, any \p{...} or
+ * \P{...} Unicode property is a literal without the u flag, and character-class subtraction [a-z-[aeiou]] is a class followed by
+ * literals. Other .NET-only constructs (inline options, comments, atomic, conditional and balancing groups, quoted names) make
  * new RegExp throw and are skipped there. Either way the dry run decides (ADR 0017 item 3).
  */
-function dotnetOnly(p: string): boolean { return /(?<!\\)(?:\\\\)*\\(?:[AZzG]|[pP]\{Is)/.test(p); }
+function dotnetOnly(p: string): boolean { return /(?<!\\)(?:\\\\)*(?:\\(?:[AZzG]|[pP]\{)|-\[)/.test(p); }
 /** Shorthand classes and word boundaries match Unicode in .NET but ASCII only in JS; an unescaped $ also matches before a final line feed in .NET. */
 function unicodeSensitive(p: string): boolean { return /(?<!\\)(?:\\\\)*\\[wWdDbBsS]/.test(p); }
 function endAnchored(p: string): boolean {
