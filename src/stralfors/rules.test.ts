@@ -82,6 +82,9 @@ describe('unknown and malformed', () => {
     expect(parseCriterion('RequiredX').kind).toBe('unknown');
     expect(parseCriterion('Required: tail').kind).toBe('required');
   });
+  it('a head padded before the colon still matches', () => {
+    expect(parseCriterion('MaxCount : Maximum lines is 2.')).toEqual({ kind: 'max_count', n: '2' });
+  });
 });
 
 describe('lists', () => {

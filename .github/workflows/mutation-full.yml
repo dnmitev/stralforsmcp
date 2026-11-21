@@ -1,8 +1,7 @@
 name: mutation-full
 
-# The full Stryker run (static mutants included, --force) takes over 45 min, too long for every push to main.
-# It runs weekly and on demand and gates on the break threshold. Its results are not cached: reusing them in incremental runs would
-# carry static mutants into runs that ignore them.
+# The full Stryker run (static mutants included, --force): about 20 min locally since 2026-11-21 (was over 45 min), still too long for every push.
+# It runs weekly and on demand and gates on the break threshold. Its results are not cached; ci.yml keeps its own incremental file.
 on:
   schedule:
     - cron: '17 3 * * 1'
