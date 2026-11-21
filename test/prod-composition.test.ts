@@ -16,14 +16,20 @@ const ALLOWED = (validate: boolean) => (r: { method: string; url: string }) => {
 };
 
 // One minimal valid call per tool. A visible tool without a row fails the test, so a new tool must be added here deliberately.
-const ARGS: Record<string, Record<string, unknown>[]> = {
-  whoami: [{}],
-  list_channels: [{ profile: 'a' }],
-  get_rules: [{ profile: 'a', channel: 'EDI' }],
-  get_example_invoice: [{ profile: 'a', channels: ['EDI'] }],
-  track_document: [{ profile: 'a', invoiceNumber: '1234567' }, { profile: 'a', documentId: 'Abc123XYZ9', history: true }],
-  search_docs: [{ query: 'channel' }],
-  validate_invoice: [{ profile: 'a', agreement: 'billing', document: { documentHeader: { channelPriority: ['EDI'] }, invoice: {} } }],
+// Each call also names the upstream request it must produce (method + path regex), or null when the tool must stay local.
+type Row = { args: Record<string, unknown>; upstream: [string, RegExp] | null };
+const ARGS: Record<string, Row[]> = {
+  whoami: [{ args: {}, upstream: null }],
+  list_channels: [{ args: { profile: 'a' }, upstream: ['GET', /\/v2\/invoices\/channels$/] }],
+  get_rules: [{ args: { profile: 'a', channel: 'EDI' }, upstream: ['GET', /\/v2\/invoices\/rules$/] }],
+  get_example_invoice: [{ args: { profile: 'a', channels: ['EDI'] }, upstream: ['GET', /\/v2\/invoices\/document$/] }],
+  track_document: [
+    { args: { profile: 'a', invoiceNumber: '1234567' }, upstream: ['GET', /\/tracktrace\/v1\/document\/documents$/] },
+    // the history leg needs a documents page that answers; this fake only serves channels, so it stops at the lookup (history paths are pinned by the route tests)
+    { args: { profile: 'a', extDocumentId: 'ext-1' }, upstream: ['GET', /\/tracktrace\/v1\/document\/documents$/] },
+  ],
+  search_docs: [{ args: { query: 'channel' }, upstream: null }],
+  validate_invoice: [{ args: { profile: 'a', agreement: 'billing', document: { documentHeader: { channelPriority: ['EDI'] }, invoice: {} } }, upstream: ['PUT', /\/v2\/invoices\/validate$/] }],
 };
 
 describe.each([[false], [true]])('PROD, validate flag %s', (validate) => {
@@ -41,7 +47,16 @@ describe.each([[false], [true]])('PROD, validate flag %s', (validate) => {
     for (const name of visible) expect(ARGS[name], `no call row for visible tool ${name}`).toBeDefined();
 
     const before = W.api.fake.apiRequests.length;
-    for (const name of visible) for (const args of ARGS[name]!) await client.callTool({ name, arguments: args });
+    for (const name of visible) {
+      for (const { args, upstream } of ARGS[name]!) {
+        const mark = W.api.fake.apiRequests.length;
+        await client.callTool({ name, arguments: args });
+        const fresh = W.api.fake.apiRequests.slice(mark);
+        // a tool error resolves as an isError result, so assert the request itself: each call must hit exactly the route it is meant to
+        if (upstream === null) expect(fresh, `${name} stays local`).toEqual([]);
+        else expect(fresh.some((r) => r.method === upstream[0] && upstream[1].test(r.url.split('?')[0]!)), `${name} reached ${upstream[0]} ${upstream[1]}`).toBe(true);
+      }
+    }
     const seen = W.api.fake.apiRequests.slice(before);
     expect(seen.length, 'the tools really reached the fake upstream').toBeGreaterThan(0);
     const bad = seen.filter((r) => !ALLOWED(validate)(r));

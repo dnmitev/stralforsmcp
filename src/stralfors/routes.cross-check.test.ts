@@ -106,9 +106,30 @@ describe('route cross-check', () => {
       expect(blocked).toHaveLength(1);
       const audit = fromBlocked(blocked[0]!).tool;
       const seen = JSON.stringify({ blocked, log: mem.text(), audit });
-      for (const id of SAMPLE_IDS) expect(seen, `${c.operation} leaked ${id}`).not.toContain(id);
+      // only ids that were really submitted in this path or query can prove masking; body-only ids are covered by the next test
+      const submitted = SAMPLE_IDS.filter((id) => JSON.stringify([c.path, c.query]).includes(id));
+      if (['channels', 'trackDocuments', 'trackHistory', 'channelLookupResult'].includes(c.operation!)) expect(submitted.length, `${c.operation} submits an id`).toBeGreaterThan(0);
+      for (const id of submitted) expect(seen, `${c.operation} leaked ${id}`).not.toContain(id);
       expect(audit, c.operation).toBe(TABLE[c.operation!]!.audit);
     }
     expect(fake.apiRequests).toHaveLength(0);
+  });
+
+  it('body-only ids (lookup candidate, consignment id) reach the client and still appear in no log or error text', async () => {
+    fake = await startFakeApi({ pki, api: (_r, res) => json(res, 500, { message: 'upstream down' }) });
+    const mem = memoryLogger();
+    const { client } = testClient(pki, fake, { logger: mem.logger });
+    const errors = [
+      await client.channelLookup({ channels: ['EDI'], candidates: [ID.digits] }).then(() => '', (e: Error) => e.message),
+      await client.validateInvoice(validBody).then(() => '', (e: Error) => e.message),
+    ];
+    await client.close();
+    // presence control: both calls really went upstream, with the ids in their bodies
+    const sent = fake.apiRequests.map((r) => r.body ?? '');
+    expect(sent.some((b) => b.includes(ID.digits)), 'lookup body carried the candidate').toBe(true);
+    expect(sent.some((b) => b.includes(ID.consignment)), 'validate body carried the consignment id').toBe(true);
+    const seen = JSON.stringify({ errors, log: mem.text() });
+    expect(seen).not.toContain(ID.digits);
+    expect(seen).not.toContain(ID.consignment);
   });
 });
