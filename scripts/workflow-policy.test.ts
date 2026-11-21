@@ -736,7 +736,6 @@ describe('pull_request_target exception', () => {
     ['charts/stralforsmcp/values.yaml', true],
     ['.gitleaks.toml', true],
     ['.trivyignore.yaml', true],
-    ['.coderabbit.yaml', true],
     ['.dockerignore', true],
     ['.githooks/pre-commit', true],
     ['extension/src/proxy.ts', true],

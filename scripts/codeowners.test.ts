@@ -36,7 +36,6 @@ const TRUST_PATHS = [
   '.dockerignore',
   '.trivyignore.yaml',
   '.gitleaks.toml',
-  '.coderabbit.yaml',
   'charts/stralforsmcp/values.yaml',
   'extension/manifest.json',
   'docs/adr/0024-merge-gate-and-release-trust.md',

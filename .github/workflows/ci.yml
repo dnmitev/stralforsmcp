@@ -48,7 +48,7 @@ jobs:
           # A rename counts as both its old and new path (a rename out of .claude/ into docs/ is not docs-only).
           paths=$(printf '%s\n' "$rows" | tr '\t' '\n' | grep -v '^$' || true)
           docs='^docs/|^(README|GLOSSARY|CHANGELOG|CONTRIBUTING|SECURITY)\.md$|^LICENSE$'
-          ops='^\.github/|^charts/|^Dockerfile$|^\.dockerignore$|^\.trivyignore\.yaml$|^\.gitleaks\.toml$|^\.coderabbit\.yaml$'
+          ops='^\.github/|^charts/|^Dockerfile$|^\.dockerignore$|^\.trivyignore\.yaml$|^\.gitleaks\.toml$'
           other=$(printf '%s\n' "$paths" | grep -vE "$docs|$ops" || true)
           [ -z "$other" ] || exit 0
           echo "mutation=skip" >> "$GITHUB_OUTPUT"

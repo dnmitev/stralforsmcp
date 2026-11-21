@@ -58,7 +58,7 @@ jobs:
           [ "$(printf '%s\n' "$rows" | wc -l | tr -d ' ')" -lt 300 ] || refuse "300 or more changed files: the file list may be incomplete"
           # A rename counts as both its old and new path.
           paths=$(printf '%s\n' "$rows" | tr '\t' '\n' | grep -v '^$' || true)
-          gate='^\.github/|^\.claude/|^\.githooks/|^scripts/|^extension/|^Dockerfile$|^charts/|^\.dockerignore$|^\.gitignore$|^\.gitleaks\.toml$|^\.trivyignore\.yaml$|^\.coderabbit\.yaml$|^\.oxlintrc\.json$|^\.nvmrc$|^vitest[^/]*\.config\.ts$|^stryker\.config\.json$|^tsconfig\.json$'
+          gate='^\.github/|^\.claude/|^\.githooks/|^scripts/|^extension/|^Dockerfile$|^charts/|^\.dockerignore$|^\.gitignore$|^\.gitleaks\.toml$|^\.trivyignore\.yaml$|^\.oxlintrc\.json$|^\.nvmrc$|^vitest[^/]*\.config\.ts$|^stryker\.config\.json$|^tsconfig\.json$'
           [ -z "$(printf '%s\n' "$paths" | grep -E "$gate" || true)" ] || refuse "the pull request changes gate or pipeline files; it needs a real review"
           # package.json is fine to bump (dependencies), but its scripts block runs the tests and the build.
           case $'\n'"$paths"$'\n' in

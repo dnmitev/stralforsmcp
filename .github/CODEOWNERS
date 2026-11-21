@@ -10,7 +10,6 @@
 /.dockerignore @dnmitev
 /.trivyignore.yaml @dnmitev
 /.gitleaks.toml @dnmitev
-/.coderabbit.yaml @dnmitev
 /.gitignore @dnmitev
 /.oxlintrc.json @dnmitev
 /.nvmrc @dnmitev
