@@ -42,9 +42,9 @@
     "fileName": "reports/mutation/mutation.html"
   },
   "thresholds": {
-    "high": 95,
-    "low": 91,
-    "break": 91
+    "high": 97,
+    "low": 95,
+    "break": 95
   },
   "tsconfigFile": "none",
   "ignorePatterns": [

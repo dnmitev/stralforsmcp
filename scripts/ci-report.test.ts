@@ -14,7 +14,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { buildReport, main, mutationScore } from './ci-report.ts';
+import { buildReport, main, mutationScore, safetyViolations, SAFETY_CEILINGS } from './ci-report.ts';
 
 const cov = (l: number, b: number, f: number, s: number) => ({
   total: {
@@ -216,5 +216,39 @@ describe('main', () => {
     expect(await main([c, j, m], io)).toBe(0);
     expect(out.join('')).toContain('| Mutation score | n/a |');
     expect(err).toEqual([]);
+  });
+});
+
+describe('safetyViolations', () => {
+  const ceil = { 'src/policy/policy.ts': 0, 'src/server/guards.ts': 2 };
+  const file = (...st: string[]) => ({ mutants: st.map((status) => ({ status })) });
+  const rep = (f: Record<string, unknown>) => ({ files: f });
+
+  it('passes at the ceiling and ignores detected or invalid statuses', () => {
+    expect(safetyViolations(rep({
+      'src/policy/policy.ts': file('Killed', 'Timeout', 'Ignored', 'CompileError', 'RuntimeError'),
+      'src/server/guards.ts': file('Survived', 'NoCoverage', 'Killed'),
+    }), ceil)).toEqual([]);
+  });
+  it('names a file one over its ceiling, counting Survived and NoCoverage', () => {
+    expect(safetyViolations(rep({
+      'src/policy/policy.ts': file('NoCoverage'),
+      'src/server/guards.ts': file('Survived', 'Survived', 'NoCoverage'),
+    }), ceil)).toEqual(['src/policy/policy.ts: 1 undetected, ceiling 0', 'src/server/guards.ts: 3 undetected, ceiling 2']);
+  });
+  it('matches absolute report keys by path suffix, not by bare name', () => {
+    expect(safetyViolations(rep({
+      '/w/repo/src/policy/policy.ts': file('Killed'),
+      'src/server/xguards.ts': file(),
+    }), ceil)).toEqual(['src/server/guards.ts: missing from the mutation report']);
+  });
+  it('reports a malformed report instead of throwing', () => {
+    expect(safetyViolations(null, ceil)).toEqual(['mutation report: no files']);
+    expect(safetyViolations({ files: 'x' }, ceil)).toEqual(['mutation report: no files']);
+    expect(safetyViolations(rep({ 'src/policy/policy.ts': {}, 'src/server/guards.ts': { mutants: null } }), ceil)).toEqual([]);
+  });
+  it('guards the eight safety files by default', () => {
+    expect(Object.keys(SAFETY_CEILINGS)).toHaveLength(8);
+    expect(safetyViolations(rep({}))).toHaveLength(8);
   });
 });

@@ -18,7 +18,7 @@ const ROWS: Row[] = [
   ['valid_templates', ['ValidTemplates: 0, 2'], 'valid_templates', [5, '5'], `${P} must be one of the standard templates 0, 2.`, [2, '0', ABSENT]],
   ['pattern', ['ExpectedPattern: ^\\d{3}$'], 'pattern', ['12', 'abc', '1234'], `${P} must match the pattern ^\\d{3}$.`, ['123', ABSENT]],
   ['numeric', ['NumericExpected'], 'numeric', ['12a', '1.5', '-1'], `${P} must contain digits only.`, ['0123', 123, ABSENT]],
-  ['decimal', ['DecimalExpected'], 'decimal', ['abc', '1,5'], `${P} must be a decimal number.`, ['1.5', '-2', 3.25, '10', ABSENT]],
+  ['decimal', ['DecimalExpected'], 'decimal', ['abc', '1,5'], `${P} must be a decimal number.`, ['1.5', '-2', 3.25, '10', '12.50', ABSENT]],
   ['min_value', ['MinValue: 5'], 'min_value', [4, '4.99', '-1'], `${P} must be at least 5.`, [5, '5', '5.0', 6, ABSENT]],
   ['min_value beyond safe integers', ['MinValue: 9007199254740993'], 'min_value', ['9007199254740992'], `${P} must be at least 9007199254740993.`, ['9007199254740993', '9007199254740994']],
   ['max_value', ['MaxValue: 5'], 'max_value', [6, '5.01'], `${P} must be at most 5.`, [5, '4', ABSENT]],
@@ -100,6 +100,15 @@ describe('localCheck certainty (never a false invalid)', () => {
   });
   it('an unknown kind does not hide a known one in the same rule', () => {
     expect(localCheck({ a: {} }, [L('1', P, ['Frobnicate', 'Required'])]).map((f) => f.kind)).toEqual(['required']);
+  });
+  it('bounds the compiled-pattern cache: cleared once when it reaches 1000 entries', () => {
+    const clear = vi.spyOn(Map.prototype, 'clear');
+    try {
+      // 1001 distinct patterns that all accept the value: every one is compiled (compiling comes before the match budget)
+      const rules = Array.from({ length: 1001 }, (_, i) => L(String(i), P, [`ExpectedPattern: ^c|${i}x`]));
+      expect(localCheck({ a: { b: 'cap' } }, rules, TODAY)).toEqual([]);
+      expect(clear).toHaveBeenCalledTimes(1);
+    } finally { clear.mockRestore(); }
   });
   it('does not test strings over 500 characters against a pattern', () => {
     const rules = [L('1', P, ['ExpectedPattern: ^a*$'])];

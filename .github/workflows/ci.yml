@@ -15,9 +15,9 @@ permissions:
 
 jobs:
   # Two cheap path checks over the whole pull request (renames count by old and new path; any doubt means "not skipped"):
-  # - docs only (docs/, README.md, GLOSSARY.md and similar project docs, LICENSE): mutation is skipped and review/confidence is posted as not applicable.
-  # - docs or pipeline/deploy files only (.github/, charts/, Dockerfile, ignore and scanner configs): mutation is skipped;
-  #   the review gate stays, because CI and deploy changes still deserve a review.
+  # - no code or mutation-setup path (src/, test/, package*.json, tsconfig*, vitest*, stryker.config.json): mutation is skipped,
+  #   because nothing Stryker measures changed; the review gate stays for everything that is not docs only.
+  # - docs only (docs/, README.md, GLOSSARY.md and similar project docs, LICENSE): review/confidence is also posted as not applicable.
   scope:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -48,10 +48,8 @@ jobs:
           # A rename counts as both its old and new path (a rename out of .claude/ into docs/ is not docs-only).
           paths=$(printf '%s\n' "$rows" | tr '\t' '\n' | grep -v '^$' || true)
           docs='^docs/|^(README|GLOSSARY|CHANGELOG|CONTRIBUTING|SECURITY)\.md$|^LICENSE$'
-          ops='^\.github/|^charts/|^Dockerfile$|^\.dockerignore$|^\.trivyignore\.yaml$|^\.gitleaks\.toml$'
-          other=$(printf '%s\n' "$paths" | grep -vE "$docs|$ops" || true)
-          [ -z "$other" ] || exit 0
-          echo "mutation=skip" >> "$GITHUB_OUTPUT"
+          code='^src/|^test/|^package(-lock)?\.json$|^tsconfig[^/]*\.json$|^vitest[^/]*\.ts$|^stryker\.config\.json$'
+          printf '%s\n' "$paths" | grep -qE "$code" || echo "mutation=skip" >> "$GITHUB_OUTPUT"
           notdocs=$(printf '%s\n' "$paths" | grep -vE "$docs" || true)
           [ -z "$notdocs" ] || exit 0
           [ "$SAME_REPO" = true ] || exit 0
@@ -134,17 +132,32 @@ jobs:
           path: reports/stryker-incremental.json
           # A key that never exists, so the newest stryker- cache always wins (an exact same-commit hit would skip a newer full baseline).
           key: stryker-restore-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: stryker-
+          # The prefix carries the Stryker config hash: a changed mutate list or test set starts a clean chain (Stryker's
+          # incremental file otherwise keeps results of files and tests that left the run, even under --force).
+          restore-keys: stryker-${{ hashFiles('stryker.config.json', 'vitest.stryker.config.ts') }}-
       # Every ref runs incrementally, static mutants included (~15% since integration tests left the Stryker set on 2026-11-21;
       # they were ~70% when those tests drove every tool from beforeAll). The forced full run is mutation-full.yml (weekly).
       - name: Mutation tests (incremental)
         run: npm run mutation
+      - name: Safety file ceilings
+        if: success() || failure()
+        run: |
+          node -e "
+            const fs = require('node:fs');
+            import('./scripts/ci-report.ts').then(({ safetyViolations }) => {
+              let r = null;
+              try { r = JSON.parse(fs.readFileSync('reports/mutation/mutation.json', 'utf8')); } catch {}
+              const v = safetyViolations(r);
+              fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, '### Safety file ceilings\\n\\n' + (v.length ? v.map((l) => '- ' + l).join('\\n') : 'all within ceiling') + '\\n');
+              if (v.length) { console.error(v.join('\\n')); process.exit(1); }
+            });
+          "
       - name: Save incremental file
         if: success() && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: reports/stryker-incremental.json
-          key: stryker-${{ github.sha }}
+          key: stryker-${{ hashFiles('stryker.config.json', 'vitest.stryker.config.ts') }}-${{ github.sha }}
       - name: Summary
         if: always()
         run: |

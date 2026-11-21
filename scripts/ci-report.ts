@@ -23,6 +23,40 @@ export function mutationScore(report: unknown): number | undefined {
   return total > 0 ? (detected / total) * 100 : undefined;
 }
 
+/**
+ * Per-file ceilings on undetected (Survived + NoCoverage) mutants for the safety-critical files. The global break
+ * threshold cannot see one file collapse (policy.ts at 0 % moves the overall score by about two points). Non-zero
+ * ceilings equal today's equivalent mutants, which 05-04d keeps visible instead of disabling.
+ */
+export const SAFETY_CEILINGS: Readonly<Record<string, number>> = {
+  'src/policy/policy.ts': 0,
+  'src/audit/audit.ts': 0,
+  'src/stralfors/http.ts': 0,
+  'src/server/rate-limit.ts': 0,
+  'src/server/auth.ts': 1,
+  'src/server/guards.ts': 2,
+  'src/server/http.ts': 5,
+  'src/auth/token-store.ts': 6,
+};
+
+/** One fixed-text line per safety file over its ceiling or missing from the report; empty when all hold. */
+export function safetyViolations(report: unknown, ceilings: Readonly<Record<string, number>> = SAFETY_CEILINGS): string[] {
+  const files = (report as { files?: Record<string, { mutants?: { status?: unknown }[] }> } | null)?.files;
+  if (typeof files !== 'object' || files === null) return ['mutation report: no files'];
+  const keys = Object.keys(files);
+  const out: string[] = [];
+  for (const [path, ceiling] of Object.entries(ceilings)) {
+    const key = keys.find((k) => k === path || k.endsWith(`/${path}`));
+    if (key === undefined) {
+      out.push(`${path}: missing from the mutation report`);
+      continue;
+    }
+    const n = (files[key]?.mutants ?? []).filter((m) => UNDETECTED.has(m.status as string)).length;
+    if (n > ceiling) out.push(`${path}: ${n} undetected, ceiling ${ceiling}`);
+  }
+  return out;
+}
+
 export function buildReport(coverage: unknown, junitXml: string, mutation?: unknown): string {
   const score = mutationScore(mutation);
   const total = (coverage as { total?: Record<string, { pct?: unknown }> } | null)?.total;
