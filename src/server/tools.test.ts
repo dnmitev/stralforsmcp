@@ -158,6 +158,8 @@ describe('registerAll', () => {
     expect(r.isError).toBe(true);
     expect(s.lines()).toHaveLength(1);
     expect(s.lines()[0]).toMatchObject({ outcome: 'error', reason: 'invalid_input', tool: 'okTool' });
+    // no telemetry configured: the audit hook must not throw, or the caller sees a TypeError instead of the SDK message
+    expect(r.content).toEqual([{ type: 'text', text: expect.stringMatching(/^Input validation error: .*\bn: /) }]);
   });
 
   it('a thrown error through the SDK stays sanitised', async () => {
