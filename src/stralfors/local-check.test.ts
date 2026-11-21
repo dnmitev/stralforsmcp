@@ -158,6 +158,12 @@ describe('localCheck certainty (never a false invalid)', () => {
     expect(check('^\\(a+\\)+$')).toEqual(['pattern']);
     expect(check('^[(a+)]+$')).toEqual(['pattern']);
   });
+  it('classifies brace quantifiers, character classes and nested groups', () => {
+    // '!' matches none of these: a checked pattern reports a finding, a skipped (risky) one reports nothing
+    const check = (p: string) => localCheck({ a: { b: '!' } }, [L('1', P, [`ExpectedPattern: ${p}`])]).map((f) => f.kind);
+    for (const p of ['^(a{1,10})+$', '^(a{10,})+$', '^[x](a+)+$', '^((a+)b)+$']) expect(check(p), p).toEqual([]);
+    for (const p of ['^[(a+)+]$', '^[x(a+)+]$', '^[\\]](a)+$', '^(a{b)+c{1,2}$', '^(a+){x}$', '^((a)b)+$']) expect(check(p), p).toEqual(['pattern']);
+  });
   it('compiles each pattern once across array elements', () => {
     const real = globalThis.RegExp;
     let n = 0;

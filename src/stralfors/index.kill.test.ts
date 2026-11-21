@@ -294,6 +294,16 @@ describe('ids in path segments', () => {
     expect(JSON.stringify([e.operation, e.message, mem.lines()])).not.toMatch(new RegExp(`${id}|1234567890`));
   });
 
+  it('masks a UUID with no digit run, so only the UUID shape can catch it', async () => {
+    // randomUUID() above usually also holds a 6-digit run, which masks it through the other alternative; this one never does
+    const id = 'abcdefab-cdef-abcd-efab-cdefabcdefab';
+    fake = await startFakeApi({ pki, api: ok });
+    const blocked: { pathTemplate: string }[] = [];
+    const { client } = testClient(pki, fake, { onBlocked: (e) => void blocked.push(e) });
+    await caught(client.post(`/rest/agreements/${id}`, {}));
+    expect(blocked[0]!.pathTemplate).toBe('/rest/agreements/*');
+  });
+
   it('are masked when percent-encoded, and malformed encodings are not echoed', async () => {
     const id = randomUUID();
     fake = await startFakeApi({ pki, api: ok });

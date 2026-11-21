@@ -6,7 +6,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/server';
 import { Client } from '@modelcontextprotocol/client';
 import * as z from 'zod/v4';
 import { describe, expect, it } from 'vitest';
-import { DENIED_TEXT, ERROR_TEXT, callTool, registerAll, type ToolDef } from './tools.ts';
+import { DENIED_TEXT, ERROR_TEXT, callTool, onInvalid, registerAll, type ToolDef } from './tools.ts';
 import { boomTool, mkDef, okTool, principal, sink, writeTool } from '../../test/helpers/server.ts';
 import { T } from '../../test/helpers/token-list.ts';
 
@@ -168,5 +168,17 @@ describe('registerAll', () => {
     expect(r).toMatchObject({ isError: true, content: [{ type: 'text', text: 'tool failed' }] });
     expect(JSON.stringify(r)).not.toContain('UPSTREAM-CANARY');
     expect(s.lines()).toHaveLength(1);
+  });
+});
+
+describe('onInvalid', () => {
+  it('reports a rejected value and leaves the rest of the schema usable', () => {
+    let failed = 0;
+    const s = onInvalid(z.object({ a: z.string() }), () => void failed++);
+    expect(s.safeParse({ a: 'x' }).success).toBe(true); // the SDK reads more than ~standard (parse, shape, JSON schema)
+    expect(Object.keys(s.shape)).toEqual(['a']);
+    expect(s['~standard'].validate({ a: 1 })).toHaveProperty('issues');
+    expect(s['~standard'].validate({ a: 'x' })).not.toHaveProperty('issues');
+    expect(failed).toBe(1);
   });
 });
