@@ -58,7 +58,7 @@ helm install stralforsmcp ./charts/stralforsmcp \
 
 ## Settings beyond the first-class values
 
-First-class: `logLevel` (`MCP_LOG_LEVEL`), `rate.perMinute` / `rate.burst` (`MCP_RATE_PER_MINUTE`, `MCP_RATE_BURST`), `readyDelayMs`, `drainMs`, `stralfors.*`. Everything else the server reads (the root README lists each variable) goes through `extraEnv`, for example `MCP_TOOL_OUTPUT_MAX_BYTES`, `MCP_RULES_CACHE_S`, `MCP_TOKEN_STALE_MS`, `MCP_TRACE_SAMPLE_RATIO`, `MCP_MAX_BODY_BYTES`, `STRALFORS_MAX_BODY_BYTES`, `STRALFORS_TOKEN_REFRESH_MARGIN_S`, `MCP_HEARTBEAT_S`. Secrets still go by file path (ADR 0005): use `extraVolumes` plus `extraVolumeMounts`, not a literal in `extraEnv`.
+First-class: `logLevel` (`MCP_LOG_LEVEL`), `rate.perMinute` / `rate.burst` (`MCP_RATE_PER_MINUTE`, `MCP_RATE_BURST`), `readyDelayMs`, `drainMs`, `stralfors.*`. Everything else the server reads (the root README lists each variable) goes through `extraEnv`, for example `MCP_TOOL_OUTPUT_MAX_BYTES`, `MCP_RULES_CACHE_S`, `MCP_UPSTREAM_CONCURRENCY`, `MCP_TOKEN_STALE_MS`, `MCP_TRACE_SAMPLE_RATIO`, `MCP_MAX_BODY_BYTES`, `STRALFORS_MAX_BODY_BYTES`, `STRALFORS_TOKEN_REFRESH_MARGIN_S`, `MCP_HEARTBEAT_S`. Secrets still go by file path (ADR 0005): use `extraVolumes` plus `extraVolumeMounts`, not a literal in `extraEnv`.
 
 The knowledge overlay (`KNOWLEDGE_DIRS`) is deliberately not offered: resource and prompt policy parity (plan 05-04) lands first, and whether a publicly reachable TEST deployment may mount an overlay is decided in plan 05-03.
 

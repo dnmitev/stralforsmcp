@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { createIndex, loadKnowledge } from '../knowledge/index.ts';
 import { createAudit, fromBlocked, type Audit } from '../audit/index.ts';
 import { createTokenStore, type Env } from '../auth/index.ts';
-import { ConfigError } from '../stralfors/errors.ts';
+import { BusyError, ConfigError } from '../stralfors/errors.ts';
 import { createClient, createLogger, loadConfig, type CreateClientOptions, type StralforsClient } from '../stralfors/index.ts';
 import { createUpstreamLimit } from '../stralfors/limit.ts';
 import { createListChannels } from './channels.ts';
@@ -228,8 +228,9 @@ export async function start(env: Record<string, string | undefined>, deps: Start
       if (busy || closing) return;
       busy = true;
       try {
+        // a probe refused by the full upstream cap (busy) says nothing about the vendor: keep the last value (first round: up, requests are in flight)
         // Stryker disable next-line ArrowFunction: equivalent, a rejected probe mapped to undefined instead of false is still falsy for every(Boolean)
-        await Promise.all([...clients].map(async ([id, c]) => void last.set(id, await Promise.resolve().then(() => c.healthV1()).then((h) => h.status === 'UP', () => false))));
+        await Promise.all([...clients].map(async ([id, c]) => void last.set(id, await Promise.resolve().then(() => c.healthV1()).then((h) => h.status === 'UP', (e: unknown) => (e instanceof BusyError ? (last.get(id) ?? true) : false)))));
         if (closing) return; // a round that finishes during shutdown must not publish or log
         const next = [...last.values()].every(Boolean) ? 1 : 0;
         if (next !== state) {
@@ -251,7 +252,7 @@ export async function start(env: Record<string, string | undefined>, deps: Start
     try {
       await srv.close();
     } finally {
-      // ponytail: a probe already in flight keeps its socket until the upstream timeout; aborting it needs abort propagation through the client (plan 05-04, R-11)
+      // ponytail: a probe already in flight keeps its socket until the upstream timeout (the probe runs outside any abort scope); run it under withSignal and abort here if shutdown ever waits on it
       if (await closeClients()) first = 'client close failed';
       await closeMetrics().catch(() => undefined);
       await shutdownTelemetry().catch(() => void (first ??= 'telemetry shutdown failed'));

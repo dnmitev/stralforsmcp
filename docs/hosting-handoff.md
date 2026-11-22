@@ -10,7 +10,7 @@ What a team needs to deploy and operate stralforsmcp from its own repository: th
 | Helm chart | `charts/stralforsmcp` | Secrets by name, hardened pod, PROD guards in templates (ADR 0014); chart README is the reference for every value |
 | Desktop extension | `.mcpb` built by `npm run mcpb:build` | local bridge for Claude Desktop (ADR 0015) |
 
-**Image tags.** Pushes to `main` publish `edge` and `sha-<40 hex>`. A strict `v<semver>` tag whose version equals `package.json` publishes `<version>`, `<major>.<minor>` and `latest`; any other `v*` tag is refused before anything is pushed. Pin by tag **and digest** (`image.digest`) in your deployment; never deploy `edge` or `latest` to PROD. How a release is cut, checked and rolled back: [docs/releasing.md](releasing.md). The first release, `v0.1.0`, is cut after plan 05-03c merges: until it exists, pin a `sha-` tag (by digest).
+**Image tags.** Pushes to `main` publish `edge` and `sha-<40 hex>`. A strict `v<semver>` tag whose version equals `package.json` publishes `<version>`, `<major>.<minor>` and `latest`; any other `v*` tag is refused before anything is pushed. Pin by tag **and digest** (`image.digest`) in your deployment; never deploy `edge` or `latest` to PROD. How a release is cut, checked and rolled back: [docs/releasing.md](releasing.md).
 
 ## Verifying the image
 
