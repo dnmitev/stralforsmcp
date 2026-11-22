@@ -78,3 +78,20 @@ describe('client with a shared limit', () => {
     expect(limit.inFlight).toBe(0);
   });
 });
+
+describe('cancel during a shared token refresh (Greptile PR #47)', () => {
+  it('ends only this caller\'s wait and frees its slot; the refresh keeps serving the others', async () => {
+    fake = await startFakeApi({ pki, tokenDelayMs: 400, api: (_q, res) => json(res, 200, { ok: 1 }) });
+    const limit = createUpstreamLimit(1);
+    const { client } = testClient(pki, fake, { upstreamLimit: limit });
+    const ac = new AbortController();
+    const started = Date.now();
+    const p = rejection(withSignal(ac.signal, () => client.get('/rest/a', any)));
+    setTimeout(() => ac.abort(), 50);
+    expect(await p).toBeInstanceOf(CancelledError);
+    expect(Date.now() - started).toBeLessThan(300); // did not wait for the 400 ms refresh
+    expect(limit.inFlight).toBe(0);
+    await expect(client.get('/rest/b', any)).resolves.toEqual({ ok: 1 }); // the same refresh, still running, serves the next caller
+    expect(fake.tokenRequests).toHaveLength(1);
+  });
+});

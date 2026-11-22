@@ -1,3 +1,5 @@
+import { detached, untilAborted } from '../stralfors/abort.ts';
+
 /** TTL cache of values fetched per (profile, channel, templateStandardId). Per pod. Callers must not mutate the result. */
 export interface RulesCache {
   get<T>(profile: string, channel: string, templateStandardId: number, fetch: () => Promise<T>): Promise<T>;
@@ -25,14 +27,14 @@ export function createRulesCache(o: { ttlMs: number; now?: () => number; maxEntr
       if (o.ttlMs === 0) return fetch();
       const key = JSON.stringify([profile, channel, templateStandardId]);
       const hit = map.get(key);
-      if (hit && now() < hit.expiresAt) return hit.value as Promise<T>;
+      if (hit && now() < hit.expiresAt) return untilAborted(hit.value as Promise<T>); // each caller stops its own wait
       const entry = { value: undefined as unknown as Promise<unknown>, expiresAt: Infinity }; // Infinity while pending
       if (!hit) trim(max - 1); // room for the new key; a stale key being replaced keeps its slot
-      const value = fetch();
+      const value = detached(fetch); // shared by every caller that joins: no single caller's cancel may abort it
       entry.value = value;
       map.set(key, entry);
       value.then(() => { entry.expiresAt = now() + o.ttlMs; trim(max); }, () => void map.delete(key)); // a failed fetch is not cached
-      return value;
+      return untilAborted(value);
     },
   };
 }

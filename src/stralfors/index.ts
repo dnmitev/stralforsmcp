@@ -4,7 +4,7 @@ import type { Dispatcher } from 'undici';
 import { z } from 'zod';
 import { serverInfo } from '../server-info.ts';
 import type { Config, Profile } from './config.ts';
-import { currentSignal } from './abort.ts';
+import { currentSignal, untilAborted } from './abort.ts';
 import type { UpstreamLimit } from './limit.ts';
 import { BusyError, CancelledError, ConfigError, StralforsError, SchemaError, WriteBlockedError, mapHttpError } from './errors.ts';
 import { createAgent as defaultCreateAgent, isAllowed, send } from './http.ts';
@@ -177,12 +177,13 @@ export function createClient(o: CreateClientOptions) {
             ...(body === undefined ? {} : { 'content-type': 'application/json' }),
           },
         });
-      const used = await token.get();
+      // the token refresh is shared: a cancel ends this caller's wait (and frees its slot) without aborting the refresh
+      const used = await untilAborted(token.get(), signal);
       let res = await attempt(used);
       if (res.status === 401) {
         token.invalidate(used);
         if (!opts.noReplay) {
-          const fresh = await token.get();
+          const fresh = await untilAborted(token.get(), signal);
           res = await attempt(fresh);
           if (res.status === 401) token.invalidate(fresh);
         }
