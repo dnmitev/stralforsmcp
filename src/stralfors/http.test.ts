@@ -16,7 +16,7 @@
  *           (stream cap: destroy the socket while the body is still being sent). Schema failure -> SchemaError(issues: {path}[]).
  *   Prod allowlist: GET apiinfo, v1 manage/health, v2 invoices/{channels,templates,rules,document};
  *           PUT v2/invoices/validate only if prodValidateEnabled and query test=true. Everything else blocked in prod.
- *   Test env: POST/DELETE/PATCH blocked unless allowWrite; GET and PUT validate?test=true allowed.
+ *   Test env: GET, PUT validate?test=true and POST channel lookup allowed; allowWrite opens exactly POST v2/invoices/true (no query); everything else blocked.
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -340,7 +340,7 @@ describe('R9 prod write guard', () => {
       ['test GET track documents', pol('test'), 'GET', `${TT}/document/documents`, true],
       ['test GET track file endpoint (test env unchanged)', pol('test'), 'GET', `${TT}/file/files`, true],
       ['test POST track documents default', pol('test'), 'POST', `${TT}/document/documents`, false],
-      ['test POST track documents allowWrite', pol('test', true), 'POST', `${TT}/document/documents`, true],
+      ['test POST track documents allowWrite (only the send route opens)', pol('test', true), 'POST', `${TT}/document/documents`, false],
     ];
     const CL = '/rest/outputmanagement/channellookup/v1';
     const lookupRows: [string, Policy, string, string, boolean][] = [
@@ -384,12 +384,12 @@ describe('R9 prod write guard', () => {
       ['test DELETE default', pol('test'), 'DELETE', '/rest/anything', false],
       ['test PATCH default', pol('test'), 'PATCH', '/rest/anything', false],
       ['test POST allowWrite', pol('test', true), 'POST', `${BASE}/v2/invoices/true`, true],
-      ['test DELETE allowWrite', pol('test', true), 'DELETE', '/rest/anything', true],
+      ['test DELETE allowWrite (only the send route opens)', pol('test', true), 'DELETE', '/rest/anything', false],
       ['prod validate with a second question mark', pol('prod', false, true), 'PUT', `${v}?test=true?x`, false],
       ['test validate with a second question mark', pol('test'), 'PUT', `${v}?test=true?x`, false],
       ['test PUT validate test=true twice', pol('test'), 'PUT', `${v}?test=true&test=false`, false],
       ['test PUT other path default', pol('test'), 'PUT', '/rest/anything', false],
-      ['test PUT other path allowWrite', pol('test', true), 'PUT', '/rest/anything', true],
+      ['test PUT other path allowWrite (only the send route opens)', pol('test', true), 'PUT', '/rest/anything', false],
       ['test HEAD default', pol('test'), 'HEAD', '/rest/anything', false],
       ['test PUT validate test=true', pol('test'), 'PUT', `${v}?test=true`, true],
       ...trackRows,

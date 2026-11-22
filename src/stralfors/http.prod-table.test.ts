@@ -83,8 +83,17 @@ describe('TEST policy', () => {
       ['POST', `${A}/v2/invoices/true`], ['POST', `${A}/v2/invoices/false`], ['DELETE', `${A}/v2/invoices/channels`], ['PATCH', CL], ['HEAD', CL],
     ] as const) expect(isAllowed(test, v, path), `${v} ${path}`).toBe(false);
   });
-  it('allowWrite opens every verb on test (and only there)', () => {
+  it('allowWrite opens exactly POST to the send route on test, nothing else', () => {
     const w = { env: 'test' as const, allowWrite: true, prodValidateEnabled: false };
-    for (const v of VERBS) expect(isAllowed(w, v, `${A}/v2/invoices/true`), v).toBe(true);
+    const SEND = `${A}/v2/invoices/true`;
+    expect(isAllowed(w, 'POST', SEND)).toBe(true);
+    expect(isAllowed(w, 'post', SEND)).toBe(true); // method is case-insensitive, like every other rule
+    expect(isAllowed(test, 'POST', SEND)).toBe(false); // flag off: refused
+    for (const v of VERBS.filter((x) => x !== 'POST' && x !== 'GET')) expect(isAllowed(w, v, SEND), v).toBe(false);
+    for (const path of [
+      `${SEND}?x=1`, `${SEND}/`, `${SEND}/x`, `${A}/v2/invoices/false`, `${A}/v2/invoices/%74rue`, `${A}/v2/invoices`, `${A}/v2/invoices/true;x`,
+      `${A}/v1/invoices/true`, `${A}/v2/invoices/../invoices/channels`, '/rest/outputmanagement/tracktrace/v1/document/documents', '/rest/anything',
+    ]) expect(isAllowed(w, 'POST', path), path).toBe(false);
+    for (const [v, path] of [['DELETE', '/rest/anything'], ['PATCH', SEND], ['PUT', `${A}/v2/invoices/validate`]] as const) expect(isAllowed(w, v, path), `${v} ${path}`).toBe(false);
   });
 });

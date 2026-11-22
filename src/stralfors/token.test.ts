@@ -232,3 +232,17 @@ describe('R4 claims', () => {
     expect(mem.text()).not.toContain('write scope present');
   });
 });
+
+describe('peek (R-35 claims source)', () => {
+  it('is undefined before any fetch, then the last claims; kept after invalidate; never fetches', async () => {
+    fake = await startFakeApi({ pki });
+    const { client } = testClient(pki, fake);
+    expect(client.token.peek()).toBeUndefined();
+    expect(fake.tokenRequests).toHaveLength(0);
+    const t = await client.token.get();
+    expect(client.token.peek()).toBe(t.claims);
+    client.token.invalidate(t);
+    expect(client.token.peek()).toBe(t.claims);
+    expect(fake.tokenRequests).toHaveLength(1);
+  });
+});

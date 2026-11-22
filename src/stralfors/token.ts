@@ -67,6 +67,8 @@ export class Token {
 export interface TokenSource {
   get(): Promise<Token>;
   invalidate(failed?: Token): void;
+  /** Claims of the last token fetched, kept after expiry or invalidation (scopes are fixed per client, LL-001); never fetches. */
+  peek(): Claims | undefined;
 }
 
 const tokenResponse = z.object({ access_token: z.string(), expires_in: z.number() });
@@ -84,6 +86,7 @@ export function createTokenSource(o: {
 }): TokenSource {
   const { profile, log, now } = o;
   let cached: Token | undefined;
+  let last: Claims | undefined;
   let inflight: Promise<Token> | undefined;
   let warned = false;
 
@@ -119,6 +122,7 @@ export function createTokenSource(o: {
       warned = true;
       log.warn({ profile: profile.id }, 'write scope present in prod; guards stay active');
     }
+    last = claims;
     return (cached = new Token(access_token, claims, expiresAt));
   }
 
@@ -131,5 +135,6 @@ export function createTokenSource(o: {
     invalidate(failed) {
       if (!failed || cached === failed) cached = undefined;
     },
+    peek: () => last,
   };
 }

@@ -9,3 +9,5 @@ Every request passes a fail-closed method-and-path check before a token is fetch
 
 - Phase 2 policy is a second layer, never the only one; tests for new operations must include a guard case.
 - A new read endpoint in `prod` is a deliberate code change to the allowlist, not configuration.
+
+*Amended 2026-11-22.* In `test` the switch (`STRALFORS_ALLOW_WRITE=true`) no longer opens every method and path: it opens exactly `POST <apiomni>/v2/invoices/true` with no query, the send route (ADR 0028), and nothing else. A new write is, like a new `prod` read, a deliberate change to the allowlist.

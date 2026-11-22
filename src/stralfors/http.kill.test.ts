@@ -14,7 +14,7 @@ const VALIDATE = `${B}/v2/invoices/validate`;
 const policy = (env: 'test' | 'prod', allowWrite = false, prodValidateEnabled = false) => ({ env, allowWrite, prodValidateEnabled });
 
 describe('R9 guard matrix gaps', () => {
-  it('test env: only GET and the dry-run validate are free; everything else needs allowWrite', () => {
+  it('test env: only GET and the dry-run validate are free; allowWrite adds the send route only', () => {
     const p = policy('test');
     expect(isAllowed(p, 'GET', `${B}/v2/anything`)).toBe(true);
     expect(isAllowed(p, 'PUT', `${VALIDATE}?test=true`)).toBe(true);
@@ -24,7 +24,8 @@ describe('R9 guard matrix gaps', () => {
     expect(isAllowed(p, 'PUT', `${VALIDATE}?test=false`)).toBe(false);
     expect(isAllowed(p, 'POST', `${VALIDATE}?test=true`)).toBe(false);
     expect(isAllowed(p, 'DELETE', `${B}/v2/x`)).toBe(false);
-    expect(isAllowed(policy('test', true), 'DELETE', `${B}/v2/x`)).toBe(true);
+    expect(isAllowed(policy('test', true), 'DELETE', `${B}/v2/x`)).toBe(false); // allowWrite opens only the send route
+    expect(isAllowed(policy('test', true), 'POST', `${B}/v2/invoices/true`)).toBe(true);
   });
 
   it('dry-run needs exactly one test=true; repeated or mixed values do not qualify', () => {

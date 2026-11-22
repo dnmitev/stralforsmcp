@@ -101,8 +101,8 @@ describe('request shape', () => {
   it('a body is sent as JSON with a content type; absent body sends none', async () => {
     fake = await startFakeApi({ pki, api: ok });
     const { client } = testClient(pki, fake, { extra: { STRALFORS_ALLOW_WRITE: 'true' } });
-    await client.put('/rest/x', { a: 1 });
-    await client.post('/rest/x');
+    await client.put('/rest/outputmanagement/apiomni/v2/invoices/validate?test=true', { a: 1 });
+    await client.post('/rest/outputmanagement/apiomni/v2/invoices/true');
     const [put, post] = fake.apiRequests;
     expect([put!.headers['content-type'], put!.body]).toEqual(['application/json', '{"a":1}']);
     expect([post!.headers['content-type'], post!.body]).toEqual([undefined, '']);

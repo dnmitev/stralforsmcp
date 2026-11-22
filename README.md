@@ -181,7 +181,7 @@ Set `STRALFORS_ENV=prod` and point the profile `*_FILE` variables at the product
 | `MCP_DRAIN_MS` | no | `10000` | integer >= 0, in-flight drain on SIGTERM/SIGINT |
 | `MCP_LOG_LEVEL` | no | `info` | `trace`, `debug`, `info`, `warn`, `error`, `fatal` or `silent`; logs go to stderr |
 | `STRALFORS_ENV` | yes | none | `test` or `prod` |
-| `STRALFORS_ALLOW_WRITE` | no | `false` | `true` or `false`; `true` is refused with `prod` |
+| `STRALFORS_ALLOW_WRITE` | no | `false` | `true` or `false`; `true` is refused with `prod`. On TEST it opens exactly one vendor route, `POST v2/invoices/true` (the send, ADR 0028), and fetches each profile's token at startup so write tools can be listed when the token holds `apiomni.write` |
 | `MCP_RATE_PER_MINUTE` | no | `120` | integer >= 1, per-principal refill (per pod) |
 | `MCP_TOOL_OUTPUT_MAX_BYTES` | no | `262144` | integer >= 1; a tool result larger than this is refused (`tool output too large`), never truncated |
 | `MCP_RULES_CACHE_S` | no | `3600` | integer 0-86400; per-pod TTL of cached Stralfors rules, `0` disables the cache |
