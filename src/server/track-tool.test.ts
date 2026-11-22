@@ -169,7 +169,7 @@ describe('AC-4 document outcome through the tool', () => {
   it.each<[string[], string]>([
     [['Rejected', 'Delivered'], 'delivered'],
     [['Rejected', 'Registered'], 'in_progress'],
-    [['Rejected', 'SomethingNew'], 'in_progress'],
+    [['Rejected', 'SomethingNew'], 'unknown'],
     [['Rejected'], 'refused'],
     [['Cancelled', 'Rejected'], 'refused'],
     [['Cancelled'], 'failed'],
@@ -193,6 +193,27 @@ describe('AC-5 several documents and cursor', () => {
     const c = receiverCanaries();
     x.serve(DOCS, 200, page([rawDoc(c, { documentId: 'M8J1' }), rawDoc(c, { documentId: 'M8K0' })], false));
     expect(await x.run({ invoiceNumber: 'INV-2' })).toMatchObject({ hasMore: true, nextCursor: 'M8K0' });
+  });
+  it('lastDocuments false but the last document has no id: no cursor, so no hasMore either', async () => {
+    const x = await world();
+    const c = receiverCanaries();
+    const last = rawDoc(c);
+    delete (last as { documentId?: string }).documentId;
+    x.serve(DOCS, 200, page([rawDoc(c, { documentId: 'M8J1' }), last], false));
+    const r = await x.run({ invoiceNumber: 'INV-2' });
+    expect(r.hasMore).toBe(false);
+    expect(r).not.toHaveProperty('nextCursor');
+  });
+  it('history for the one document that has no documentId: not_found, and no history request', async () => {
+    const x = await world();
+    const d = rawDoc(receiverCanaries());
+    delete (d as { documentId?: string }).documentId;
+    x.serve(DOCS, 200, page([d]));
+    const e = await rejection(x.run({ invoiceNumber: 'a', history: true }));
+    expect(e).toBeInstanceOf(ToolInputError);
+    expect((e as ToolInputError).reason).toBe('not_found');
+    expect((e as Error).message).toBe('tool failed: not_found');
+    expect(x.fake.apiRequests.filter((q) => q.url.includes('documentinfohistory'))).toHaveLength(0);
   });
   it('lastDocuments true: no more, no cursor', async () => {
     const x = await world();

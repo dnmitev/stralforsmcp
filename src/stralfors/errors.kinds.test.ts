@@ -7,10 +7,10 @@ describe('StralforsErrorKind', () => {
   it('type is derived from the runtime list', () => {
     expectTypeOf<StralforsErrorKind>().toEqualTypeOf<(typeof STRALFORS_ERROR_KINDS)[number]>();
   });
-  it('lists the 18 kinds, unique', () => {
+  it('lists the 20 kinds, unique', () => {
     expect(new Set(STRALFORS_ERROR_KINDS).size).toBe(STRALFORS_ERROR_KINDS.length);
     expect([...STRALFORS_ERROR_KINDS].sort()).toEqual([
-      'agreement_not_found', 'auth', 'bad_request', 'config', 'conflict', 'forbidden', 'not_dry_run', 'rate_limited', 'request_invalid', 'route_not_found',
+      'agreement_not_found', 'auth', 'bad_request', 'busy', 'cancelled', 'config', 'conflict', 'forbidden', 'not_dry_run', 'rate_limited', 'request_invalid', 'route_not_found',
       'schema', 'timeout', 'tls', 'token_format', 'too_large', 'upstream', 'validation_failed', 'write_blocked',
     ]);
   });

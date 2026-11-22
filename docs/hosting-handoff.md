@@ -81,6 +81,7 @@ On SIGTERM `/readyz` turns 503 and the server keeps serving for `readyDelayMs` (
 - Default is **one replica**. State per pod: the rate limiter (so N replicas allow N times the limit) and the rules cache. Nothing is shared between pods and nothing is persisted, so more replicas are safe; they only multiply those two.
 - Requests and limits default to 100m/128Mi and 500m/256Mi with `heapMaxMb` 192. Raise the memory limit and `heapMaxMb` together (heap about 75 % of the limit).
 - Tool outputs above `MCP_TOOL_OUTPUT_MAX_BYTES` are refused, not truncated.
+- At most `MCP_UPSTREAM_CONCURRENCY` (default 16, set through `extraEnv`) Stralfors requests run at once per pod; more are refused at once (`busy`), so replicas multiply the total. A cancelled MCP call or a dropped connection aborts its in-flight Stralfors request.
 
 ## Knowledge overlay
 

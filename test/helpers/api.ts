@@ -132,7 +132,7 @@ export function memoryLogger(level = 'trace') {
   };
 }
 
-export interface TestClientOpts extends EnvOpts, Partial<Pick<CreateClientOptions, 'logger' | 'onBlocked' | 'now'>> {}
+export interface TestClientOpts extends EnvOpts, Partial<Pick<CreateClientOptions, 'logger' | 'onBlocked' | 'now' | 'upstreamLimit'>> {}
 
 /** Config from a real temp-file env + client pointed at `srv` with the runtime CA. */
 export function testClient(pki: Pki, srv: TestServer, o: TestClientOpts = {}) {
@@ -140,7 +140,7 @@ export function testClient(pki: Pki, srv: TestServer, o: TestClientOpts = {}) {
   const config = loadConfig(files.env);
   const client = createClient({
     config, profileId: o.id ?? 'a', ca: pki.ca, baseUrl: srv.url,
-    logger: o.logger, onBlocked: o.onBlocked, now: o.now,
+    logger: o.logger, onBlocked: o.onBlocked, now: o.now, upstreamLimit: o.upstreamLimit,
   });
   return { client, config, files };
 }

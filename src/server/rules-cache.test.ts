@@ -205,3 +205,34 @@ it('default capacity is 64 entries', async () => {
   await cache.get('p', 'c', 99, again);
   expect(again).toHaveBeenCalledOnce(); // newest still cached
 });
+
+describe('shared fill and caller cancels (Greptile PR #47)', () => {
+  it('a cancel ends only that caller\'s wait; the fill runs outside every caller scope and serves the other caller', async () => {
+    const { createRulesCache: make } = await import('./rules-cache.ts');
+    const { currentSignal, withSignal } = await import('../stralfors/abort.ts');
+    const { CancelledError } = await import('../stralfors/errors.ts');
+    const cache = make({ ttlMs: 60_000, now: () => 0 });
+    let release: (v: string) => void = () => undefined;
+    let seen: AbortSignal | undefined | 'unset' = 'unset';
+    const fetch = () => { seen = currentSignal(); return new Promise<string>((r) => (release = r)); };
+    const a = new AbortController();
+    const first = withSignal(a.signal, () => cache.get('p', 'X', 0, fetch)).then(() => 'ok', (e: unknown) => e);
+    const second = withSignal(new AbortController().signal, () => cache.get('p', 'X', 0, fetch));
+    expect(seen).toBeUndefined();
+    a.abort();
+    expect(await first).toBeInstanceOf(CancelledError);
+    release('rules');
+    await expect(second).resolves.toBe('rules');
+    await expect(cache.get('p', 'X', 0, fetch)).resolves.toBe('rules'); // cached, one fill only
+  });
+  it('a caller whose signal is already aborted gets CancelledError for a cached value', async () => {
+    const { createRulesCache: make } = await import('./rules-cache.ts');
+    const { withSignal } = await import('../stralfors/abort.ts');
+    const { CancelledError } = await import('../stralfors/errors.ts');
+    const cache = make({ ttlMs: 60_000, now: () => 0 });
+    await cache.get('p', 'X', 0, async () => 'v');
+    const a = new AbortController();
+    a.abort();
+    await expect(withSignal(a.signal, () => cache.get('p', 'X', 0, async () => 'w'))).rejects.toBeInstanceOf(CancelledError);
+  });
+});

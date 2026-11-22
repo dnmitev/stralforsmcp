@@ -8,6 +8,7 @@ import { createAudit, fromBlocked, type Audit } from '../audit/index.ts';
 import { createTokenStore, type Env } from '../auth/index.ts';
 import { ConfigError } from '../stralfors/errors.ts';
 import { createClient, createLogger, loadConfig, type CreateClientOptions, type StralforsClient } from '../stralfors/index.ts';
+import { createUpstreamLimit } from '../stralfors/limit.ts';
 import { createListChannels } from './channels.ts';
 import { serverInfo } from '../server-info.ts';
 import { activeIds, createTelemetry, logMixin, upstreamInstrument, type Telemetry } from '../telemetry/index.ts';
@@ -120,6 +121,7 @@ export async function start(env: Record<string, string | undefined>, deps: Start
   const burst = int('MCP_RATE_BURST', env.MCP_RATE_BURST, 30, 1);
   const maxOutputBytes = int('MCP_TOOL_OUTPUT_MAX_BYTES', env.MCP_TOOL_OUTPUT_MAX_BYTES, DEFAULT_MAX_OUTPUT_BYTES, 1);
   const rulesCacheS = int('MCP_RULES_CACHE_S', env.MCP_RULES_CACHE_S, 3600, 0, 86_400);
+  const upstreamConcurrency = int('MCP_UPSTREAM_CONCURRENCY', env.MCP_UPSTREAM_CONCURRENCY, 16, 1, 1000);
   const readyDelayMs = int('MCP_READY_DELAY_MS', env.MCP_READY_DELAY_MS, 0, 0, 120_000);
   const heartbeatS = int('MCP_HEARTBEAT_S', env.MCP_HEARTBEAT_S, 60, 0, 3600);
   const staleAfterMs = int('MCP_TOKEN_STALE_MS', env.MCP_TOKEN_STALE_MS, 900_000, 1);
@@ -157,6 +159,7 @@ export async function start(env: Record<string, string | undefined>, deps: Start
   const audit = deps.audit ?? createAudit({ destination: process.stdout, now, otelTraceId: () => activeIds()?.trace_id });
   const clients = new Map<string, StralforsClient>();
   const make = deps.clientFactory ?? createClient;
+  const upstreamLimit = createUpstreamLimit(upstreamConcurrency); // one cap shared by every profile's client in this pod
   /** true when some client's close rejected, even if another is still unfinished; an unfinished close (abandoned after CLIENT_CLOSE_MS) is not an error */
   const closeClients = async () => {
     let t: ReturnType<typeof setTimeout> | undefined;
@@ -188,7 +191,7 @@ export async function start(env: Record<string, string | undefined>, deps: Start
   let metricsListening: number;
   try {
     for (const id of Object.keys(config.profiles)) {
-      clients.set(id, make({ config, profileId: id, logger, now, instrument: upstreamInstrument(telemetry), onBlocked: (e) => void audit.record({ ...fromBlocked(e), principal: currentPrincipal(), env: deploy }), onCredentialReload: (r) => telemetry.instruments.credentialReloads.add(1, { outcome: r.ok ? 'ok' : 'failed' }) }));
+      clients.set(id, make({ config, profileId: id, logger, now, instrument: upstreamInstrument(telemetry), onBlocked: (e) => void audit.record({ ...fromBlocked(e), principal: currentPrincipal(), env: deploy }), onCredentialReload: (r) => telemetry.instruments.credentialReloads.add(1, { outcome: r.ok ? 'ok' : 'failed' }), upstreamLimit }));
     }
     const profiles = Object.values(config.profiles).map((p) => ({ id: p.id, country: p.country }));
     const cache = createRulesCache({ ttlMs: rulesCacheS * 1000, now });

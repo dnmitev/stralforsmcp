@@ -15,7 +15,7 @@ const MEMBERS = [
   'env', 'role', 'write', 'validate', 'lookup', 'scope',
   'malformed', 'unknown', 'expired', 'revoked',
   'config', 'tls', 'auth', 'forbidden', 'agreement_not_found', 'route_not_found', 'bad_request', 'validation_failed', 'conflict',
-  'rate_limited', 'upstream', 'timeout', 'too_large', 'schema', 'write_blocked', 'token_format', 'request_invalid', 'not_dry_run',
+  'rate_limited', 'upstream', 'timeout', 'too_large', 'schema', 'write_blocked', 'token_format', 'request_invalid', 'not_dry_run', 'cancelled', 'busy',
   'write_guard', 'error', 'bad_input', 'not_found', 'invalid_input',
 ] as const satisfies readonly AuditReason[];
 
@@ -35,8 +35,8 @@ describe('AuditReason closed union', () => {
     type Missing = Exclude<AuditReason, (typeof MEMBERS)[number]>;
     const exhaustive: [Missing] extends [never] ? true : false = true; // compile error when a member is not listed
     expect(exhaustive).toBe(true);
-    expect(MEMBERS).toHaveLength(33);
-    expect(new Set(MEMBERS).size).toBe(33);
+    expect(MEMBERS).toHaveLength(35);
+    expect(new Set(MEMBERS).size).toBe(35);
   });
 
   it('is derived from the client error kinds, not copied (R17)', () => {
@@ -50,7 +50,7 @@ describe('AuditReason closed union', () => {
       env: true, role: true, write: true, validate: true, lookup: true, scope: true, malformed: true, unknown: true, expired: true, revoked: true,
       config: true, tls: true, auth: true, forbidden: true, agreement_not_found: true, route_not_found: true, bad_request: true,
       validation_failed: true, conflict: true, rate_limited: true, upstream: true, timeout: true, too_large: true, schema: true,
-      write_blocked: true, token_format: true, request_invalid: true, not_dry_run: true, write_guard: true, error: true, bad_input: true, not_found: true, invalid_input: true,
+      write_blocked: true, token_format: true, request_invalid: true, not_dry_run: true, cancelled: true, busy: true, write_guard: true, error: true, bad_input: true, not_found: true, invalid_input: true,
     };
     expect(Object.keys(all).sort()).toEqual([...MEMBERS].sort());
   });

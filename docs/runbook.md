@@ -64,6 +64,7 @@ Alert `StralforsMcpUpstreamErrors`: more than 20 % of vendor requests fail for 1
 1. Check `stralfors_up`. If 0, go to [Vendor heartbeat down](#vendor-heartbeat-down).
 2. Split by `error_type` in `stralfors_requests_total{outcome="error"}`. `tls` points at [Certificate expiry](#certificate-expiry) or [Credential reload failing](#credential-reload-failing); `auth` points at a rotated or revoked client secret; `timeout` and `upstream` point at the vendor or the network.
 3. If only one operation fails, it is probably a vendor-side issue for that operation. Check the vendor status channel before changing anything.
+4. Audit reason `busy`: the per-pod cap `MCP_UPSTREAM_CONCURRENCY` was full, usually because the vendor is slow and calls pile up. Fix the slowness first; raise the cap only with memory headroom. Reason `cancelled`: the caller cancelled or disconnected and the vendor request was aborted; a burst of them alongside `timeout` means clients give up before the vendor answers.
 
 ## Vendor heartbeat down
 

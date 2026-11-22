@@ -8,7 +8,7 @@ export const KINDS = [
   [E.AgreementNotFoundError, 'agreement_not_found'], [E.RouteNotFoundError, 'route_not_found'], [E.BadRequestError, 'bad_request'],
   [E.ValidationFailedError, 'validation_failed'], [E.ConflictError, 'conflict'], [E.RateLimitedError, 'rate_limited'],
   [E.UpstreamError, 'upstream'], [E.TimeoutError, 'timeout'], [E.ResponseTooLargeError, 'too_large'], [E.SchemaError, 'schema'],
-  [E.WriteBlockedError, 'write_blocked'], [E.TokenFormatError, 'token_format'], [E.RequestValidationError, 'request_invalid'], [E.NotDryRunError, 'not_dry_run'],
+  [E.WriteBlockedError, 'write_blocked'], [E.TokenFormatError, 'token_format'], [E.RequestValidationError, 'request_invalid'], [E.NotDryRunError, 'not_dry_run'], [E.CancelledError, 'cancelled'], [E.BusyError, 'busy'],
 ] as unknown as readonly (readonly [Ctor, StralforsErrorKind])[];
 
 /** Classes exported by errors.ts that extend StralforsError (excluding the base). */

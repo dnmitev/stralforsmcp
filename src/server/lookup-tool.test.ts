@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { AgreementNotFoundError, StralforsError, UpstreamError } from '../stralfors/errors.ts';
+import { currentSignal, withSignal } from '../stralfors/abort.ts';
+import { AgreementNotFoundError, CancelledError, StralforsError, UpstreamError } from '../stralfors/errors.ts';
 import { ERAS, connect, handlerFetch, principal, sink, toAuth } from '../../test/helpers/server.ts';
 import { dump, memTelemetry } from '../../test/helpers/telemetry.ts';
 import { buildMcp } from './mcp.ts';
@@ -184,5 +185,48 @@ describe.each(ERAS)('through the registry and the SDK (%s)', (era) => {
     const bad = await call(c, { channels: ['Kivra'], candidates: [] }).then((r) => r.isError === true, () => true);
     expect(bad).toBe(true);
     expect(f.calls.started).toHaveLength(0);
+  });
+});
+
+describe('one budget aborts the in-flight request (R-11)', () => {
+  // a poll that only ends when its scope's signal aborts, then fails the way the client does
+  const hanging = () => ({
+    channelLookup: async () => ({ correlationId: CORR }),
+    channelLookupResult: async () => {
+      const signal = currentSignal()!;
+      await new Promise<void>((r) => (signal.aborted ? r() : signal.addEventListener('abort', () => r())));
+      throw new CancelledError('request cancelled by the caller');
+    },
+  });
+  const args = { channels: ['Kivra'], candidates: ['A1'] };
+  it('budget spent while a request is in flight: that request is aborted and the fixed still-running text returns', async () => {
+    let fire: () => void = () => undefined;
+    let stopped = 0;
+    const t = createChannelLookup({ clients: new Map([['p', hanging() as never]]), timer: (f, ms) => { expect(ms).toBe(20_000); fire = f; return () => void stopped++; } });
+    const p = rejection(t.run(args as never, ctx));
+    await new Promise((r) => setTimeout(r, 10));
+    fire();
+    const e = await p;
+    expect(e).toBeInstanceOf(ToolInputError);
+    expect((e as ToolInputError).message).toBe(STILL_RUNNING);
+    expect((e as ToolInputError).reason).toBe('timeout');
+    expect(stopped).toBe(1);
+  });
+  it('a caller cancel stays a cancel, not a timeout, and the timer is cleared', async () => {
+    let stopped = 0;
+    const t = createChannelLookup({ clients: new Map([['p', hanging() as never]]), timer: () => () => void stopped++ });
+    const ac = new AbortController();
+    const p = rejection(withSignal(ac.signal, () => t.run(args as never, ctx)));
+    await new Promise((r) => setTimeout(r, 10));
+    ac.abort();
+    expect(await p).toBeInstanceOf(CancelledError);
+    expect(stopped).toBe(1);
+  });
+  it('a successful lookup clears the budget timer', async () => {
+    let stopped = 0;
+    const f = fakeClient({ results: [answer(['A1'])] });
+    const t = createChannelLookup({ ...deps(f), timer: () => () => void stopped++ });
+    await t.run(args as never, ctx);
+    expect(stopped).toBe(1);
   });
 });

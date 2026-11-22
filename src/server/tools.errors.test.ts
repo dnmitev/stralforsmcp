@@ -29,7 +29,7 @@ describe('KIND_TEXT', () => {
 });
 
 describe('every StralforsError kind maps to its reason and text', () => {
-  it('the table has all 18 classes', () => expect(KINDS).toHaveLength(18));
+  it('the table has all 20 classes', () => expect(KINDS).toHaveLength(20));
   it.each(KINDS.map(([C, k]) => [C.name, C, k] as const))('%s -> %s', async (_n, C, kind) => {
     const { s, deps } = setup();
     const r = await callTool(thrower(new C('MSG-CANARY', props)), {}, pm, deps);

@@ -1,7 +1,7 @@
 import { createPrivateKey } from 'node:crypto';
 import { Agent, request, type Dispatcher } from 'undici';
 import type { Profile } from './config.ts';
-import { ResponseTooLargeError, StralforsError, TimeoutError, TlsError, UpstreamError } from './errors.ts';
+import { CancelledError, ResponseTooLargeError, StralforsError, TimeoutError, TlsError, UpstreamError } from './errors.ts';
 
 /** One keep-alive agent per profile. The key is checked eagerly so a wrong passphrase fails at startup, not at the first call. */
 export function createAgent(profile: Profile, opts: { ca?: string } = {}): Dispatcher {
@@ -51,9 +51,10 @@ const proven = new WeakSet<Dispatcher>();
 export async function send(
   agent: Dispatcher,
   url: URL,
-  init: { method: string; headers: Record<string, string>; body?: string; timeoutMs: number; maxBytes: number },
+  init: { method: string; headers: Record<string, string>; body?: string; timeoutMs: number; maxBytes: number; signal?: AbortSignal },
 ): Promise<Raw> {
-  const signal = AbortSignal.timeout(init.timeoutMs);
+  const timeout = AbortSignal.timeout(init.timeoutMs);
+  const signal = init.signal ? AbortSignal.any([timeout, init.signal]) : timeout;
   try {
     const res = await request(url, { dispatcher: agent, method: init.method as Dispatcher.HttpMethod, headers: init.headers, body: init.body, signal });
     proven.add(agent); // any HTTP response proves the handshake
@@ -75,7 +76,8 @@ export async function send(
     return { status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks).toString('utf8'), bytes };
   } catch (e) {
     if (e instanceof StralforsError) throw e;
-    if (signal.aborted) throw new TimeoutError(`no complete response within ${init.timeoutMs} ms`);
+    if (timeout.aborted) throw new TimeoutError(`no complete response within ${init.timeoutMs} ms`);
+    if (signal.aborted) throw new CancelledError('request cancelled by the caller');
     const err = e as { code?: string; cause?: { code?: string } };
     const code = err.code ?? err.cause?.code ?? '';
     if (TLS_CODE.test(code) || (RESET_CODE.test(code) && !proven.has(agent))) throw new TlsError(`TLS failure (${code})`);

@@ -3,6 +3,7 @@ import type { CallToolResult, McpServer } from '@modelcontextprotocol/server';
 import type * as z from 'zod/v4';
 import type { Audit, AuditInput, AuditReason } from '../audit/index.ts';
 import type { Env, Principal } from '../auth/index.ts';
+import { withSignal } from '../stralfors/abort.ts';
 import { withPrincipal } from './context.ts';
 import { ConfigError, StralforsError, type StralforsErrorKind } from '../stralfors/errors.ts';
 import { setSafe, withSpan, type Telemetry } from '../telemetry/index.ts';
@@ -46,13 +47,14 @@ export class ToolInputError extends Error {
 const fail = (text: string): CallToolResult => ({ isError: true, content: [{ type: 'text', text }] });
 
 /** Policy re-check, one audit line, sanitised errors. Arguments and results never reach the audit. */
-export async function callTool(def: ToolDef, args: unknown, principal: Principal, deps: RegistryDeps, visible?: ToolSpec[]): Promise<CallToolResult> {
+/** `signal` is the MCP request's abort signal: upstream requests the tool starts are aborted with it (CancelledError, audited `cancelled`). */
+export async function callTool(def: ToolDef, args: unknown, principal: Principal, deps: RegistryDeps, visible?: ToolSpec[], signal?: AbortSignal): Promise<CallToolResult> {
   const tel = deps.telemetry;
-  if (!tel) return run(def, args, principal, deps, visible);
-  return withSpan(tel.tracer, `mcp.tool ${def.spec.name}`, SpanKind.INTERNAL, { tool: def.spec.name, env: deps.env }, (span) => run(def, args, principal, deps, visible, span), () => 'error');
+  if (!tel) return run(def, args, principal, deps, visible, undefined, signal);
+  return withSpan(tel.tracer, `mcp.tool ${def.spec.name}`, SpanKind.INTERNAL, { tool: def.spec.name, env: deps.env }, (span) => run(def, args, principal, deps, visible, span, signal), () => 'error');
 }
 
-async function run(def: ToolDef, args: unknown, principal: Principal, deps: RegistryDeps, visible?: ToolSpec[], span?: Span): Promise<CallToolResult> {
+async function run(def: ToolDef, args: unknown, principal: Principal, deps: RegistryDeps, visible?: ToolSpec[], span?: Span, signal?: AbortSignal): Promise<CallToolResult> {
   const now = deps.now ?? Date.now;
   const start = now();
   const ctx = { principal, env: deps.env, allowWrite: deps.allowWrite, prodValidateEnabled: deps.prodValidateEnabled, claims: deps.claims };
@@ -72,7 +74,7 @@ async function run(def: ToolDef, args: unknown, principal: Principal, deps: Regi
     return fail(DENIED_TEXT(d.reason));
   }
   try {
-    const out = await withPrincipal(principal, () => def.run(args as never, { ...ctx, visible: visible ?? visibleTools(ctx, [def.spec]) }));
+    const out = await withPrincipal(principal, () => withSignal(signal, () => def.run(args as never, { ...ctx, visible: visible ?? visibleTools(ctx, [def.spec]) })));
     const body = JSON.stringify(out);
     if (Buffer.byteLength(body) > (deps.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES)) { // refuse, never truncate: a half answer misleads
       record({ outcome: 'error', reason: 'too_large' });
@@ -106,7 +108,7 @@ export function registerAll(server: McpServer, principal: Principal, tools: Tool
   const visible = visibleTools({ principal, env: deps.env, allowWrite: deps.allowWrite, prodValidateEnabled: deps.prodValidateEnabled, claims: deps.claims }, tools.map((t) => t.spec));
   const shown = tools.filter((t) => visible.includes(t.spec));
   for (const def of shown) {
-    server.registerTool(def.spec.name, { title: def.title, description: def.description, inputSchema: auditInvalid(def, principal, deps), outputSchema: def.outputSchema, annotations: def.annotations }, (args) => callTool(def, args, principal, deps, visible));
+    server.registerTool(def.spec.name, { title: def.title, description: def.description, inputSchema: auditInvalid(def, principal, deps), outputSchema: def.outputSchema, annotations: def.annotations }, (args, extra) => callTool(def, args, principal, deps, visible, extra.mcpReq.signal));
   }
   return visible;
 }
