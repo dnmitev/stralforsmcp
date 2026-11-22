@@ -72,6 +72,10 @@ One requirement text of a rule, such as "required", "one of these values" or "mu
 A regular expression a rule publishes for a value. It follows the vendor's own regular-expression dialect, which this server cannot always interpret; such a pattern never produces a local finding and only the dry run decides.
 _Avoid_: regex (unqualified), format
 
+**Pattern dialect**:
+Rule patterns are written for the vendor's .NET regular-expression engine, not JavaScript's. A pattern using syntax the two engines read differently, or a value they would judge differently, is left to the dry run instead of being checked locally.
+_Avoid_: regex flavour; invalid pattern (the drift finding `pattern-not-compilable` is a different thing)
+
 **Criterion kind** (`Criterion.kind`):
 The fixed token for a criterion (`required`, `valid_items`, `pattern`, ...). Each kind has one fixed sentence template, so callers read the same wording whatever the vendor text says.
 
@@ -88,7 +92,7 @@ Per-pod cache of a channel's flattened rules, keyed by profile, channel and temp
 One reported problem in a validation result: source (local or Stralfors), rule id, JSON path, criterion kind, a fixed sentence and, where published, the expected pattern and an example value. Vendor message text is never part of a finding.
 
 **Local check** (`localCheck()`):
-The second validation stage: the cached rules are interpreted against the document without calling the API. It reports only what it is certain of; a rule whose ancestor is absent, or that is conditional, is left to the dry run.
+The second validation stage: the cached rules are interpreted against the document without calling the API. It reports only what it is certain of; a rule whose ancestor is absent, or that is conditional, is left to the dry run. Its findings stop the dry run only when the document lists exactly one channel and that channel's rules were fetched at most 5 minutes ago; otherwise the dry run decides.
 
 **Validation stage** (`input`, `local`, `dry_run`, `passed`):
 The step that produced a validation result's findings. Stages run in that order and stop at the first one with findings.
@@ -105,7 +109,7 @@ A validation request that is checked by the API as if it were a send but creates
 _Avoid_: validate (ambiguous with local schema validation), test send, simulation
 
 **Outcome** (`Outcome`, `channelOutcome()`, `documentOutcome()`):
-Our own five-value reading of a tracking status: `delivered`, `in_progress`, `refused`, `failed` or `unknown`. A fixed mapping of the raw status strings, which are always returned beside it; a status the table does not know is `unknown`. A document's outcome is derived from its channels (any delivered wins, in progress or unknown beats refused, refused beats failed).
+Our own five-value reading of a tracking status: `delivered`, `in_progress`, `refused`, `failed` or `unknown`. A fixed mapping of the raw status strings, which are always returned beside it; a status the table does not know is `unknown`. A document's outcome is derived from its channels (any delivered wins, then in progress, then unknown, then refused, then failed). An unknown status is never shown as progress or as final.
 _Avoid_: state, result
 
 **Tracking channel** (Track & Trace `channelId`, `channelName`):
@@ -142,6 +146,10 @@ The number of matched candidates that fit none of the submitted candidates after
 
 **Lookup failure reason** (`reason`: `not_configured` | `error`):
 Why a lookup channel has no availability: `not_configured` when the vendor says the channel is not set up for this client, `error` for anything else. A fixed code; the vendor sentence is never returned.
+
+**Lookup budget**:
+The single 20-second deadline of one `channel_lookup` call, covering the start request and every poll. When it runs out the request in flight is aborted and the caller is told the lookup is still running (reason `timeout`); a caller cancel inside it stays a caller cancel.
+_Avoid_: polling deadline, upstream timeout (that applies to each vendor request)
 
 **Correlation id** (lookup):
 The vendor's handle for one started channel lookup, used only to read its answer. Never returned to the caller.
@@ -319,6 +327,14 @@ _Avoid_: session, sticky, connection (for a client relationship)
 The bounded wait during shutdown for requests already in flight to finish after the listener has closed and readiness has gone to 503. A pod's termination grace period must be longer than it.
 _Avoid_: graceful shutdown (the whole sequence), timeout (unqualified)
 
+**Ready delay** (`MCP_READY_DELAY_MS`):
+The wait at the start of shutdown during which readiness already answers 503 but the listener still accepts connections, so requests routed before the load balancer notices are still served. The drain follows it (ADR 0023).
+_Avoid_: preStop, grace period (the pod's hard limit)
+
+**Vendor heartbeat** (`MCP_HEARTBEAT_S`, `stralfors.up`):
+The periodic per-profile call to the vendor's health read; the gauge is 1 only when every profile's last probe answered `UP`. A signal for operators, never a readiness condition.
+_Avoid_: health check (ambiguous with liveness and readiness), ping
+
 **Log stream** (`MCP_LOG_LEVEL`, stderr):
 The JSON log lines of the server, written to stderr at or above the configured level. Audit events are a separate stream on stdout that no level setting can silence.
 _Avoid_: output (unqualified), console
@@ -330,6 +346,22 @@ _Avoid_: connection, session, per-request client
 **Principal context** (`withPrincipal`, `currentPrincipal`):
 The async-local scope that carries the calling principal through one tool call, so code the tool reaches indirectly (the client's blocked-write hook) can attribute its audit event. Empty outside a tool call.
 _Avoid_: thread-local, global user, request context
+
+**Abort scope** (`withSignal`, `currentSignal`):
+The async-local scope that carries the caller's cancel signal through one tool call, so every upstream request the tool starts is aborted when the MCP request is cancelled or its connection drops (ADR 0026). Empty outside a tool call.
+_Avoid_: cancellation token, request context
+
+**Caller cancel** (`CancelledError`, kind and audit reason `cancelled`):
+A tool call ended because its caller cancelled or disconnected. The upstream request in flight is aborted and never replayed; for a create the vendor may already have accepted it, so its outcome is unknown rather than failed.
+_Avoid_: timeout (the server's own deadline), abort (the mechanism)
+
+**Shared work** (`detached`, `untilAborted`):
+Upstream work several callers wait on at once, such as a token refresh or a rules cache fill. It runs outside every caller's abort scope, so a cancel ends only that caller's wait.
+_Avoid_: background job
+
+**Upstream cap** (`MCP_UPSTREAM_CONCURRENCY`, `createUpstreamLimit`):
+The per-pod ceiling on Stralfors requests in flight at once, shared by every profile's client and not counting token fetches. A request over it is refused at once with kind and audit reason `busy`; nothing waits in a queue (ADR 0025).
+_Avoid_: rate limit (per principal, per minute), throttling (the upstream 429), pool
 
 **Tool input error** (`ToolInputError`, reason `bad_input`):
 A tool refusing its own arguments with a fixed text before any upstream call: a missing or unknown profile, an unknown agreement label.
@@ -544,12 +576,20 @@ _Avoid_: CI build, test job
 The only workflow job with `packages: write`. Runs after a green build-scan on a push to `main` or a `v*` tag of this repository, never on a pull request or a fork, logs in to GHCR with the workflow token and pushes a fresh linux/amd64 and linux/arm64 build.
 _Avoid_: release job, deploy
 
+**Image signature** (`cosign sign`, keyless):
+The keyless Sigstore signature the publish job puts on the image digest it pushed, only after that same digest has passed the gate on both platforms (scan, then sign). It states which workflow and ref built the image, not that it was reviewed.
+_Avoid_: provenance (the build attestation), SBOM
+
+**Rescan** (`rescan.yml`):
+The weekly read-only re-run of the gate against the published image, catching vulnerabilities disclosed after it was published.
+_Avoid_: rebuild, scheduled build
+
 **Tag policy**:
 `sha-<40 hex commit>` on every publish, `edge` on `main`, `X.Y.Z`, `X.Y` and `latest` on `v*` release tags only. Deployments reference a digest or an immutable tag.
 _Avoid_: `latest` or `edge` for deployments
 
 **Pin bump**:
-The manual, reviewed pull request that moves a base image digest, the Trivy version and checksum, or an action commit SHA. No update bot does this yet.
+The reviewed pull request that moves a base image digest, an action commit SHA or an exact npm version. Dependabot opens them weekly, grouped and after a cooldown, and rewrites the exact pin rather than loosening it; the Trivy and cosign binaries are still bumped by hand.
 _Avoid_: upgrade, auto-update
 
 ## Helm chart
@@ -583,6 +623,10 @@ _Avoid_: external ingress, admin ingress
 **Desktop extension** (`extension/`, `dist/stralforsmcp.mcpb`, `npm run mcpb:build`):
 The Claude Desktop package that carries the bridge as one bundled JavaScript file plus a manifest. Needed because Desktop cannot send a per-user bearer token to a private server on its own; Claude Code and Cursor need none.
 _Avoid_: connector (Desktop's cloud-called custom connector), plugin, app
+
+**Bundle attestation** (`attest`, `SHA256SUMS`):
+The build-provenance attestation a `v*` tag adds to the `.mcpb`, published with a SHA-256 checksum file. The bundle build is reproducible, so two builds of one commit have the same checksum.
+_Avoid_: signature (that is the image's), notarisation
 
 **Bridge** (`extension/src/proxy.ts`, stderr prefix `stralforsmcp-bridge`):
 The local process the extension starts: stdio towards Desktop, Streamable HTTP towards the hosted server, forwarding MCP messages verbatim and adding only the `Authorization` header. stdout carries protocol frames only; stderr carries a few fixed lines that never contain the token, the URL or upstream text. A 401 ends it with the fixed text `authorization failed (check your token)`.
@@ -631,10 +675,30 @@ _Avoid_: end-to-end tests, live tests
 ## Quality
 
 **Mutation score**:
-The share of deliberately injected code changes that the test suite detects. Core client modules target 80 %; the build fails below 70 %.
+The share of deliberately injected code changes that the test suite detects, measured over the configured decision-logic files only. The build fails below 95 %.
+
+**Safety ceiling** (`SAFETY_CEILINGS`, `safetyViolations`):
+The largest number of undetected mutants allowed in one safety-critical file, equal to its known equivalent mutants. One file over its ceiling fails the build even when the overall score holds (ADR 0027).
+_Avoid_: floor, threshold (those are the overall score's)
+
+**Incremental chain**:
+The cached sequence of mutation results each run builds on, keyed by a hash of the mutation and test configuration, so a change to what is mutated or tested starts a fresh chain and results of removed files never count.
+_Avoid_: baseline (the weekly full run's saved result)
+
+**Code pull request**:
+A pull request that changes source, tests, package manifests or test and mutation configuration. Only these run the mutation job; any doubt about the changed-file list counts as code.
+_Avoid_: non-docs PR
 
 **Confidence status** (`review/confidence`):
 The commit status the principal review publishes: how confident the review is that the exact head commit adds no defect, security issue or leak. A pull request merges only above the agreed threshold.
+
+**First reviewer** (Greptile, check `Greptile Review`):
+The automated review that runs on every pull request before the principal review. Its findings feed the principal review, which triages them; it is not the merge gate.
+_Avoid_: CodeRabbit (no longer used), bot review
+
+**Skip label** (`skip-confidence`):
+The pull request label with which a maintainer sets the confidence status for one head commit without a principal review. It does nothing when the change touches gate or pipeline files (ADR 0024).
+_Avoid_: override, bypass
 
 **Synthetic fixture**:
 Test data written by hand in the shape the API uses, with placeholder values and nil ids. Never a copy of a vendor or customer payload.

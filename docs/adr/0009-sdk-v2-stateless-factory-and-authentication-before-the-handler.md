@@ -3,7 +3,7 @@ status: accepted
 ---
 # MCP SDK v2 with a stateless factory per request and authentication before the handler
 
-The server is hosted behind a load balancer with several replicas and callers present personal access tokens. SDK v1 (`@modelcontextprotocol/sdk`) is maintenance-only and stops at the 2025 protocol; v2 serves both the 2025 handshake and the 2026-07-28 envelope from one endpoint. We use `@modelcontextprotocol/server` and `@modelcontextprotocol/node` v2 at exact pins (no caret), without Express, and build the HTTP front on `node:http` ourselves.
+The server is hosted behind a load balancer with several replicas and callers present personal tokens. SDK v1 (`@modelcontextprotocol/sdk`) is maintenance-only and stops at the 2025 protocol; v2 serves both the 2025 handshake and the 2026-07-28 envelope from one endpoint. We use `@modelcontextprotocol/server` and `@modelcontextprotocol/node` v2 at exact pins (no caret), without Express, and build the HTTP front on `node:http` ourselves.
 
 ## Decision
 
