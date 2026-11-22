@@ -33,7 +33,7 @@ A weekly workflow (`rescan.yml`) re-scans the published `edge` image so a newly 
 
 | Environment | Ingress | Who may call |
 |---|---|---|
-| TEST | internal, optionally public | all roles, TEST tools including writes |
+| TEST | internal, optionally public | all roles, TEST tools including writes (only with `STRALFORS_ALLOW_WRITE=true`, which opens exactly the send route) |
 | PROD | **internal only** (VPN) | `dev` role only, read tools plus `validate_invoice` when enabled (ADR 0007; enabling it needs a recorded vendor confirmation that the dry run creates nothing, see ADR 0017 item 7) |
 
 Run TEST and PROD as separate releases with separate Secrets and, if you use IAM roles for service accounts, separate roles. The chart refuses to render PROD with a public ingress, extra hostnames, `allowWrite` or no internal ingress class. It cannot see what your internal ingress class exposes: keeping it internal is your job.

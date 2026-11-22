@@ -193,6 +193,12 @@ export async function start(env: Record<string, string | undefined>, deps: Start
     for (const id of Object.keys(config.profiles)) {
       clients.set(id, make({ config, profileId: id, logger, now, instrument: upstreamInstrument(telemetry), onBlocked: (e) => void audit.record({ ...fromBlocked(e), principal: currentPrincipal(), env: deploy }), onCredentialReload: (r) => telemetry.instruments.credentialReloads.add(1, { outcome: r.ok ? 'ok' : 'failed' }), upstreamLimit }));
     }
+    if (allowWrite) {
+      // write tools are listed only when a profile's real token holds the write scope (R-35): fetch each token once now, not on a request path
+      await Promise.all([...clients].map(async ([id, c]) => c.token.get().then(() => undefined, () => logger.warn({ profile: id }, 'credentials.token_prefetch_failed'))));
+    }
+    // a request holds scope s when any profile's last fetched token holds it; send_invoice re-checks the chosen profile (ADR 0028). Cached claims only, never a fetch.
+    const claimsFor = () => ({ hasScope: (s: string) => [...clients.values()].some((c) => c.token.peek()?.hasScope(s) ?? false) });
     const profiles = Object.values(config.profiles).map((p) => ({ id: p.id, country: p.country }));
     const cache = createRulesCache({ ttlMs: rulesCacheS * 1000, now });
     const { docs, warnings } = await loadKnowledge({ publicDir: deps.knowledgePublicDir ? resolve(deps.knowledgePublicDir) : PUBLIC_DIR, overlayDirs: overlayDirs(env.KNOWLEDGE_DIRS).map((d) => resolve(d)) });
@@ -204,7 +210,7 @@ export async function start(env: Record<string, string | undefined>, deps: Start
       metrics.once('error', () => reject(new ConfigError('metrics listener failed (port in use or not permitted; see MCP_METRICS_PORT)'))); // the OS error carries the address: not forwarded
       metrics.listen(metricsPort, metricsHost, () => resolve((metrics.address() as { port: number }).port));
     });
-    srv = createHttpServer({ store, audit, telemetry, monotonic: deps.monotonic, env: deploy, hosts, origins, maxBodyBytes, drainMs, readyDelayMs, timer: deps.timer, now, limiter, factory: buildMcp({ env: deploy, allowWrite, prodValidateEnabled: config.prodValidateEnabled, audit, tools, now, telemetry, maxOutputBytes, knowledge: { docs } }) });
+    srv = createHttpServer({ store, audit, telemetry, monotonic: deps.monotonic, env: deploy, hosts, origins, maxBodyBytes, drainMs, readyDelayMs, timer: deps.timer, now, limiter, factory: buildMcp({ env: deploy, allowWrite, prodValidateEnabled: config.prodValidateEnabled, audit, tools, now, telemetry, maxOutputBytes, knowledge: { docs }, claimsFor }) });
     listening = await srv.listen(port, env.MCP_LISTEN_HOST ?? '0.0.0.0').catch(() => { // the OS error carries the address: not forwarded
       throw new ConfigError('HTTP listener failed (port in use or not permitted; see MCP_PORT)');
     });

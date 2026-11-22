@@ -24,6 +24,8 @@ const trackRead = (path: string) => path === `${TT}documents` || new RegExp(`^${
 
 // The one POST outside allowWrite: a Channel Lookup request creates no document and sends nothing. Exact path, no query, TEST only (PROD never reaches it).
 const LOOKUP = '/rest/outputmanagement/channellookup/v1/lookup';
+// The one route allowWrite opens: sending an invoice. Exact path, no query, TEST only (ADR 0001 amendment, ADR 0028).
+const SEND = `${BASE}/v2/invoices/true`;
 
 export function isAllowed(policy: { env: 'test' | 'prod'; allowWrite: boolean; prodValidateEnabled: boolean }, method: string, pathWithQuery: string): boolean {
   const u = new URL(pathWithQuery, 'http://x');
@@ -31,7 +33,8 @@ export function isAllowed(policy: { env: 'test' | 'prod'; allowWrite: boolean; p
   const m = method.toUpperCase();
   const dryRun = m === 'PUT' && path === `${BASE}/v2/invoices/validate` && u.searchParams.getAll('test').join() === 'true';
   if (policy.env === 'prod') return (m === 'GET' && (PROD_READS.has(path) || trackRead(path))) || (dryRun && policy.prodValidateEnabled);
-  return m === 'GET' || dryRun || (m === 'POST' && path === LOOKUP && u.search === '') || policy.allowWrite; // fail closed: any other method needs allowWrite
+  if (m === 'GET' || dryRun || (m === 'POST' && path === LOOKUP && u.search === '')) return true;
+  return policy.allowWrite && m === 'POST' && path === SEND && u.search === ''; // fail closed: the flag opens the send route and nothing else
 }
 
 export interface Raw {
