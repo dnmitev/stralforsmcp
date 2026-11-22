@@ -8,7 +8,7 @@ import { Server } from 'node:http';
 import { createConnection } from 'node:net';
 import { describe, expect, it, vi } from 'vitest';
 import { serverInfo } from '../server-info.ts';
-import { ConfigError } from '../stralfors/errors.ts';
+import { BusyError, ConfigError } from '../stralfors/errors.ts';
 import type { CreateClientOptions, StralforsClient } from '../stralfors/index.ts';
 import { hashToken } from '../auth/index.ts';
 import * as telemetryModule from '../telemetry/index.ts';
@@ -583,6 +583,26 @@ describe('R-06 vendor heartbeat (setInterval, MCP_HEARTBEAT_S)', () => {
     expect(closed.sort()).toEqual(['a', 'b']);
   });
 
+  it('a probe refused by the full upstream cap (busy) keeps the last known value: load alone never flips the gauge', async () => {
+    const p = await boot();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect((await up(p.s.metricsPort))![1]).toBe('1');
+    p.calls.b.mockRejectedValue(new BusyError('upstream busy, try again shortly'));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect((await up(p.s.metricsPort))![1]).toBe('1');
+    p.calls.b.mockRejectedValue(new Error('down'));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect((await up(p.s.metricsPort))![1]).toBe('0');
+    p.calls.b.mockRejectedValue(new BusyError('upstream busy, try again shortly'));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect((await up(p.s.metricsPort))![1]).toBe('0'); // busy keeps down as down too
+  });
+  it('a first probe refused as busy counts as up (requests are in flight, so the vendor answers)', async () => {
+    const p = await boot();
+    p.calls.a.mockRejectedValue(new BusyError('upstream busy, try again shortly'));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect((await up(p.s.metricsPort))![1]).toBe('1');
+  });
   it('a profile that is not UP (rejected or DOWN) makes the gauge 0 and never touches /readyz; recovery brings it back to 1', async () => {
     const p = await boot();
     p.calls.b.mockRejectedValue(new Error('down'));
