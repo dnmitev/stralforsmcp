@@ -1,7 +1,7 @@
 import type { Dispatcher } from 'undici';
 import { z } from 'zod';
 import type { Profile } from './config.ts';
-import { AuthError, SchemaError, TokenFormatError, mapHttpError } from './errors.ts';
+import { AuthError, SchemaError, StralforsError, TokenFormatError, mapHttpError } from './errors.ts';
 import { send } from './http.ts';
 import type { Logger } from './log.ts';
 
@@ -92,11 +92,15 @@ export function createTokenSource(o: {
 
   async function load(): Promise<Token> {
     const basic = Buffer.from(`${profile.clientId}:${profile.clientSecret}`).toString('base64');
+    const ctx = { profile: profile.id, operation: 'token' };
+    // tag transport failures (timeout, network, TLS, too large) as the token's own: the request that triggered the fetch must not claim them
     const res = await send(o.agent(), o.url, {
       method: 'POST', body: 'grant_type=client_credentials', timeoutMs: Math.min(o.timeoutMs, 10_000), maxBytes: o.maxBytes,
       headers: { authorization: `Basic ${basic}`, 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
+    }).catch((e: unknown) => {
+      if (e instanceof StralforsError) { e.profile ??= ctx.profile; e.operation ??= ctx.operation; }
+      throw e;
     });
-    const ctx = { profile: profile.id, operation: 'token' };
     let json: unknown;
     try {
       json = JSON.parse(res.body);
