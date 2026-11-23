@@ -13,7 +13,6 @@ const TODAY = new Date('2026-11-13T15:00:00Z');
 type Row = [name: string, raws: string[], kind: string, bad: unknown[], message: string, good: unknown[]];
 const ROWS: Row[] = [
   ['required', ['Required'], 'required', [ABSENT, null, '', []], `${P} is required.`, ['x', 0, false]],
-  ['array', ['ArrayExpected'], 'array', ['x', 5, {}], `${P} must be an array.`, [[], [1], ABSENT]],
   ['valid_items', ['ValidItems: a, b'], 'valid_items', ['c', 'ab'], `${P} must be one of: a, b.`, ['a', 'b', ABSENT]],
   ['valid_templates', ['ValidTemplates: 0, 2'], 'valid_templates', [5, '5'], `${P} must be one of the standard templates 0, 2.`, [2, '0', ABSENT]],
   ['pattern', ['ExpectedPattern: ^\\d{3}$'], 'pattern', ['12', 'abc', '1234'], `${P} must match the pattern ^\\d{3}$.`, ['123', ABSENT]],

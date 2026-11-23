@@ -4,8 +4,8 @@ import type { StralforsErrorKind } from '../stralfors/errors.ts';
 import type { DenyReason } from '../policy/index.ts';
 
 export type Outcome = 'allowed' | 'denied' | 'blocked' | 'error';
-/** A fixed code: a deny reason, a verify code, a StralforsError kind, 'write_guard' or 'error'. Never free text. */
-export type AuditReason = DenyReason | VerifyCode | StralforsErrorKind | 'write_guard' | 'error' | 'bad_input' | 'not_found' | 'invalid_input' | 'too_large';
+/** A fixed code: a deny reason, a verify code, a StralforsError kind, 'write_guard', 'error', or a send outcome. Never free text. */
+export type AuditReason = DenyReason | VerifyCode | StralforsErrorKind | 'write_guard' | 'error' | 'bad_input' | 'not_found' | 'invalid_input' | 'too_large' | 'sent' | 'rejected' | 'outcome_unknown';
 
 export interface AuditInput {
   principal?: Principal;

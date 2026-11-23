@@ -247,8 +247,8 @@ describe('safetyViolations', () => {
     expect(safetyViolations({ files: 'x' }, ceil)).toEqual(['mutation report: no files']);
     expect(safetyViolations(rep({ 'src/policy/policy.ts': {}, 'src/server/guards.ts': { mutants: null } }), ceil)).toEqual([]);
   });
-  it('guards the eight safety files by default', () => {
-    expect(Object.keys(SAFETY_CEILINGS)).toHaveLength(8);
-    expect(safetyViolations(rep({}))).toHaveLength(8);
+  it('guards the nine safety files by default', () => {
+    expect(Object.keys(SAFETY_CEILINGS)).toHaveLength(9);
+    expect(safetyViolations(rep({}))).toHaveLength(9);
   });
 });

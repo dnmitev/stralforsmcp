@@ -18,8 +18,8 @@ const BIG = '79228162514264337593543950335';
 const CASES: Array<[string, string, object, string | undefined]> = [
   ['Required', 'required', {}, `${P} is required.`],
   ['Optional', 'optional', {}, `${P} is optional.`],
-  ['ArrayExpected', 'array', {}, `${P} must be an array.`],
-  ['ArrayWithValidItemsExpected', 'array_items', {}, `${P} must be an array; every item must satisfy its own rules.`],
+  ['ArrayExpected', 'array', {}, `${P} is marked as a list by Stralfors; fields inside a list carry the same mark, so follow get_example_invoice for the shape.`],
+  ['ArrayWithValidItemsExpected', 'array_items', {}, `${P} is marked as a list whose items satisfy their own rules; fields inside a list carry the same mark, so follow get_example_invoice for the shape.`],
   ['ValidItems: a, b ,c,', 'valid_items', { values: ['a', 'b', 'c'] }, `${P} must be one of: a, b, c.`],
   ['ValidTemplates: 0, 2, 3', 'valid_templates', { values: ['0', '2', '3'] }, `${P} must be one of the standard templates 0, 2, 3.`],
   ['ValidChannels: X, Y', 'valid_channels', { values: ['X', 'Y'] }, `${P} must only contain channels the agreement allows: X, Y.`],

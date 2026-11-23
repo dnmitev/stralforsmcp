@@ -1,0 +1,123 @@
+{
+  "mappings": [
+    {
+      "request": {
+        "method": "POST",
+        "url": "/rest/outputmanagement/apiomni/v2/invoices/true",
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": {
+              "expression": "$.consignmentId",
+              "equalTo": "it-send-ok-000001"
+            }
+          }
+        ]
+      },
+      "response": {
+        "status": 201
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "/rest/outputmanagement/apiomni/v2/invoices/true",
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": {
+              "expression": "$.consignmentId",
+              "equalTo": "it-send-faults-01"
+            }
+          }
+        ]
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "compositeFault": {
+            "faults": [
+              {
+                "paramValues": [
+                  {
+                    "param": "#1:Document.Invoice.Id",
+                    "value": "Required"
+                  }
+                ],
+                "explanationText": "CANARY-SEND-EXPLAIN-7A1B",
+                "message": "CANARY-SEND-FAULT-3C2D"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "/rest/outputmanagement/apiomni/v2/invoices/true",
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": {
+              "expression": "$.consignmentId",
+              "equalTo": "it-send-dup-00001"
+            }
+          }
+        ]
+      },
+      "response": {
+        "status": 409,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "message": "CANARY-SEND-DUPLICATE-5E6F",
+          "compositeFault": null
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "/rest/outputmanagement/apiomni/v2/invoices/true",
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": {
+              "expression": "$.consignmentId",
+              "equalTo": "it-send-5xx-00001"
+            }
+          }
+        ]
+      },
+      "response": {
+        "status": 500,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "message": "CANARY-SEND-SERVER-8G9H",
+          "traceId": "it-send-trace-500"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "/rest/outputmanagement/apiomni/v2/invoices/true",
+        "bodyPatterns": [
+          {
+            "matchesJsonPath": {
+              "expression": "$.consignmentId",
+              "equalTo": "it-send-slow-0001"
+            }
+          }
+        ]
+      },
+      "response": {
+        "status": 201,
+        "fixedDelayMilliseconds": 4000
+      }
+    }
+  ]
+}

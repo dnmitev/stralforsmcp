@@ -73,6 +73,12 @@ describe('fromBadRequest', () => {
     const out = JSON.stringify(fromBadRequest({ 'Value 42 could not be converted': ['secret words'] }));
     expect(out).not.toMatch(/converted|secret/);
   });
+  it('a System.Text.Json conversion error: the $. path names the field and the dto key is dropped', () => {
+    const f = fromBadRequest({ dto: ['x'], '$.document.invoice.additionalDocumentReference[0].attachment.embeddedDocumentBinaryObject': ['x'] });
+    expect(f.map((x) => x.path)).toEqual(['document.invoice.additionalDocumentReference[0].attachment.embeddedDocumentBinaryObject']);
+    expect(fromBadRequest({ $: ['x'] })[0]!.path).toBe('');
+    expect(fromBadRequest({ dto: ['x'] })[0]!.path).toBe('dto');
+  });
   it('no errors, no findings', () => expect(fromBadRequest({})).toEqual([]));
 });
 

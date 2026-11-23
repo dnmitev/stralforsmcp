@@ -31,7 +31,8 @@ function record() {
 
 // operation -> what each site must say. `audit` is the tool string the audit log would carry for a blocked call on that path.
 // Words the audit does not know (tracktrace, channellookup, lookup, documents, documentinfohistory) are masked to `*`: over-masking, never a leak (deferred finding in the 05-04c summary).
-const TABLE: Record<string, { method: string; prod: boolean; prodValidate: boolean; test: boolean; audit: string }> = {
+// `testWrite`: allowed on TEST with STRALFORS_ALLOW_WRITE=true (defaults to `test`); only the send route differs (ADR 0001 amended, ADR 0028).
+const TABLE: Record<string, { method: string; prod: boolean; prodValidate: boolean; test: boolean; testWrite?: boolean; audit: string }> = {
   apiInfo: { method: 'GET', prod: true, prodValidate: true, test: true, audit: 'DELETE /rest/outputmanagement/apiomni/v2/apiinfo' },
   healthV1: { method: 'GET', prod: true, prodValidate: true, test: true, audit: 'DELETE /rest/outputmanagement/apiomni/v1/manage/health' },
   channels: { method: 'GET', prod: true, prodValidate: true, test: true, audit: 'DELETE /rest/outputmanagement/apiomni/v2/invoices/channels' },
@@ -43,6 +44,7 @@ const TABLE: Record<string, { method: string; prod: boolean; prodValidate: boole
   channelLookup: { method: 'POST', prod: false, prodValidate: false, test: true, audit: 'DELETE /rest/outputmanagement/*/v1/*' },
   channelLookupResult: { method: 'GET', prod: false, prodValidate: false, test: true, audit: 'DELETE /rest/outputmanagement/*/v1/*/*' },
   validateInvoice: { method: 'PUT', prod: false, prodValidate: true, test: true, audit: 'DELETE /rest/outputmanagement/apiomni/v2/invoices/validate' },
+  sendInvoice: { method: 'POST', prod: false, prodValidate: false, test: false, testWrite: true, audit: 'DELETE /rest/outputmanagement/apiomni/v2/invoices/true' },
 };
 
 const validBody = {
@@ -55,6 +57,7 @@ function callAll() {
     ops.apiInfo(), ops.healthV1(), ops.channels(ID.uuid), ops.templates(), ops.rules('EDI', { templateStandardId: 0 }),
     ops.documentExample({ channels: ['EDI'] }), ops.trackDocuments({ invoiceNumber: ID.invoiceNo, documentId: ID.shortDoc, channelId: 12345678 }),
     ops.trackHistory(ID.shortDoc), ops.channelLookup({ channels: ['EDI'], candidates: [ID.digits] }), ops.channelLookupResult(ID.corr), ops.validateInvoice(validBody),
+    ops.sendInvoice(validBody),
   ];
   return { calls, done: Promise.all(done), names: Object.keys(ops) };
 }
@@ -89,6 +92,7 @@ describe('route cross-check', () => {
       expect(isAllowed({ env: 'prod', allowWrite: false, prodValidateEnabled: false }, c.method, target), `prod ${c.operation}`).toBe(row.prod);
       expect(isAllowed({ env: 'prod', allowWrite: false, prodValidateEnabled: true }, c.method, target), `prod+validate ${c.operation}`).toBe(row.prodValidate);
       expect(isAllowed({ env: 'test', allowWrite: false, prodValidateEnabled: false }, c.method, target), `test ${c.operation}`).toBe(row.test);
+      expect(isAllowed({ env: 'test', allowWrite: true, prodValidateEnabled: false }, c.method, target), `test+write ${c.operation}`).toBe(row.testWrite ?? row.test);
     }
   });
 

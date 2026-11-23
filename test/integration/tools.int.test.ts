@@ -60,7 +60,7 @@ describe.skipIf(!enabled)('tools through the real stack', () => {
       const hints: string[] = r.rules.flatMap((x: { hints: string[] }) => x.hints);
       const has = (re: RegExp) => expect(hints.some((h) => re.test(h)), String(re)).toBe(true);
       for (const re of [
-        /is required\.$/, /is optional\.$/, /must be an array\.$/, /every item must satisfy/, /one of: Alpha, Beta, Gamma\.$/, /standard templates 0, 2, 3\.$/, /channels the agreement allows: EDI, eInvoice\.$/,
+        /is required\.$/, /is optional\.$/, /is marked as a list by Stralfors/, /items satisfy their own rules/, /one of: Alpha, Beta, Gamma\.$/, /standard templates 0, 2, 3\.$/, /channels the agreement allows: EDI, eInvoice\.$/,
         /default channel/, /must match the pattern \^\[A-Z\]\{3\}\$\.$/, /digits only/, /decimal number/, /at least 0\.$/, /at most 100\.5\.$/, /at most 5 items/, /must be unique/, /case-sensitive/,
         /not be a date in the past/, /start date of/, /start time of/, /valid file name/, /cannot be set together with Other/,
         /optional when PASSTHRU-OPT/, /required when PASSTHRU-REQ/, /invalid when PASSTHRU-INV/, /Rule note: must be a PDF/, /Rule note: PASSTHRU-NOTE/, /rule of a kind this server does not know \(rule 1027\)/,

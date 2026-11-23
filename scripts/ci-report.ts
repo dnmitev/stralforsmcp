@@ -33,6 +33,7 @@ export const SAFETY_CEILINGS: Readonly<Record<string, number>> = {
   'src/audit/audit.ts': 0,
   'src/stralfors/http.ts': 0,
   'src/server/rate-limit.ts': 0,
+  'src/server/send-tool.ts': 0, // the first write tool (06-02): 100 % at introduction
   'src/server/auth.ts': 1,
   'src/server/guards.ts': 2,
   'src/server/http.ts': 5,

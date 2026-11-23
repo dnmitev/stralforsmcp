@@ -1,6 +1,6 @@
 import * as z from 'zod/v4';
 import type { Config, StralforsClient } from '../stralfors/index.ts';
-import { PROFILE_REQUIRED, UNKNOWN_PROFILE, resolveProfile } from './profile.ts';
+import { AGREEMENT_REQUIRED, PROFILE_REQUIRED, UNKNOWN_AGREEMENT, UNKNOWN_PROFILE, resolveProfile } from './profile.ts';
 import { ToolInputError, type ToolDef } from './tools.ts';
 
 export { PROFILE_REQUIRED, UNKNOWN_PROFILE };
@@ -13,8 +13,7 @@ export const listChannelsOutput = z.object({
   profile: z.string(),
   channels: z.array(z.string()),
 });
-export const AGREEMENT_REQUIRED = 'agreement is required';
-export const UNKNOWN_AGREEMENT = 'unknown agreement';
+export { AGREEMENT_REQUIRED, UNKNOWN_AGREEMENT };
 
 export interface ChannelsDeps {
   clients: ReadonlyMap<string, Pick<StralforsClient, 'channels'>>;

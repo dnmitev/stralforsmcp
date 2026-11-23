@@ -4,8 +4,7 @@ import { AgreementNotFoundError, BadRequestError, NotDryRunError, RequestValidat
 import { fromBadRequest, fromFields, fromViolations, type Finding } from '../stralfors/findings.ts';
 import type { Config, StralforsClient } from '../stralfors/index.ts';
 import { localCheck } from '../stralfors/local-check.ts';
-import { AGREEMENT_REQUIRED, UNKNOWN_AGREEMENT } from './channels.ts';
-import { resolveProfile } from './profile.ts';
+import { resolveAgreement, resolveProfile } from './profile.ts';
 import type { RulesCache } from './rules-cache.ts';
 import { loadRules } from './rules-load.ts';
 import { ToolInputError, type ToolDef } from './tools.ts';
@@ -26,7 +25,7 @@ export const validateInput = z.object({
   document: z.looseObject({ documentHeader: part, invoice: part }),
   consignmentId: z.string().min(10).max(50).optional(),
 });
-const finding = z.strictObject({
+export const finding = z.strictObject({
   source: z.enum(['local', 'stralfors']),
   ruleId: z.string().optional(),
   tag: z.string().optional(),
@@ -55,7 +54,7 @@ export interface ValidateDeps {
 const RULES_UNAVAILABLE: Finding = { source: 'local', path: '', kind: 'rules_unavailable', message: 'The rules of one channel could not be loaded, so they were not checked locally; the dry run still decides.' };
 
 const REJECTED: Finding = { source: 'stralfors', path: 'document', kind: 'rejected', message: 'Stralfors rejected the document without naming a field; compare it with get_example_invoice and get_rules.' };
-const rejected = (f: Finding[]): Finding[] => (f.length > 0 ? f : [{ ...REJECTED }]);
+export const rejected = (f: Finding[]): Finding[] => (f.length > 0 ? f : [{ ...REJECTED }]);
 const order = (a: Finding, b: Finding) => (a.path < b.path ? -1 : a.path > b.path ? 1 : (a.ruleId ?? '') < (b.ruleId ?? '') ? -1 : (a.ruleId ?? '') > (b.ruleId ?? '') ? 1 : 0);
 const result = (stage: 'input' | 'local' | 'dry_run', found: Finding[]): z.infer<typeof validateOutput> => {
   const sorted = found.sort(order);
@@ -81,9 +80,7 @@ export function createValidateInvoice(deps: ValidateDeps): ToolDef<typeof valida
     annotations: { readOnlyHint: !prod, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     async run(args) {
       const { profile, client } = resolveProfile(deps.clients, args.profile);
-      const agreements = deps.config.profiles[profile]?.agreements ?? [];
-      const agreement = args.agreement === undefined ? (agreements.length === 1 ? agreements[0] : undefined) : agreements.find((a) => a.label === args.agreement);
-      if (!agreement) throw new ToolInputError(args.agreement === undefined ? AGREEMENT_REQUIRED : UNKNOWN_AGREEMENT);
+      const agreement = resolveAgreement(deps.config.profiles[profile]?.agreements ?? [], args.agreement);
 
       const { documentHeader, invoice } = args.document;
       const missing = [...(documentHeader ? [] : ['document.documentHeader']), ...(invoice ? [] : ['document.invoice'])];

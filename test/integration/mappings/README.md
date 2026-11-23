@@ -8,7 +8,7 @@ Paths are relative to the API base. `V` is the invoice API prefix, `TT` the trac
 
 | Endpoint (file) | Shape the stub answers | What the code parses from it | Used by |
 |---|---|---|---|
-| POST token endpoint (`token.json`) | JSON with a bearer token (unsigned JWT with scopes, far-future expiry) and `expires_in` | access token and expiry; scopes only as claims | all |
+| POST token endpoint (`token.json`) | JSON with a bearer token (unsigned JWT with scopes `apiomni.read apiomni.write openid`, far-future expiry) and `expires_in` | access token and expiry; scopes only as claims | all |
 | GET `apiinfo` (`apiinfo.json`) | JSON object with name, version, status | `name`, `version`, `status` (all optional) | stack |
 | GET `V/channels` (`channels.json`) | JSON array of channel names; one answer when `actionId` is absent, one per agreement id | array of strings | tools, privacy |
 | GET `V/templates` (`templates.json`) | JSON array of objects with `standardId` and a `type` object with `name` | `standardId`, `type.name` | not yet used by a tool |
@@ -19,6 +19,7 @@ Paths are relative to the API base. `V` is the invoice API prefix, `TT` the trac
 | GET `TT/document/{id}/documentinfohistory` (`tracktrace.json`) | object with overall counts and `channels[].deliveryDocuments[].statusHistory[]` of `dateTime` and `message`; messages are a mix of known status names and free text | counts, per channel status, event `dateTime`, `message` only when it is exactly a known status name | tools, privacy |
 | POST `CL/lookup` (`lookup.json`) | selected by the first candidate of the request body: 201 with a `correlationId` (one per scenario: ready, never completed, spelling mismatch); one candidate answers 403 | `correlationId`; the request body (channels, candidates) is what the code sends | lookup, privacy |
 | GET `CL/lookup/{correlationId}` (`lookup.json`) | selected by the id: 200 with `customerId` and `results[]` of `channel`, `matchedCandidates[]`, `error` (matches in a different spelling than the request, one channel with a non-empty `error`); one id always answers the JSON 404 "no completed lookup" | `results[].channel`, `matchedCandidates`, `error` (only emptiness is used); `customerId` and message text are never used | lookup, privacy |
+| POST `V/true` (`send.json`) | selected by `consignmentId` in the request body: 201 with no body; 400 with a list of faults; 409 (duplicate); 500 with `message` and `traceId`; a 201 delayed past the client timeout | the status only (2xx = sent; 400 faults mapped like validate; 409 = duplicate; 5xx or timeout = unknown); the body of a 2xx is never read for content | send |
 | GET `TT/document/documents` with `invoiceNumber` = an `ERR-` key (`errors.json`) | gateway text 404; JSON 404 with `message`; 400 problem details with `errors`; 401; 403; 429 with `Retry-After` in seconds; 500 with `message` and `traceId`; a connection reset | status, content type, `Retry-After`, `traceId`, `compositeFault`, `errors`; the `message` text is never used | errors, privacy |
 
 Anything not listed here is answered by WireMock itself (an unmatched-request 404 with a text body), which the code treats like the gateway text 404.

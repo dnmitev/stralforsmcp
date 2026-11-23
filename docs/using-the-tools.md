@@ -59,6 +59,22 @@ Input: 1 to 5 `channels`. Returns the vendor's example shape without the agreeme
 
 Input: `document` (`documentHeader` and `invoice`), `agreement`, optional `consignmentId`. It creates nothing. Three stages, stopping at the first with findings: **input** shape, **local** check against the cached rules, the vendor's own **dry run**. The local stage stops the run only for a single channel whose rules were fetched in the last 5 minutes; otherwise the dry run decides. `templateParameter.standardId`, when given, must be a whole number from 0 to 1000000. `valid: true` only after the dry run accepts the document. If `moreMayFollow` is true, fix the findings and call again: the vendor reports header-level faults first and template-level faults on the next round. In PROD it is off unless the operator enabled it; use synthetic data only.
 
+### `send_invoice` (TEST only)
+
+> Send this invoice for agreement `main` with consignmentId `qa-2026-11-23-001`: `<paste the document>`
+
+Only on TEST, and only when the operator started the server with writes allowed; it is never available in PROD. It sends for real: the vendor creates a consignment, and it cannot be undone. Run `validate_invoice` on the same document first; `send_invoice` does no local check of its own.
+
+Input: `document` (`documentHeader` and `invoice`, both required), `agreement`, and **`consignmentId` (required, 10 to 50 characters)**. Choose a new `consignmentId` for each new invoice and **reuse the same one when you retry** the same invoice: the vendor then refuses the repeat as a duplicate instead of sending it twice. The vendor remembers a `consignmentId` only for a limited time, so a much later repeat may be accepted as a new send.
+
+The answer has one `outcome`:
+
+- `sent`: the vendor accepted it. Follow it with `track_document` by invoice number (it can take a while to show).
+- `rejected`: nothing was sent. The findings say why, as for `validate_invoice`; a finding `duplicate` on `consignmentId` means this id was already used and the first send stands.
+- `unknown`: the call timed out or the connection failed after the invoice may have arrived. Check `track_document`; if you must send again, use the **same** `consignmentId`, never a new one.
+
+The server sends exactly once per call (no automatic retry). If you cancel while the send is running, it still finishes and is recorded; check `track_document` before you try again.
+
 ### `track_document`
 
 > Track invoice number `INV-123`.
@@ -119,7 +135,9 @@ Besides tools, the server offers local, read-only extras that work even when the
 | `unknown profile` / `profile is required` | the profile id is not configured, or several exist and none was named | run `whoami`, use an id from `profiles` or leave `profile` out when there is one |
 | `unknown agreement` / `agreement is required` | label not configured, or one is needed and none was given | ask the operator for the labels |
 | `not allowed: env` / `role` | your token has no access to this environment, or PROD needs the `dev` role | use TEST or ask for access |
-| `not allowed: write` / `validate` / `lookup` | the tool is disabled here (PROD never writes; PROD validate needs a flag; lookup is TEST only) | use TEST |
+| `not allowed: write` / `validate` / `lookup` | the tool is disabled here (PROD never writes; PROD validate needs a flag; lookup is TEST only; `send_invoice` also needs the operator's write flag on TEST) | use TEST |
+| `not allowed: scope` | no configured profile holds the write scope | ask the operator |
+| `this profile cannot send` | the profile you chose has no write scope (another profile may) | choose another profile, or ask the operator |
 | `tool failed: forbidden` | the vendor refused: the client has no scope for this API | ask the vendor |
 | `tool failed: not_found` / `agreement_not_found` | the vendor says it does not know the document or agreement | check the key; a tracking miss may also mean it is not registered yet |
 | `tool failed: validation_failed` / `bad_request` | the vendor rejected the request | for invoices use `validate_invoice` to see why |

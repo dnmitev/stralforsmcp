@@ -90,8 +90,8 @@ export function hintFor(c: Criterion, path: string, id: string, paths: ReadonlyM
   switch (c.kind) {
     case 'required': return `${path} is required.`;
     case 'optional': return `${path} is optional.`;
-    case 'array': return `${path} must be an array.`;
-    case 'array_items': return `${path} must be an array; every item must satisfy its own rules.`;
+    case 'array': return `${path} is marked as a list by Stralfors; fields inside a list carry the same mark, so follow get_example_invoice for the shape.`;
+    case 'array_items': return `${path} is marked as a list whose items satisfy their own rules; fields inside a list carry the same mark, so follow get_example_invoice for the shape.`;
     case 'valid_items': return `${path} must be one of: ${list(c.values)}.`;
     case 'valid_templates': return `${path} must be one of the standard templates ${list(c.values)}.`;
     case 'valid_channels': return `${path} must only contain channels the agreement allows: ${list(c.values)}.`;

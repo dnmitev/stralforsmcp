@@ -56,7 +56,6 @@ describe('local stage', () => {
     ['max_count', ['MaxCount: Maximum items is 2.'], [1, 2, 3], [1, 2]],
     ['unique', ['UniqueValueExpected'], ['a', 'a'], ['a', 'b']],
     ['date_not_past', ['DateNotInPastExpected'], '2000-01-01', '2999-01-01'],
-    ['array', ['ArrayExpected'], 'x', ['x']],
   ];
   describe.each(ROWS)('%s', (kind, criteria, bad, good) => {
     it('flags a clear violation at the local stage', async () => {

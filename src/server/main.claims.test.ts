@@ -50,6 +50,11 @@ const boot = async (env: Record<string, string>, scopes: string[] | 'fail') => {
 };
 
 describe('claims from profile tokens (R-35)', () => {
+  it('send_invoice is registered as a write tool (06-02); the policy decides visibility per caller', async () => {
+    await boot({ STRALFORS_ALLOW_WRITE: 'true' }, ['apiomni.write']);
+    const tools = (vi.mocked(mcp.buildMcp).mock.calls.at(-1)![0] as { tools: { spec: { name: string; access: string } }[] }).tools;
+    expect(tools.find((t) => t.spec.name === 'send_invoice')?.spec.access).toBe('write');
+  });
   it('writes allowed: each profile token is fetched once at startup and its scopes answer hasScope', async () => {
     const { f, claimsFor } = await boot({ STRALFORS_ALLOW_WRITE: 'true' }, ['apiomni.read', 'apiomni.write']);
     expect(f.gets).toBe(1); // one profile in the test env

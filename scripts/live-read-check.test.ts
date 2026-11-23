@@ -21,7 +21,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { AgreementNotFoundError, Claims, ConfigError, ForbiddenError, UpstreamError } from '../src/stralfors/index.ts';
+import { AgreementNotFoundError, Claims, ConfigError, ForbiddenError, SchemaError, UpstreamError } from '../src/stralfors/index.ts';
 import { channel, page, rawDoc, receiverCanaries } from '../test/helpers/track.ts';
 import { parseChannels, pickProfile, report } from './live-read-check.ts';
 
@@ -204,6 +204,14 @@ describe('AC-2: nothing but shapes leaves the process', () => {
     expect(out).toContain('#2');
     expect(out).not.toContain(c.agreementA);
     expect(out).not.toContain(c.agreementB);
+  });
+
+  it('a schema miss on track names the failing paths, nothing of the answer', async () => {
+    const c = canaries();
+    const trackDocuments = async () => { throw new SchemaError(c.msg, { issues: [{ path: 'lastDocuments' }, { path: 'documents' }, { path: 'documents' }, { path: '' }] }); };
+    const out = await run(world(c, { trackDocuments }), { channels: ['ChanA'], invoiceNumber: c.invoice });
+    expect(line(out, 'track')).toBe('fail schema track: at lastDocuments, documents, (root)');
+    for (const v of values(c)) expect(out).not.toContain(v);
   });
 
   it('leaks nothing when every step fails with a canary message', async () => {

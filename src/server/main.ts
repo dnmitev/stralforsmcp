@@ -23,6 +23,7 @@ import { createTrackDocument } from './track-tool.ts';
 import { createGetExampleInvoice, createGetRules } from './rules-tools.ts';
 import { DEFAULT_MAX_OUTPUT_BYTES } from './tools.ts';
 import { createRateLimiter } from './rate-limit.ts';
+import { createSendInvoice } from './send-tool.ts';
 import { createValidateInvoice } from './validate-tool.ts';
 import { createWhoami } from './whoami.ts';
 
@@ -204,7 +205,7 @@ export async function start(env: Record<string, string | undefined>, deps: Start
     const { docs, warnings } = await loadKnowledge({ publicDir: deps.knowledgePublicDir ? resolve(deps.knowledgePublicDir) : PUBLIC_DIR, overlayDirs: overlayDirs(env.KNOWLEDGE_DIRS).map((d) => resolve(d)) });
     const skipped = warnings.filter((w) => w.source === 'public').map((w) => w.text); // public file names are safe to log; private ones are counted only
     logger[warnings.length ? 'warn' : 'debug']({}, `knowledge loaded: ${docs.length} docs, ${warnings.length} warnings${skipped.length ? ` (${skipped.join('; ')})` : ''}`); // silent unless a doc was skipped; the logger drops unlisted keys, so everything is in the message
-    const tools = [createWhoami(profiles), createListChannels({ clients, config }), createGetRules({ clients, cache }), createGetExampleInvoice({ clients }), createValidateInvoice({ clients, config, cache }), createTrackDocument({ clients, now }), createChannelLookup({ clients }), createSearchDocs({ index: createIndex(docs) })];
+    const tools = [createWhoami(profiles), createListChannels({ clients, config }), createGetRules({ clients, cache }), createGetExampleInvoice({ clients }), createValidateInvoice({ clients, config, cache }), createSendInvoice({ clients, config }), createTrackDocument({ clients, now }), createChannelLookup({ clients }), createSearchDocs({ index: createIndex(docs) })];
     const limiter = createRateLimiter({ perMinute, burst, now: deps.monotonic ?? (() => performance.now()) });
     metricsListening = await new Promise<number>((resolve, reject) => {
       metrics.once('error', () => reject(new ConfigError('metrics listener failed (port in use or not permitted; see MCP_METRICS_PORT)'))); // the OS error carries the address: not forwarded
