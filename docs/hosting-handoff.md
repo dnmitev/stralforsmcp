@@ -104,7 +104,7 @@ Before the original author steps back, agree and record in your own (private) do
 - [ ] Who holds the vendor credentials and certificates, where they are stored, who renews them and how far ahead (the expiry alerts start at 30 days).
 - [ ] How the token list is changed (who edits it, who reviews, how often tokens are cleaned up).
 - [ ] Who receives the alerts and what the escalation path is.
-- [ ] Who can merge and release in this repository, and a rehearsed rollback. The repository settings behind that (ruleset for `main`, ruleset for `v*` tags, GHCR visibility, who may add the `skip-confidence` label, whether code-owner review is required) are listed in [docs/releasing.md](releasing.md#maintainer-settings-once-before-the-first-release).
+- [ ] Who can merge and release in this repository, and a rehearsed rollback. The repository settings behind that (ruleset for `main`, ruleset for `v*` tags, GHCR visibility, whether code-owner review is required) are listed in [docs/releasing.md](releasing.md#maintainer-settings-once-before-the-first-release).
 - [ ] A dry run: the second operator performs a token issue and revoke and a certificate swap on TEST without help.
 
 ## Known limits

@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted (items 2 to 4 superseded by ADR 0029)
 ---
 # Merge gate ownership, the skip label and release trust
 

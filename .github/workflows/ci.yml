@@ -14,16 +14,14 @@ permissions:
   contents: read
 
 jobs:
-  # Two cheap path checks over the whole pull request (renames count by old and new path; any doubt means "not skipped"):
-  # - no code or mutation-setup path (src/, test/, package*.json, tsconfig*, vitest*, stryker.config.json): mutation is skipped,
-  #   because nothing Stryker measures changed; the review gate stays for everything that is not docs only.
-  # - docs only (docs/, README.md, GLOSSARY.md and similar project docs, LICENSE): review/confidence is also posted as not applicable.
+  # A cheap path check over the whole pull request (renames count by old and new path; any doubt means "not skipped"):
+  # no code or mutation-setup path (src/, test/, package*.json, tsconfig*, vitest*, stryker.config.json): mutation is skipped,
+  # because nothing Stryker measures changed.
   scope:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       pull-requests: read
-      statuses: write
     outputs:
       mutation: ${{ steps.scope.outputs.mutation }}
     steps:
@@ -33,7 +31,6 @@ jobs:
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
           EVENT: ${{ github.event_name }}
         run: |
           echo "mutation=run" >> "$GITHUB_OUTPUT"
@@ -45,16 +42,10 @@ jobs:
           meta=$(gh api "repos/$REPO/pulls/$PR" -q '.changed_files, .head.sha') || exit 0
           [ "$(printf '%s\n' "$rows" | wc -l | tr -d ' ')" = "$(printf '%s\n' "$meta" | sed -n 1p)" ] || exit 0
           [ "$(printf '%s\n' "$meta" | sed -n 2p)" = "$HEAD_SHA" ] || exit 0
-          # A rename counts as both its old and new path (a rename out of .claude/ into docs/ is not docs-only).
+          # A rename counts as both its old and new path.
           paths=$(printf '%s\n' "$rows" | tr '\t' '\n' | grep -v '^$' || true)
-          docs='^docs/|^(README|GLOSSARY|CHANGELOG|CONTRIBUTING|SECURITY)\.md$|^LICENSE$'
           code='^src/|^test/|^package(-lock)?\.json$|^tsconfig[^/]*\.json$|^vitest[^/]*\.ts$|^stryker\.config\.json$'
           printf '%s\n' "$paths" | grep -qE "$code" || echo "mutation=skip" >> "$GITHUB_OUTPUT"
-          notdocs=$(printf '%s\n' "$paths" | grep -vE "$docs" || true)
-          [ -z "$notdocs" ] || exit 0
-          [ "$SAME_REPO" = true ] || exit 0
-          gh api "repos/$REPO/statuses/$HEAD_SHA" -f state=success -f context=review/confidence \
-            -f description="docs only: no review needed"
 
   check:
     runs-on: ubuntu-latest
