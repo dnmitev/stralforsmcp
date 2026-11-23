@@ -49,6 +49,12 @@ describe('sendInvoice: the request', () => {
     expect(fake.apiRequests).toHaveLength(0);
     expect(fake.tokenRequests).toHaveLength(0);
   });
+  it('a token endpoint that never answers fails the call as a token timeout: nothing posted, never "unknown"', async () => {
+    fake = await startFakeApi({ pki, token: () => undefined, api: (_q, res) => json(res, 201, '') });
+    const { client } = testClient(pki, fake, { extra: { STRALFORS_ALLOW_WRITE: 'true', STRALFORS_TIMEOUT_MS: '200' } });
+    expect(await rejection(client.sendInvoice(body()))).toMatchObject({ kind: 'timeout', operation: 'token' });
+    expect(sends(fake)).toHaveLength(0);
+  });
   it('a malformed 200 from the token endpoint fails the call: the invoice was never posted, so it is not "sent"', async () => {
     fake = await startFakeApi({ pki, token: (_q, res) => json(res, 200, { token_type: 'Bearer' }), api: (_q, res) => json(res, 201, '') });
     const { client } = testClient(pki, fake, WRITE);
