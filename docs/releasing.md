@@ -8,11 +8,11 @@ A signature proves **where an image came from** (built and scanned by this repos
 
 These are repository settings that no workflow in this repository can apply for itself. Record in your private notes who set them and when.
 
-- [ ] **Ruleset for `main`:** pull request required; required checks `check (24)`, `check (26)` and the leak scan (use the names as they appear on a pull request) plus the `review/confidence` status; no bypass for anyone; force-push and deletion blocked.
+- [ ] **Ruleset for `main`:** pull request required; required checks `check (24)`, `check (26)` and the leak scan (use the names as they appear on a pull request); no bypass for anyone; force-push and deletion blocked.
 - [ ] **Code-owner review:** decide and write down. `.github/CODEOWNERS` already names the owner of the trust-bearing paths; *requiring* their review needs a second person, otherwise the author cannot merge their own change. Leave it off with one maintainer.
 - [ ] **Ruleset for tags `v*`:** only the maintainer may create, update or delete them; block non-fast-forward. Anyone who can push a `v*` tag can start a publish, and the signature would be valid for it.
 - [ ] **GHCR package visibility** (private after the first push; making it public is irreversible and is yours to decide).
-- [ ] **Who has maintain or admin access:** only a person with one of those roles can use the `skip-confidence` label (the workflow checks the sender, not just the label), and only on a pull request that touches no gate or pipeline file (a `Dockerfile` change that only moves base image digests is the one exception). Note the one open hole: the docs-only status in `ci.yml` runs from the pull request's own copy of the workflow, so anyone with write access to the repository can post `review/confidence` for their own branch (ADR 0024). Keep write access narrow.
+- [ ] **Who has write access:** anyone with write access can merge a pull request once CI is green (ADR 0029). Keep write access narrow.
 
 ## Cutting a release
 

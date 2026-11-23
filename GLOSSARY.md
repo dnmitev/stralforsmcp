@@ -689,16 +689,9 @@ _Avoid_: baseline (the weekly full run's saved result)
 A pull request that changes source, tests, package manifests or test and mutation configuration. Only these run the mutation job; any doubt about the changed-file list counts as code.
 _Avoid_: non-docs PR
 
-**Confidence status** (`review/confidence`):
-The commit status the principal review publishes: how confident the review is that the exact head commit adds no defect, security issue or leak. A pull request merges only above the agreed threshold.
-
 **First reviewer** (Greptile, check `Greptile Review`):
-The automated review that runs on every pull request before the principal review. Its findings feed the principal review, which triages them; it is not the merge gate.
+The automated review that runs on every pull request. Its valid findings are fixed before merge; there is no separate confidence status (ADR 0029). The principal review is advisory, at phase end or on demand.
 _Avoid_: CodeRabbit (no longer used), bot review
-
-**Skip label** (`skip-confidence`):
-The pull request label with which a maintainer sets the confidence status for one head commit without a principal review. It does nothing when the change touches gate or pipeline files (ADR 0024).
-_Avoid_: override, bypass
 
 **Synthetic fixture**:
 Test data written by hand in the shape the API uses, with placeholder values and nil ids. Never a copy of a vendor or customer payload.
