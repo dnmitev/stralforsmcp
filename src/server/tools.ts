@@ -19,6 +19,8 @@ export interface ToolDef<I extends z.ZodObject = z.ZodObject, O extends z.ZodObj
   outputSchema: O;
   annotations: { readOnlyHint: boolean; destructiveHint: boolean; idempotentHint: boolean; openWorldHint: boolean };
   run(args: z.infer<I>, ctx: ToolContext): Promise<z.infer<O>>;
+  /** A fixed code for the audit line of a successful call (send_invoice records its outcome); never a value from the result. */
+  auditReason?(out: z.infer<O>): AuditReason;
 }
 
 export interface RegistryDeps { env: Env; allowWrite: boolean; prodValidateEnabled: boolean; audit: Audit; now?: () => number; /** The claims of the caller this registry serves; resolved per request by buildMcp, never process-wide. */ claims?: ScopeHolder; telemetry?: Telemetry; maxOutputBytes?: number }
@@ -31,7 +33,7 @@ export const DEFAULT_MAX_OUTPUT_BYTES = 262_144;
 export const KIND_TEXT = (kind: StralforsErrorKind) => `tool failed: ${kind}`;
 
 /** What a tool may put on its own refusal: fixed codes only. `invalid_input` is reserved for SDK schema rejection (auditInvalid). */
-export type InputReason = Extract<AuditReason, 'bad_input' | 'not_found' | 'timeout' | 'agreement_not_found'>;
+export type InputReason = Extract<AuditReason, 'bad_input' | 'not_found' | 'timeout' | 'agreement_not_found' | 'scope'>;
 
 /** A tool refusing its own arguments before any upstream call. message is a fixed text, never the argument value. */
 export class ToolInputError extends Error {
@@ -80,7 +82,8 @@ async function run(def: ToolDef, args: unknown, principal: Principal, deps: Regi
       record({ outcome: 'error', reason: 'too_large' });
       return fail(TOO_LARGE_TEXT);
     }
-    record({ outcome: 'allowed' });
+    const reason = def.auditReason?.(out);
+    record({ outcome: 'allowed', ...(reason === undefined ? {} : { reason }) });
     return { content: [{ type: 'text', text: body }], structuredContent: out };
   } catch (e) {
     if (e instanceof ToolInputError) {

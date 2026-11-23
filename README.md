@@ -2,7 +2,7 @@
 
 > A hosted [Model Context Protocol](https://modelcontextprotocol.io) server for the Strålfors Output Management API — explore channels, inspect rules, validate invoices before sending and query delivery status from Claude Desktop, Cursor or Claude Code.
 
-**Status:** Phase 5 (hardening and hosting readiness). A typed Stralfors client, a stateless MCP server with token authentication, policy, audit, graceful shutdown, metrics and traces, eight tools, knowledge resources and prompts exist. `send_invoice` and Norway are not built yet. Packaged as a container image, a Helm chart and a Claude Desktop extension (`.mcpb`); the operator installs the server (see [docs/hosting-handoff.md](docs/hosting-handoff.md) and [docs/runbook.md](docs/runbook.md)).
+**Status:** Phase 6 (Norway). A typed Stralfors client, a stateless MCP server with token authentication, policy, audit, graceful shutdown, metrics and traces, nine tools (including `send_invoice` on TEST only), several credential profiles (one per country), knowledge resources and prompts exist. Packaged as a container image, a Helm chart and a Claude Desktop extension (`.mcpb`); the operator installs the server (see [docs/hosting-handoff.md](docs/hosting-handoff.md) and [docs/runbook.md](docs/runbook.md)).
 
 ## Why
 
@@ -19,7 +19,7 @@ Integrating with the Strålfors Output Management API means working out channels
 | `validate_invoice` | Validates an invoice document in three stages and stops at the first stage with findings: input shape, a local check against the cached rules, then the API's own dry run. Findings are fixed plain-language sentences keyed by JSON path and rule id; `valid: true` only after the dry run accepts the document; `moreMayFollow` is true whenever it is false. The dry run creates nothing. Choose the agreement by label (optional when the profile has one). Hidden and denied in PROD unless `STRALFORS_PROD_VALIDATE_ENABLED=true` |
 | `channel_lookup` | **Test environment only.** Checks which lookup channels (for example Kivra) can reach each of 1 to 1000 candidate recipient identifiers, for 1 to 4 channels. Starts one vendor lookup, waits for the result (usually seconds, about 20 s at most) and returns `available` per candidate position. Candidates are personal identifiers: never stored, logged, audited, traced or returned. A channel that reports an error comes back as `failed` with a fixed `reason` (`not_configured`: the vendor has not set the channel up for this client; `error`: anything else); `unrecognised` counts matches that fit no candidate (a spelling difference), never values. See [ADR 0020](docs/adr/0020-channel-lookup-is-test-only-a-lookup-access-class-and-never-echoes-candidates.md) |
 | `track_document` | Reads the delivery status of an invoice by invoice number, external document id or document id (exactly one), through the read-only Track & Trace API. Returns per document and per channel an `outcome` (`delivered`, `in_progress`, `refused`, `failed`, `unknown`), the status only when it is exactly a known status name (anything else is shown as `other`), timestamps and optionally the delivery history of one document; recipient data and free text never leave the server. Status can lag by hours to days. Cursor paging (`hasMore`, `nextCursor`). Allowed in PROD |
-| `send_invoice` | **Planned, not implemented** (Norway phase): will send to the **test** environment only |
+| `send_invoice` | **Test environment only, and only when the server runs with `STRALFORS_ALLOW_WRITE=true`.** Sends an invoice for real (it cannot be undone): one POST to the vendor's send route, never re-sent after a 401 and never retried; a send that has started finishes even if the caller cancels. `consignmentId` is required and never generated: reuse it when you retry, so the vendor refuses a repeat as a duplicate. Returns `outcome` `sent`, `rejected` (nothing was sent; findings like `validate_invoice`, or `duplicate` for a reused `consignmentId`) or `unknown` (it may have arrived: check `track_document`, never resend with a new id). The chosen profile's own token must hold `apiomni.write`. Never registered in PROD. See [ADR 0028](docs/adr/0028-send-invoice-semantics.md) |
 | `search_docs` | Searches the knowledge base |
 
 Tools a caller's role or the environment does not allow are not registered: they do not appear in the tool list and a call to them is not audited.
@@ -62,7 +62,7 @@ CI publishes coverage, test pass rate and mutation score on every pull request.
 | 3 | Validation: rules, example payloads, dry-run validation, channel lookup, tracking |
 | 4 | Knowledge: searchable knowledge base, resources and prompts |
 | 5 | Hardening and hosting readiness: security and operations audit, shutdown and readiness, chart hardening, hosting handoff, runbook, alert rules, supply chain, first release (in progress) |
-| 6 | Norway: credential profile and `send_invoice` to TEST (deferred until Norway credentials exist) |
+| 6 | Norway: credential profile and `send_invoice` to TEST (in progress) |
 | 7 | Production: PROD configuration and write-guard verification, dashboards, extension signing and distribution (deferred) |
 
 ## Stralfors client (library)

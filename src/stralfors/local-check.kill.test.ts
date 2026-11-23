@@ -37,9 +37,8 @@ describe('required, array, list, pattern, numeric', () => {
     expect(kinds([1], ['Required'])).toEqual([]);
     expect(kinds('x', ['Required'])).toEqual([]);
   });
-  it('array: null is left alone, an object is not an array', () => {
-    expect(kinds(null, ['ArrayExpected'])).toEqual([]);
-    expect(kinds({}, ['ArrayExpected'])).toEqual(['array']);
+  it.each([null, {}, 'file.pdf', 5, [1]])('array is never a local finding (%j): Stralfors marks fields inside a list the same way', (v) => {
+    expect(kinds(v, ['ArrayExpected'])).toEqual([]);
   });
   it.each([{}, true, ['z'], [1]])('valid_items ignores non-scalar %j', (v) => {
     expect(kinds(v, ['ValidItems: a, b'])).toEqual([]);

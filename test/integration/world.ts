@@ -16,13 +16,14 @@ export const AGR = { main: '10000000-0000-4000-8000-000000000001', alt: '1000000
 
 export const query = (url: string) => new URL(url, 'https://x').searchParams;
 
-export async function bootWorld(wm: WiremockStack) {
+/** `extra`: more server env, e.g. STRALFORS_ALLOW_WRITE for the send tests. */
+export async function bootWorld(wm: WiremockStack, extra: Record<string, string> = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'smcp-it-'));
   const f = fixture();
   const tokenFile = join(dir, 'access.json');
   writeFileSync(tokenFile, f.text());
   const profile = makeEnv(wm.pki, { id: 'a', extra: { STRALFORS_PROFILE_A_ACTION_IDS: `main:${AGR.main},alt:${AGR.alt},gone:${AGR.gone}` } });
-  const env = { ...profile.env, MCP_TOKEN_LIST_FILE: tokenFile, MCP_HOSTNAMES: '127.0.0.1', MCP_PORT: '0', MCP_LISTEN_HOST: '127.0.0.1', MCP_METRICS_PORT: '0', MCP_METRICS_HOST: '127.0.0.1', MCP_RATE_BURST: '500', MCP_RATE_PER_MINUTE: '5000' };
+  const env = { ...profile.env, MCP_TOKEN_LIST_FILE: tokenFile, MCP_HOSTNAMES: '127.0.0.1', MCP_PORT: '0', MCP_LISTEN_HOST: '127.0.0.1', MCP_METRICS_PORT: '0', MCP_METRICS_HOST: '127.0.0.1', MCP_RATE_BURST: '500', MCP_RATE_PER_MINUTE: '5000', ...extra };
   const err: string[] = [];
   const audit = sink();
   const tel = memTelemetry();

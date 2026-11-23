@@ -39,6 +39,7 @@
     { "name": "get_rules", "description": "Show the validation rules of a channel in readable form." },
     { "name": "get_example_invoice", "description": "Show the example invoice payload for one or more channels." },
     { "name": "validate_invoice", "description": "Dry-run an invoice document and explain the findings. Creates nothing." },
+    { "name": "send_invoice", "description": "Send an invoice to the Stralfors test environment (test only, when the server allows writes)." },
     { "name": "track_document", "description": "Read the delivery status of an invoice." },
     { "name": "channel_lookup", "description": "Check which lookup channels can reach a recipient (test environment only)." },
     { "name": "search_docs", "description": "Search the knowledge notes about the Stralfors API." }

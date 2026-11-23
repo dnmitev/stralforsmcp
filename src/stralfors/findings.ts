@@ -42,8 +42,15 @@ export function fromViolations(violations: readonly Violation[]): Finding[] {
   });
 }
 
+// System.Text.Json names an unreadable field as a JSON path ('$.document.x[0].y') and adds 'dto' (the model came out null): drop 'dto' when a field is named
+const JSON_PATH = /^\$\.?/;
+const MODEL = 'dto';
+
 export function fromBadRequest(errors: Readonly<Record<string, unknown>>): Finding[] {
-  return Object.keys(errors).map((key) => {
+  const keys = Object.keys(errors);
+  const named = keys.length > 1 ? keys.filter((k) => k !== MODEL) : keys;
+  return named.map((raw) => {
+    const key = raw.replace(JSON_PATH, '');
     const path = PATH.test(key) ? toJsonPath(key) : '';
     return { source: 'stralfors', path, kind: 'shape', message: `${path || 'A field'} is not accepted by Stralfors; compare ${path ? 'it' : 'the document'} with get_example_invoice.` };
   });

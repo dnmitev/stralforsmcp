@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { RequestValidationError } from './errors.ts';
+import { currentSignal, detached } from './abort.ts';
+import { CancelledError, RequestValidationError, SchemaError } from './errors.ts';
 
 const V = '/rest/outputmanagement/apiomni/v2/invoices';
 const TT = '/rest/outputmanagement/tracktrace/v1';
@@ -51,7 +52,8 @@ const validateResponse = unwrap(
   ]),
 );
 
-const trackPageSchema = unwrap(z.looseObject({ documents: z.array(z.looseObject({ documentId: z.string().optional() })), lastDocuments: z.boolean() }));
+// spec: documents is nullable; live STT answers null when nothing matches yet (V-8, 2026-11-23)
+const trackPageSchema = unwrap(z.looseObject({ documents: z.array(z.looseObject({ documentId: z.string().optional() })).nullable().transform((d) => d ?? []), lastDocuments: z.boolean() }));
 const trackHistorySchema = unwrap(z.looseObject({}));
 
 /** The one lookup request shape: the tool input extends it and the client re-checks it before any I/O. Candidates are personal identifiers: bounded, never echoed. */
@@ -68,6 +70,13 @@ interface Core {
 }
 const defined = (o: Record<string, string | number | boolean | undefined>) =>
   Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]));
+
+function checkInvoice(body: unknown): void {
+  const check = validateRequest.safeParse(body);
+  if (check.success) return;
+  const fields = [...new Set(check.error.issues.map((i) => String(i.path[0])))];
+  throw new RequestValidationError(`invalid request: ${fields.join(', ')}`, { fields });
+}
 
 export function operations(c: Core) {
   const get = <T>(operation: string, path: string, schema: z.ZodType<T>, query?: Record<string, string>) => c.get(path, { schema, query, operation });
@@ -92,12 +101,23 @@ export function operations(c: Core) {
     channelLookupResult: (correlationId: string) => get('channelLookupResult', `${CL}/lookup/${encodeURIComponent(correlationId)}`, lookupResult),
     /** Dry run only: always test=true, there is no way to send test=false from here. */
     async validateInvoice(body: z.input<typeof validateRequest>) {
-      const check = validateRequest.safeParse(body);
-      if (!check.success) {
-        const fields = [...new Set(check.error.issues.map((i) => String(i.path[0])))];
-        throw new RequestValidationError(`invalid request: ${fields.join(', ')}`, { fields });
-      }
+      checkInvoice(body);
       return c.put(`${V}/validate`, body, { schema: validateResponse, query: { test: 'true' }, operation: 'validateInvoice' });
+    },
+    /**
+     * Sends for real (ADR 0028): the write guard opens this route on TEST with STRALFORS_ALLOW_WRITE only. One POST, never replayed
+     * (noReplay) and never retried; once started it runs outside the caller's abort scope, so a cancel cannot leave the outcome unknown.
+     */
+    async sendInvoice(body: z.input<typeof validateRequest>): Promise<{ ok: true }> {
+      checkInvoice(body);
+      if (currentSignal()?.aborted) throw new CancelledError('request cancelled by the caller'); // nothing started yet: send nothing
+      try {
+        await detached(() => c.post(`${V}/true`, body, { operation: 'sendInvoice', noReplay: true }));
+      } catch (e) {
+        // only the send's own SchemaError comes after a 2xx (accepted, whatever the body says); a token refresh one means nothing was sent
+        if (!(e instanceof SchemaError && e.operation === 'sendInvoice')) throw e;
+      }
+      return { ok: true };
     },
   };
 }

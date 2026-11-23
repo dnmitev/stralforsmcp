@@ -116,7 +116,7 @@ function violates(c: Criterion, v: unknown, parent: Obj, today: string): boolean
   if (v === ABSENT || v === null) return false;
   const scalar = typeof v === 'string' || typeof v === 'number';
   switch (c.kind) {
-    case 'array': return !Array.isArray(v);
+    // 'array' is never certain: Stralfors also marks string fields inside a list with ArrayExpected (Filename, CustomData[].Key); the dry run decides
     case 'valid_items': case 'valid_templates': return scalar && !c.values.some((x) => x.toLowerCase() === String(v).toLowerCase()); // ponytail: case-insensitive, never a false invalid; exact casing is the dry run's
     case 'pattern': {
       if (typeof v !== 'string' || v.length > MAX_TEXT) return false;

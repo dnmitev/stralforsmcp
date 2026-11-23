@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
-import { AgreementNotFoundError, ConfigError, createClient, loadConfig, StralforsError, type Profile, type StralforsClient } from '../src/stralfors/index.ts';
+import { AgreementNotFoundError, ConfigError, SchemaError, createClient, loadConfig, StralforsError, type Profile, type StralforsClient } from '../src/stralfors/index.ts';
 import { createListChannels } from '../src/server/channels.ts';
 import { createRulesCache } from '../src/server/rules-cache.ts';
 import { loadRules } from '../src/server/rules-load.ts';
@@ -49,7 +49,11 @@ export async function report({ client, profile, env }: Deps, opts: Opts = {}): P
   const getExample = createGetExampleInvoice({ clients });
   const track = createTrackDocument({ clients, ...(opts.now ? { now: opts.now } : {}) });
   const step = async (name: string, f: () => Promise<string>) => {
-    try { out.push(`ok ${name}: ${await f()}`); } catch (e) { out.push(`fail ${kindOf(e)} ${name}:`); }
+    try { out.push(`ok ${name}: ${await f()}`); } catch (e) {
+      // a schema miss names the failing schema paths (our own keys and indexes, never a value) so a live run shows what to fix
+      const at = e instanceof SchemaError ? ` at ${[...new Set(e.issues.map((i) => i.path || '(root)'))].slice(0, 10).join(', ')}` : '';
+      out.push(`fail ${kindOf(e)} ${name}:${at}`);
+    }
   };
 
   for (const [i, a] of profile.agreements.entries()) {

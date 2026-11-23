@@ -236,6 +236,10 @@ describe('track operations (03-02a)', () => {
     const { client } = testClient(pki, fake);
     await expect(client.trackDocuments({ invoiceNumber: 'INV-1' })).resolves.toEqual(page);
   });
+  it('trackDocuments reads documents: null (no match yet, spec nullable) as an empty page', async () => {
+    fake = await reply({ documents: null, lastDocuments: true });
+    await expect(testClient(pki, fake).client.trackDocuments({ invoiceNumber: 'a' })).resolves.toEqual({ documents: [], lastDocuments: true });
+  });
   it('trackDocuments rejects a body without the list or the flag', async () => {
     fake = await reply({ documents: 'x', lastDocuments: true });
     const { client } = testClient(pki, fake);
