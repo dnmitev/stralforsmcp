@@ -70,7 +70,8 @@ Input: `document` (`documentHeader` and `invoice`, both required), `agreement`, 
 The answer has one `outcome`:
 
 - `sent`: the vendor accepted it. Follow it with `track_document` by invoice number (it can take a while to show).
-- `rejected`: nothing was sent. The findings say why, as for `validate_invoice`; a finding `duplicate` on `consignmentId` means this id was already used and the first send stands.
+- `rejected`: this call sent nothing. The findings say why, as for `validate_invoice`.
+- `rejected` with a finding `duplicate` on `consignmentId`: this id was already used and the first send stands. Check it with `track_document`; do not send it again, not even under a new `consignmentId`.
 - `unknown`: the call timed out or the connection failed after the invoice may have arrived. Check `track_document`; if you must send again, use the **same** `consignmentId`, never a new one.
 
 The server sends exactly once per call (no automatic retry). If you cancel while the send is running, it still finishes and is recorded; check `track_document` before you try again.
@@ -126,7 +127,7 @@ Besides tools, the server offers local, read-only extras that work even when the
 
 **"Where is my invoice?"** `track_document` with the invoice number; add `history: true` for one document's events.
 
-**"Can this person receive Kivra / eInvoice?"** `channel_lookup` with a lookup channel your client has configured. If every channel says `not_configured`, nothing is wrong with your input.
+**"Can this person receive Kivra / eInvoice?"** `channel_lookup` with a lookup channel your client has configured. If every channel says `not_configured`, nothing is wrong with your input. Lookup also needs the Channel Lookup scope on the profile's own API user; not every country's user has it, and a call on such a profile fails upstream.
 
 ## 5. What the errors mean
 

@@ -14,6 +14,13 @@ Phase 6 adds the first tool that creates something at the vendor: sending an inv
 5. **The send runs detached once started.** A caller cancel or dropped connection does not abort a send that has started (the request runs outside the caller's abort scope, ADR 0026's shared-work rule); the caller stops waiting, and the outcome is still recorded in the audit line. A slow send keeps its cap slot until the request timeout.
 6. **One reported outcome per call:** `sent` (the vendor accepted it), `rejected` (a vendor refusal with findings, as for validate, or `409` for a reused `consignmentId`), or `unknown` (timeout or network failure after the body may have arrived). `unknown` tells the caller to check with `track_document` using the same `consignmentId` or invoice number, never to send again with a new id.
 
+*Amended 2026-11-23, while building the tool:*
+
+7. **No local rules check before a send.** The vendor decides; `validate_invoice` is the pre-check. A local block would add a second, weaker authority on an irreversible path.
+8. **`unknown` only once the send itself has started.** A failure while fetching the token comes before any request is sent, so the call fails with its error kind instead. An unreadable answer after a 2xx still counts as `sent`.
+9. **A duplicate stays `rejected` but says "do not send again".** It is usually a retry after `unknown`, so its hint must never invite a new send, not even under a new `consignmentId`.
+10. **Item 6 corrected: a send is followed by invoice number.** Track & Trace does not know the `consignmentId`, so `track_document` looks a send up by invoice number only. A send can take a while to appear there; an empty answer soon after does not mean it was lost.
+
 ## Considered options
 
 - **Abort a started send on caller cancel, like every other request.** Frees the slot at once and stays uniform with ADR 0026, but every cancel then leaves an outcome nobody knows. Rejected: for an irreversible create, a known outcome is worth more than a freed slot.

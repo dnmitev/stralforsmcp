@@ -17,7 +17,7 @@ The environments a principal may use, taken from the token list. The list may na
 _Avoid_: allowed envs, access list
 
 **Credential profile** (`Profile`, env prefix `STRALFORS_PROFILE_<ID>_`):
-One identity against the API: OAuth client id and secret, client certificate and key (optionally passphrase-protected), a country code and zero or more agreement ids. Identified by a free-form profile id; "profile" is the accepted short form.
+One identity against the API: OAuth client id and secret, client certificate and key (optionally passphrase-protected), a country code and zero or more agreement ids. Identified by a free-form profile id; "profile" is the accepted short form. Each country's API user is its own profile, with its own agreements and scopes; the country comes from the profile's configuration, never from its token, which may carry no country at all.
 _Avoid_: account, tenant, client config
 
 **Profile id** (`Profile.id`):
@@ -76,6 +76,10 @@ _Avoid_: regex (unqualified), format
 Rule patterns are written for the vendor's .NET regular-expression engine, not JavaScript's. A pattern using syntax the two engines read differently, or a value they would judge differently, is left to the dry run instead of being checked locally.
 _Avoid_: regex flavour; invalid pattern (the drift finding `pattern-not-compilable` is a different thing)
 
+**List mark** (`ArrayExpected`, `ArrayWithValidItemsExpected`; criterion kinds `array`, `array_items`):
+The criterion a rule publishes as "array expected". It usually means the field sits inside a list, not that the field is itself a list: string fields inside list items, and even some string fields the specification places in a plain object, carry it. Never a local finding; the dry run and the example invoice decide the shape.
+_Avoid_: "must be an array", array rule
+
 **Criterion kind** (`Criterion.kind`):
 The fixed token for a criterion (`required`, `valid_items`, `pattern`, ...). Each kind has one fixed sentence template, so callers read the same wording whatever the vendor text says.
 
@@ -101,8 +105,28 @@ The step that produced a validation result's findings. Stages run in that order 
 A reference payload the API generates for a set of channels, used as a starting point for a valid document.
 
 **Consignment id** (`consignmentId`):
-A caller-supplied idempotency key for one document, 10 to 50 characters, unique per agreement. A repeat is answered with a conflict.
+A caller-supplied idempotency key for one sent document, 10 to 50 characters. The vendor remembers it together with the agreement id for the idempotency window; a repeat inside the window is a duplicate. A request the vendor rejects does not use it up. It is not a tracking key.
 _Avoid_: batch id, run id; "correlation id" (that is the lookup handle, a different thing)
+
+**Idempotency window**:
+The limited time the vendor remembers a consignment id and agreement pair. Its length depends on the environment and is not in the published specification; after it, the same pair is accepted as a new send, so "never sent twice" holds only inside it.
+_Avoid_: dedup period, retention
+
+**Send** (`send_invoice`, `POST .../v2/invoices/true`):
+A request that creates a consignment at the vendor for real and cannot be undone. TEST only, and the only write route the write guard can ever open (ADR 0028).
+_Avoid_: create, submit, post; test send (that is the dry run)
+
+**Send outcome** (`sent` | `rejected` | `unknown`; audit reasons `sent`, `rejected`, `outcome_unknown`):
+The one result of a send: `sent` (the vendor accepted it), `rejected` (the vendor refused it and nothing was sent: findings, or a duplicate) or `unknown` (the request started and may have arrived: a timeout, a network or server failure). `unknown` is settled with Track & Trace, never by sending again under a new consignment id. Audited as `outcome_unknown` because `unknown` is already a verify code. Distinct from the tracking outcome and the audit outcome.
+_Avoid_: status, result, delivered (that is a tracking outcome)
+
+**Duplicate** (`409`, finding kind `duplicate`):
+The vendor's refusal of a send whose consignment id and agreement were already used inside the idempotency window. A send outcome `rejected` with one `duplicate` finding: the first send stands, and the caller must not send again, not even under a new consignment id.
+_Avoid_: conflict (the HTTP status), already exists
+
+**Detached send**:
+The rule that a send which has started runs to its end even when its caller cancels or disconnects: the caller stops waiting and the send outcome is still audited. A send cancelled before it starts sends nothing.
+_Avoid_: background send, fire-and-forget
 
 **Dry run** (`validateInvoice()`, `PUT .../validate?test=true`):
 A validation request that is checked by the API as if it were a send but creates nothing. It is the authority: a document is valid only when the dry run accepts it. The client can only issue dry runs; there is no way to turn the test flag off from this code.
@@ -115,6 +139,10 @@ _Avoid_: state, result
 **Tracking channel** (Track & Trace `channelId`, `channelName`):
 A delivery route as the tracking system names it, with its own numeric ids and names, different from the `Channel` names of the Omni API. A document can have several, each with its own status.
 _Avoid_: channel (unqualified) when both vocabularies appear
+
+**No match yet** (Track & Trace `documents: null`):
+Track & Trace's answer when nothing matches a lookup, read as an empty page. A just-sent document can take time to appear, so an empty answer soon after a send does not mean the send was lost.
+_Avoid_: not found (that is an error), empty list
 
 **Tracking document id** (`documentId` in `track_document`):
 The tracking system's identifier of one document: alphanumeric, at most 10 characters, assigned after sending and never returned by the send. Not the `guid` that a dry run echoes.
@@ -164,7 +192,7 @@ A JSON body the API returns as a JSON string that itself contains the JSON objec
 The API's own error body: a free-text `message` and an optional `compositeFault`. Used for agreement-not-found (404), validation failures (400) and conflicts (409).
 
 **ProblemDetails**:
-The framework-level error body (`application/problem+json`) with a `traceId` and per-field `errors`. Means the request was malformed before it reached the API's own logic.
+The framework-level error body (`application/problem+json`) with a `traceId` and per-field `errors`. Means the request was malformed before it reached the API's own logic. When the body cannot be read into the API's model, the `errors` keys are `dto` (the whole model came out empty) and a `$.`-prefixed JSON path naming the unreadable field; the path is the useful key.
 
 **Route 404** (`RouteNotFoundError`):
 A plain-text 404 from the API gateway for a path that does not exist. A deployment or configuration problem, unrelated to any agreement.
@@ -187,7 +215,7 @@ _Avoid_: trace_id (that is this server's OpenTelemetry trace id), request id
 ## Safety
 
 **Write guard** (`isAllowed`, `WriteBlockedError`):
-The fail-closed check applied to every outgoing request before any socket or token is used. In `prod` only listed reads (and the dry run when explicitly enabled) pass; in `test` writes pass only when writes are enabled.
+The fail-closed check applied to every outgoing request before any socket or token is used. In `prod` only listed reads (and the dry run when explicitly enabled) pass; in `test` the only write that can pass is the send, and only when writes are enabled.
 _Avoid_: prod write guard (it acts in both environments), allowlist (unqualified)
 
 **Prod read allowlist** (`PROD_READS`):
@@ -211,10 +239,10 @@ The per-profile supplier of access tokens: fetches, caches, refreshes ahead of e
 The rule that concurrent callers waiting for a token share one upstream request instead of each fetching their own.
 
 **Claims** (`Claims`):
-The decoded, unverified payload of an access token, exposing scopes, expiry and audience. The raw payload stays private.
+The decoded, unverified payload of an access token, exposing scopes, expiry and audience. The raw payload stays private. The claims the policy sees for a request are the union of every profile's last fetched token, deployment-wide, not per principal.
 
 **Scope** (`Claims.scopes`):
-A permission the API grants to a credential profile, fixed per client and read from the token, never requested. A write tool implicitly requires `apiomni.write`.
+A permission the API grants to a credential profile, fixed per client and read from the token, never requested. Profiles can hold different scopes. A write tool implicitly requires `apiomni.write`, and a send also requires the chosen profile's own token to hold it, checked on every call and failing closed when that token was never fetched.
 
 **Proven agent** (`proven`):
 A connection agent that has received at least one HTTP response. Before that point a reset connection is treated as a TLS rejection; after it, as a network fault.
@@ -352,7 +380,7 @@ The async-local scope that carries the caller's cancel signal through one tool c
 _Avoid_: cancellation token, request context
 
 **Caller cancel** (`CancelledError`, kind and audit reason `cancelled`):
-A tool call ended because its caller cancelled or disconnected. The upstream request in flight is aborted and never replayed; for a create the vendor may already have accepted it, so its outcome is unknown rather than failed.
+A tool call ended because its caller cancelled or disconnected. The upstream request in flight is aborted and never replayed, except a send that has started, which runs on as a detached send.
 _Avoid_: timeout (the server's own deadline), abort (the mechanism)
 
 **Shared work** (`detached`, `untilAborted`):
@@ -659,14 +687,18 @@ _Avoid_: drift test, contract test, monitoring
 **Drift finding** (`unknown-criterion`, `pattern-not-compilable`, `channel-new`, ...):
 One check name with a count from a drift check. Distinct from a validation finding.
 
-**Drift baseline** (`baseline-<env>.json`):
-The private record of a previous drift check (names, ids, version, counts and hashes of free-text criteria) that later runs compare against.
+**Drift baseline** (`baseline-<env>-<profile>.json`):
+The private record of a previous drift check for one environment and one profile (names, ids, version, per-channel counts and hashes of free-text criteria) that later runs compare against. Profiles of different countries publish different channels and rules, so each has its own.
 
 **Standing finding**:
-A drift finding that is present on every run against the live API (unknown criterion kinds, rule patterns this server cannot interpret). With a baseline it counts as drift only when its count changes.
+A drift finding that is present on every run against the live API (unknown criterion kinds, rule patterns this server cannot interpret). With a baseline it counts as drift only when its count for a channel changes.
 
 **Live read check**:
-A manual run of the read tools against a real environment that prints shapes and counts only, so its output can be shared.
+A manual run of the read tools against a real environment and one profile that prints shapes and counts only, so its output can be shared.
+
+**Live profile** (`LIVE_PROFILE`):
+The one credential profile a live read check or drift check runs against, named by profile id; unset means the first configured profile. One profile per run.
+_Avoid_: target profile, country switch
 
 **Integration suite**:
 Tests that run the real server and client against a local stand-in for the vendor API, with the same transport security (ADR 0019).
