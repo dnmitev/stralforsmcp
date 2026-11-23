@@ -114,7 +114,8 @@ export function operations(c: Core) {
       try {
         await detached(() => c.post(`${V}/true`, body, { operation: 'sendInvoice', noReplay: true }));
       } catch (e) {
-        if (!(e instanceof SchemaError)) throw e; // a SchemaError comes only after a 2xx: the vendor accepted it, whatever the body says
+        // only the send's own SchemaError comes after a 2xx (accepted, whatever the body says); a token refresh one means nothing was sent
+        if (!(e instanceof SchemaError && e.operation === 'sendInvoice')) throw e;
       }
       return { ok: true };
     },

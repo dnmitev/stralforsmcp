@@ -49,6 +49,12 @@ describe('sendInvoice: the request', () => {
     expect(fake.apiRequests).toHaveLength(0);
     expect(fake.tokenRequests).toHaveLength(0);
   });
+  it('a malformed 200 from the token endpoint fails the call: the invoice was never posted, so it is not "sent"', async () => {
+    fake = await startFakeApi({ pki, token: (_q, res) => json(res, 200, { token_type: 'Bearer' }), api: (_q, res) => json(res, 201, '') });
+    const { client } = testClient(pki, fake, WRITE);
+    expect(await rejection(client.sendInvoice(body()))).toMatchObject({ kind: 'schema', operation: 'token' });
+    expect(sends(fake)).toHaveLength(0);
+  });
   it('without STRALFORS_ALLOW_WRITE the write guard blocks it: no token fetch, no socket', async () => {
     fake = await serve((_q, res) => json(res, 201, ''));
     const { client } = testClient(pki, fake);
