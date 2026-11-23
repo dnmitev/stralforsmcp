@@ -21,9 +21,9 @@
  */
 import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { AgreementNotFoundError, Claims, ForbiddenError, UpstreamError } from '../src/stralfors/index.ts';
+import { AgreementNotFoundError, Claims, ConfigError, ForbiddenError, UpstreamError } from '../src/stralfors/index.ts';
 import { channel, page, rawDoc, receiverCanaries } from '../test/helpers/track.ts';
-import { parseChannels, report } from './live-read-check.ts';
+import { parseChannels, pickProfile, report } from './live-read-check.ts';
 
 // ---- fake builders -------------------------------------------------------------------------------------------------
 const hex = () => randomBytes(5).toString('hex');
@@ -60,13 +60,13 @@ const example = (c: C) => ({
 const trackPage = (c: C) => page([rawDoc(c, { documentId: c.docId, extDocumentId: c.extDoc, invoiceNumber: c.invoice, channels: [channel('Delivered', {}, c)] })], false);
 
 interface Spy { calls: Record<string, unknown[][]> }
-interface Over { channels?: (id?: string) => Promise<string[]>; rules?: (ch: string) => Promise<unknown>; documentExample?: (a: { channels: string[] }) => Promise<unknown>; trackDocuments?: (a: unknown) => Promise<unknown>; agreements?: { label?: string; id: string }[] }
+interface Over { channels?: (id?: string) => Promise<string[]>; rules?: (ch: string) => Promise<unknown>; documentExample?: (a: { channels: string[] }) => Promise<unknown>; trackDocuments?: (a: unknown) => Promise<unknown>; agreements?: { label?: string; id: string }[]; customer?: string }
 
 function world(c: C, over: Over = {}) {
   const spy: Spy = { calls: {} };
   const rec = <A extends unknown[], R>(name: string, f: (...a: A) => R) => (...a: A): R => { (spy.calls[name] ??= []).push(a); return f(...a); };
   const impl = {
-    token: { get: async () => ({ claims: new Claims({ scope: 'a b', exp: 1, aud: 'x', customer: 'c/SE' }) }) },
+    token: { get: async () => ({ claims: new Claims({ scope: 'a b', exp: 1, aud: 'x', ...('customer' in over ? (over.customer === undefined ? {} : { customer: over.customer }) : { customer: 'c/SE' }) }) }) },
     channels: rec('channels', over.channels ?? (async (id?: string) => (id === c.agreementA ? ['ChanA', 'ChanB'] : id === c.agreementB ? ['ChanC'] : CATALOGUE))),
     rules: rec('rules', over.rules ?? (async (_ch: string) => rules(c))),
     documentExample: rec('documentExample', over.documentExample ?? (async () => example(c))),
@@ -301,5 +301,64 @@ describe('parseChannels', () => {
   });
   it.each([undefined, '', '  ', ' , ,'])('returns undefined for %j', (v) => {
     expect(parseChannels(v)).toBeUndefined();
+  });
+});
+
+// ---- 06-01: profile selector and agreement probe ------------------------------------------------------------------
+describe('06-01 AC-1: pickProfile', () => {
+  const profiles = { se: { id: 'se', agreements: [] }, 'no-test': { id: 'no-test', agreements: [] } } as unknown as Parameters<typeof pickProfile>[0];
+  it('unset or blank selector gives the first profile', () => {
+    expect(pickProfile(profiles, undefined).id).toBe('se');
+    expect(pickProfile(profiles, '  ').id).toBe('se');
+  });
+  it('matches case-insensitively with - and _ equal, like the config', () => {
+    expect(pickProfile(profiles, 'NO_TEST').id).toBe('no-test');
+    expect(pickProfile(profiles, ' no-test ').id).toBe('no-test');
+  });
+  it('an unknown selector throws fixed text without the value or the configured ids', () => {
+    const v = cn('selector');
+    expect(() => pickProfile(profiles, v)).toThrow(ConfigError);
+    try { pickProfile(profiles, v); } catch (e) {
+      const m = (e as Error).message;
+      expect(m).toBe('unknown LIVE_PROFILE');
+      expect(m).not.toContain(v);
+      expect(m).not.toContain('no-test');
+    }
+  });
+  it('no profiles at all throws', () => {
+    expect(() => pickProfile({} as never, undefined)).toThrow(ConfigError);
+  });
+});
+
+describe('06-01 AC-1/AC-4: report names the profile, optional agreement probe', () => {
+  it('prints the profile id on the second line', async () => {
+    const out = await run(world(canaries()));
+    expect(out.split('\n')[1]).toBe('profile: p1');
+  });
+  it('a token without a customer claim prints customerCountry: none (06-01 live: the NO token has none)', async () => {
+    const out = await run(world(canaries(), { customer: undefined }));
+    expect(out).toContain('customerCountry: none');
+    expect(out).not.toContain('undefined');
+  });
+  it('no probe unless asked', async () => {
+    const out = await run(world(canaries()));
+    expect(out).not.toContain('agreement probe');
+  });
+  it('probe: a made-up agreement id answered with agreement_not_found is ok, and the id is never printed', async () => {
+    const c = canaries();
+    let probed = '';
+    const w = world(c, { channels: async (id?: string) => { if (id && id !== c.agreementA && id !== c.agreementB) { probed = id; throw new AgreementNotFoundError(c.msg); } return CATALOGUE; } });
+    const out = await run(w, { agreementProbe: true });
+    expect(probed).toMatch(/^[0-9a-f-]{36}$/);
+    expect(line(out, 'ok agreement probe: agreement_not_found')).toBeDefined();
+    expect(out).not.toContain(probed);
+    expect(out).not.toContain(c.msg);
+  });
+  it('probe: any other error kind or a success is a fail line', async () => {
+    const c = canaries();
+    const other = await run(world(c, { channels: async (id?: string) => { if (id && id !== c.agreementA && id !== c.agreementB) throw new UpstreamError(c.msg); return CATALOGUE; } }), { agreementProbe: true });
+    expect(line(other, 'fail upstream agreement probe:')).toBeDefined();
+    const ok = await run(world(c), { agreementProbe: true });
+    expect(line(ok, 'fail unexpected agreement probe:')).toBeDefined();
   });
 });
