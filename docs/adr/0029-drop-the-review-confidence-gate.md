@@ -7,7 +7,7 @@ The `review/confidence` commit status (ADR 0024) was posted by the principal-rev
 
 ## Decision
 
-1. **No confidence status.** Nothing posts `review/confidence`, and the `main` ruleset no longer requires it. Required checks are `check (24)`, `check (26)` and `leak-scan`.
+1. **No confidence status.** Nothing posts `review/confidence`, and the `main` ruleset no longer requires it. Required checks are `check (24)`, `check (26)`, `leak-scan`, `integration`, `scope` and `mutation`, each pinned to GitHub Actions (amended 2026-11-23 after the Phase 6 review: a pull request had merged with mutation still running). `mutation` reports skipped on pull requests without code changes, which counts as passing. `Greptile Review` is not required: Greptile does not review Dependabot pull requests, so requiring it would block them.
 2. **The skip label and its workflow are removed.** With them goes the only `pull_request_target` workflow, so the workflow policy test now forbids that trigger everywhere, without exception.
 3. **`ci.yml` keeps only the mutation scope check.** The documentation-only status and its `statuses: write` permission are gone, which also closes the hole ADR 0024 item 4 described (a branch could post the status for itself).
 4. **The principal review stays, as advice.** The agent still reviews at phase end or on demand and reports a score, but posts no status.
