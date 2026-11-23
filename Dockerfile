@@ -8,7 +8,7 @@ COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --ignore-scripts
 
 # Runtime: distroless Node 26, non-root (uid 65532), no shell. Entrypoint of the base image is node.
-FROM gcr.io/distroless/nodejs26-debian13:nonroot@sha256:1d736cf8b5716c07a245301f92717143215d248fd55771ee1936ef4b3302e531
+FROM gcr.io/distroless/nodejs26-debian13:nonroot@sha256:ffa8a7545403036c94ec76674b5dbac2d425af2d679147cdf3e30180071487b7
 ARG VERSION=0.0.0
 ARG REVISION=unknown
 LABEL org.opencontainers.image.source="https://github.com/dnmitev/stralforsmcp" \
