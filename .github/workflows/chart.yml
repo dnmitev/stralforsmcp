@@ -1,0 +1,120 @@
+name: chart
+
+# Packages the Helm chart on every pull request and v* tag. A v* tag additionally pushes the package to
+# oci://ghcr.io/<owner>/charts/stralforsmcp (version = Chart.yaml `version`) and signs the pushed digest with keyless cosign.
+# A chart version that is already published is never overwritten: the publish job fails instead.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: chart-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # Every event. No secrets, no registry login, nothing is pushed.
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Same rule as the image workflow: plain vX.Y.Z, equal to the chart's appVersion (which follows package.json).
+      - name: Check release tag
+        if: github.ref_type == 'tag'
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          [[ "$REF_NAME" =~ $re ]] || { echo "tag is not a semver release tag (vX.Y.Z)"; exit 1; }
+          app=$(sed -n 's/^appVersion:[[:space:]]*"\{0,1\}\([^"[:space:]]*\)"\{0,1\}.*$/\1/p' charts/stralforsmcp/Chart.yaml)
+          [ "${REF_NAME#v}" = "$app" ] || { echo "tag does not match the chart appVersion $app"; exit 1; }
+      - name: Install helm (pinned sha256)
+        run: |
+          f=helm-v4.3.2-linux-amd64.tar.gz
+          curl -fsSL -o "$RUNNER_TEMP/$f" "https://get.helm.sh/$f"
+          echo "d1c0278d46beab79582d7e50f5b3dc206944ba8e577cde618513fd07daa53983  $RUNNER_TEMP/$f" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$f" -C "$RUNNER_TEMP" --strip-components=1 linux-amd64/helm
+      - name: Package
+        run: |
+          mkdir -p "$RUNNER_TEMP/pkg"
+          "$RUNNER_TEMP/helm" package charts/stralforsmcp --destination "$RUNNER_TEMP/pkg"
+          ls "$RUNNER_TEMP/pkg"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: chart
+          path: ${{ runner.temp }}/pkg/*.tgz
+          if-no-files-found: error
+          retention-days: 14
+
+  # v* tag pushes only, never a pull request or a fork. Pushes the package built above, then signs its digest.
+  publish:
+    needs: package
+    if: github.event_name == 'push' && github.ref_type == 'tag' && !github.event.repository.fork
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # One publish at a time across all tags, so two releases that reuse a chart version cannot both pass the lookup
+    # before either pushes. A later pending run replaces an earlier pending one (GitHub keeps one pending per group);
+    # that run shows as cancelled and is rerun by hand.
+    concurrency:
+      group: chart-publish
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # keyless cosign signature; no other job has it
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: chart
+          path: pkg
+      - name: Install helm (pinned sha256)
+        run: |
+          f=helm-v4.3.2-linux-amd64.tar.gz
+          curl -fsSL -o "$RUNNER_TEMP/$f" "https://get.helm.sh/$f"
+          echo "d1c0278d46beab79582d7e50f5b3dc206944ba8e577cde618513fd07daa53983  $RUNNER_TEMP/$f" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$f" -C "$RUNNER_TEMP" --strip-components=1 linux-amd64/helm
+      - name: Install cosign (pinned sha256)
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/cosign" "https://github.com/sigstore/cosign/releases/download/v3.1.4/cosign-linux-amd64"
+          echo "424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa  $RUNNER_TEMP/cosign" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/cosign"
+      - name: Registry login
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # helm keeps its own registry config; cosign reads the Docker config, so both log in.
+        run: |
+          printf '%s' "$TOKEN" | "$RUNNER_TEMP/helm" registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          printf '%s' "$TOKEN" | "$RUNNER_TEMP/cosign" login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      # GHCR lets a tag be overwritten; this step is what keeps a published chart version immutable.
+      # Any successful lookup means the version exists, so the run stops before pushing.
+      - name: Refuse an already published version
+        run: |
+          pkg=$(ls pkg/*.tgz)
+          v=$(basename "$pkg" .tgz); v=${v#stralforsmcp-}
+          if "$RUNNER_TEMP/helm" show chart "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/charts/stralforsmcp" --version "$v" > /dev/null 2>&1; then
+            echo "chart stralforsmcp $v is already published; bump version in charts/stralforsmcp/Chart.yaml and release a new tag"
+            exit 1
+          fi
+      - name: Push
+        id: push
+        run: |
+          out=$("$RUNNER_TEMP/helm" push pkg/*.tgz "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/charts" 2>&1)
+          echo "$out"
+          digest=$(printf '%s\n' "$out" | sed -n 's/^Digest:[[:space:]]*\(sha256:[0-9a-f]\{64\}\)$/\1/p')
+          [ -n "$digest" ] || { echo "no digest in helm push output"; exit 1; }
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/charts/stralforsmcp@$digest" >> "$GITHUB_STEP_SUMMARY"
+      - name: Sign the pushed digest (keyless)
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: '"$RUNNER_TEMP/cosign" sign --yes "ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/charts/stralforsmcp@${DIGEST}"'

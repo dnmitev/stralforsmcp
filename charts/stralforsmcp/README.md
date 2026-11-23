@@ -25,10 +25,21 @@ kubectl create secret generic example-profile-a \
 
 ## Install
 
+Each release publishes the chart as a signed OCI artifact at `oci://ghcr.io/dnmitev/charts/stralforsmcp`; its version is the chart `version` in `Chart.yaml`, not the app version (ADR 0030). Verify the digest before you install:
+
+```sh
+cosign verify \
+  --certificate-identity-regexp '^https://github.com/dnmitev/stralforsmcp/\.github/workflows/chart\.yml@refs/tags/v.*$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/dnmitev/charts/stralforsmcp@sha256:<chart-digest>
+```
+
+`helm show values oci://ghcr.io/dnmitev/charts/stralforsmcp --version <chart-version>` prints the defaults. A tool that takes a registry source (repository `ghcr.io/dnmitev/charts`, chart `stralforsmcp`) uses the chart version as the revision. To install from a checkout instead, use `./charts/stralforsmcp` in place of the OCI reference and drop `--version`.
+
 `image.tag` has no default and is required. Replace every `<placeholder>` below before running the command (an unquoted `<` or `>` is a shell redirection).
 
 ```sh
-helm install stralforsmcp ./charts/stralforsmcp \
+helm install stralforsmcp oci://ghcr.io/dnmitev/charts/stralforsmcp --version <chart-version> \
   --set 'image.tag=<release-tag>' \
   --set 'profiles[0].id=example-profile' \
   --set 'profiles[0].country=<country-code>' \

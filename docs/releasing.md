@@ -16,21 +16,26 @@ These are repository settings that no workflow in this repository can apply for 
 
 ## Cutting a release
 
-1. **Bump the version** in one pull request: `npm version X.Y.Z --no-git-tag-version` (updates `package.json` and the lock file), `version` in `extension/manifest.json` and `appVersion` in `charts/stralforsmcp/Chart.yaml`. `test/release-version.test.ts` fails if one of the four differs. Bump the chart's own `version` too when templates or values changed since the last release (the chart version is independent of the app version).
+1. **Bump the version** in one pull request: `npm version X.Y.Z --no-git-tag-version` (updates `package.json` and the lock file), `version` in `extension/manifest.json` and `appVersion` in `charts/stralforsmcp/Chart.yaml`. `test/release-version.test.ts` fails if one of the four differs. Bump the chart's own `version` as well, in every release: `appVersion` changes, so the packaged chart changes, and a published chart version is never overwritten (ADR 0030). Bump the minor version when templates or values changed, the patch version otherwise.
 2. **Merge it** through the normal review. The tag goes on the merge commit.
 3. **Tag and push** (annotated; sign the tag if you have a signing key): `git tag -a vX.Y.Z <merge-commit> -m "vX.Y.Z"` then `git push origin vX.Y.Z`. The tag must be plain `X.Y.Z` and equal the `package.json` version; the `image` workflow's first step refuses anything else (`vnext`, `v1.2`, `v1.2.3+x`, a version nobody bumped), before anything is pushed. Prereleases are not published: `main` never carries a prerelease version, so a `-rc` tag is refused.
-4. **Watch two runs:** `image` (tag check, build, push, scan of the pushed digest on both platforms, keyless signature) and `mcpb` (build, verify, checksum, attestation). A red `image` run means no signature exists for that digest; fix forward with a new patch version, never move or delete a tag.
+4. **Watch three runs:** `image` (tag check, build, push, scan of the pushed digest on both platforms, keyless signature), `chart` (tag check, package, refusal if that chart version is already published, push to `oci://ghcr.io/<owner>/charts/stralforsmcp`, keyless signature) and `mcpb` (build, verify, checksum, attestation). A red `image` or `chart` run means no signature exists for that digest; fix forward with a new patch version, never move or delete a tag.
 5. **Create the GitHub release by hand** (workflows never create releases): download the `mcpb` run's artifact with `gh run download <run-id> -R <owner>/<repo> -n mcpb`, check it (below), then `gh release create vX.Y.Z --verify-tag --title vX.Y.Z --notes "..." stralforsmcp.mcpb SHA256SUMS`.
 
 ## Checking what was published
 
-Take the digest from the `image` run summary. Image tags published for a release: `X.Y.Z`, `X.Y`, `latest`, plus `sha-<commit>`; `edge` keeps following `main`.
+Take the image digest from the `image` run summary and the chart digest from the `chart` run summary. Image tags published for a release: `X.Y.Z`, `X.Y`, `latest`, plus `sha-<commit>`; `edge` keeps following `main`.
 
 ```sh
 cosign verify \
   --certificate-identity-regexp '^https://github.com/<owner>/<repo>/\.github/workflows/image\.yml@refs/tags/vX\.Y\.Z$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   ghcr.io/<owner>/<repo>@sha256:<digest>
+
+cosign verify \
+  --certificate-identity-regexp '^https://github.com/<owner>/<repo>/\.github/workflows/chart\.yml@refs/tags/vX\.Y\.Z$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/<owner>/charts/stralforsmcp@sha256:<chart-digest>
 
 gh attestation verify stralforsmcp.mcpb --repo <owner>/<repo> \
   --signer-workflow <owner>/<repo>/.github/workflows/mcpb.yml --source-ref refs/tags/vX.Y.Z
@@ -41,7 +46,7 @@ Tags are mutable pointers: deploy the verified **digest**, never `latest` or `ed
 
 ## Deploying a release
 
-Set `image.tag` to the version and `image.digest` to the verified digest (the chart README lists every value). TEST and PROD are separate releases with separate Secrets ([hosting handoff](hosting-handoff.md)). Before an upgrade, note the current revision: `helm history <release> -n <namespace>`.
+Install the chart from the registry at its chart version (`helm install <release> oci://ghcr.io/<owner>/charts/stralforsmcp --version <chart-version> -n <namespace> -f <values-file>`), or from a checkout at the release tag. Set `image.tag` to the version and `image.digest` to the verified digest (the chart README lists every value). TEST and PROD are separate releases with separate Secrets ([hosting handoff](hosting-handoff.md)). Before an upgrade, note the current revision: `helm history <release> -n <namespace>`.
 
 ## Rolling back
 

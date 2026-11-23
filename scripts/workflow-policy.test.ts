@@ -584,6 +584,55 @@ describe('mcpb.yml (real file)', () => {
   });
 });
 
+/** chart.yml: package on every event, push + sign only for a v* tag, never overwrite a published version. */
+export function chartProblems(text: string): string[] {
+  const out: string[] = [];
+  const on = /^on:\n([\s\S]*?)^\S/m.exec(text)?.[1] ?? '';
+  if ([...on.matchAll(/^ {2}(\w+):/gm)].map((m) => m[1]).join() !== 'pull_request,push') out.push('triggers must be pull_request and push only');
+  if (/workflow_dispatch|schedule:|workflow_run|branches:\s*\[main\]\n\s+tags/.test(text) || !/push:\n\s+tags:\s*\['v\*'\]\n/.test(on)) out.push('push must be v* tags only');
+  const jobs = ((parse(text) as { jobs?: Record<string, { permissions?: Record<string, string> }> }).jobs ?? {});
+  const idJobs = Object.entries(jobs).filter(([, j]) => j.permissions?.['id-token'] === 'write').map(([n]) => n);
+  if (idJobs.join() !== 'publish') out.push(`id-token: write must be granted to publish only (found: ${idJobs.join(',') || 'none'})`);
+  const k = jobOf(text, 'package');
+  const p = jobOf(text, 'publish');
+  if (/secrets\.|id-token|packages:|registry login|helm" push|cosign/.test(k)) out.push('package must not log in, push or sign');
+  if (!/if: github\.event_name == 'push' && github\.ref_type == 'tag' && !github\.event\.repository\.fork/.test(p)) out.push('publish must be gated to tag pushes, never forks');
+  if (!/needs: package/.test(p)) out.push('publish must push the package job artifact');
+  if (!/concurrency:\n\s+group: chart-publish\n\s+cancel-in-progress: false/.test(p)) out.push('publish must run one at a time across tags');
+  if (!/cosign" login ghcr\.io/.test(p) || p.indexOf('cosign" login') > p.indexOf('cosign" sign')) out.push('cosign must log in before it signs');
+  if (/attestations|contents:\s*write|sigstore\/cosign-installer|azure\/setup-helm/.test(text)) out.push('no write beyond packages, no installer actions');
+  for (const [name, re] of [['helm', /helm-v[\d.]+-linux-amd64\.tar\.gz"?\n\s+curl[^\n]*\n\s+echo "[0-9a-f]{64}\s+\S+" \| sha256sum -c -/], ['cosign', /[0-9a-f]{64}\s+\S*cosign" \| sha256sum -c -/]] as const)
+    if (!re.test(p)) out.push(`${name} binary is not pinned by sha256 in publish`);
+  const exists = p.indexOf('helm" show chart');
+  const push = p.indexOf('helm" push');
+  const sign = p.indexOf('cosign" sign');
+  if (exists < 0 || push < 0 || exists > push) out.push('the existence check must run before the push');
+  if (!/if "\$RUNNER_TEMP\/helm" show chart[^\n]*\n[^\n]*\n\s+exit 1/.test(p)) out.push('an existing version must fail the run');
+  if (sign < 0 || sign < push) out.push('the signature must follow the push');
+  if (!/cosign" sign --yes "ghcr\.io\/\$\{GITHUB_REPOSITORY_OWNER,,\}\/charts\/stralforsmcp@\$\{DIGEST\}"/.test(p)) out.push('the signature must use the pushed digest');
+  return out;
+}
+
+describe('chart.yml (real file)', () => {
+  const real = wf('chart.yml');
+  it('has no problems', () => expect(chartProblems(real)).toEqual([]));
+  it.each([
+    ['a main-branch push trigger', (t: string) => t.replace("  push:\n    tags: ['v*']", "  push:\n    branches: [main]\n    tags: ['v*']"), /v\* tags only/],
+    ['id-token in package', (t: string) => t.replace('    timeout-minutes: 10\n    permissions:\n      contents: read\n    steps', '    timeout-minutes: 10\n    permissions:\n      contents: read\n      id-token: write\n    steps'), /publish only/],
+    ['an ungated publish', (t: string) => t.replace(" && github.ref_type == 'tag'", ''), /gated/],
+    ['no existence check', (t: string) => t.replace(/if "\$RUNNER_TEMP\/helm" show chart/, 'if false; then :; fi; if "$RUNNER_TEMP/helm" inspect chart'), /existence check/],
+    ['an existing version only warns', (t: string) => t.replace(/release a new tag"\n\s+exit 1/, 'release a new tag"'), /must fail/],
+    ['an unpinned cosign', (t: string) => t.replace(/echo "[0-9a-f]{64} {2}\$RUNNER_TEMP\/cosign" \| sha256sum -c -\n/, ''), /cosign binary/],
+    ['a per-tag publish group', (t: string) => t.replace('group: chart-publish', 'group: chart-publish-${{ github.ref }}'), /one at a time/],
+    ['no cosign login', (t: string) => t.replace(/\n\s+printf '%s' "\$TOKEN" \| "\$RUNNER_TEMP\/cosign" login[^\n]*/, ''), /log in before/],
+    ['signing a tag', (t: string) => t.replace('stralforsmcp@${DIGEST}"', 'stralforsmcp:latest"'), /pushed digest/],
+  ])('mutation: %s', (_, m, re) => {
+    const t = m(real);
+    expect(t).not.toBe(real);
+    expect(chartProblems(t).join()).toMatch(re);
+  });
+});
+
 describe('rescan.yml (real file)', () => {
   const real = wf('rescan.yml');
   it('runs on a schedule and on demand only', () => {
