@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { Claims } from '../stralfors/token.ts';
 import {
-  AgreementNotFoundError, AuthError, BadRequestError, BusyError, ConflictError, ResponseTooLargeError, TimeoutError, UpstreamError, ValidationFailedError, WriteBlockedError,
+  AgreementNotFoundError, AuthError, BadRequestError, BusyError, ConflictError, ResponseTooLargeError, TimeoutError, TlsError, UpstreamError, ValidationFailedError, WriteBlockedError,
 } from '../stralfors/errors.ts';
 import { principal, sink } from '../../test/helpers/server.ts';
 import { createSendInvoice, sendInput, sendOutput } from './send-tool.ts';
@@ -123,6 +123,8 @@ describe('AC-4: outcomes and audit', () => {
     const r = await w.call(args());
     expect(out(r)).toMatchObject({ outcome: 'rejected', findings: [{ source: 'stralfors', path: 'consignmentId', kind: 'duplicate' }] });
     expect(out(r).findings[0]!.message).toMatch(/already used with this agreement.*track_document/);
+    expect(out(r).hint).toMatch(/already received.*do not send it again/);
+    expect(out(r).hint).not.toMatch(/nothing was sent|send again\./);
   });
   it('400 without faults: rejected, mapped field errors (or the fixed fallback finding)', async () => {
     const w = world({ send: async () => { throw new BadRequestError('b', { profile: 'no', operation: 'sendInvoice', errors: { 'document.invoice.id': ['x'] } }); } });
@@ -136,6 +138,7 @@ describe('AC-4: outcomes and audit', () => {
     ['timeout', new TimeoutError('t')],
     ['5xx / network', new UpstreamError('u')],
     ['oversized answer', new ResponseTooLargeError('l')],
+    ['TLS reset during the send', new TlsError('r', { profile: 'no', operation: 'sendInvoice' })],
   ])('%s: outcome unknown with the track hint, never "send again"; audit outcome_unknown', async (_n, err) => {
     const w = world({ send: async () => { throw err; } });
     const r = await w.call(args());
@@ -143,6 +146,16 @@ describe('AC-4: outcomes and audit', () => {
     expect(out(r).hint).toMatch(/track_document/);
     expect(out(r).hint).toMatch(/same consignmentId/);
     expect(audit(w)).toEqual([['send_invoice', 'allowed', 'outcome_unknown']]);
+  });
+  it.each([
+    ['timeout', new TimeoutError('t', { profile: 'no', operation: 'token' })],
+    ['upstream', new UpstreamError('u', { profile: 'no', operation: 'token' })],
+    ['too_large', new ResponseTooLargeError('l', { profile: 'no', operation: 'token' })],
+    ['tls', new TlsError('s', { profile: 'no', operation: 'token' })],
+  ])('the token fetch failed (%s) before any POST: the call fails with its kind, never "unknown"', async (kind, err) => {
+    const w = world({ send: async () => { throw err; } });
+    expect(await w.call(args())).toMatchObject({ isError: true, content: [{ text: `tool failed: ${kind}` }] });
+    expect(audit(w)).toEqual([['send_invoice', 'error', kind]]);
   });
   it.each([
     ['auth', new AuthError('a')],
