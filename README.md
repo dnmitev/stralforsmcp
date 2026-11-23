@@ -2,7 +2,7 @@
 
 > A hosted [Model Context Protocol](https://modelcontextprotocol.io) server for the Strålfors Output Management API — explore channels, inspect rules, validate invoices before sending and query delivery status from Claude Desktop, Cursor or Claude Code.
 
-**Status:** Phase 6 (Norway). A typed Stralfors client, a stateless MCP server with token authentication, policy, audit, graceful shutdown, metrics and traces, nine tools (including `send_invoice` on TEST only), several credential profiles (one per country), knowledge resources and prompts exist. Packaged as a container image, a Helm chart and a Claude Desktop extension (`.mcpb`); the operator installs the server (see [docs/hosting-handoff.md](docs/hosting-handoff.md) and [docs/runbook.md](docs/runbook.md)).
+**Status:** Phases 0–6 done; Phase 7 (Production) next. A typed Stralfors client, a stateless MCP server with token authentication, policy, audit, graceful shutdown, metrics and traces, nine tools (including `send_invoice` on TEST only), several credential profiles (one per country), knowledge resources and prompts exist. Packaged as a container image, a Helm chart and a Claude Desktop extension (`.mcpb`); the operator installs the server (see [docs/hosting-handoff.md](docs/hosting-handoff.md) and [docs/runbook.md](docs/runbook.md)).
 
 ## Why
 
@@ -61,8 +61,8 @@ CI publishes coverage, test pass rate and mutation score on every pull request.
 | 2 | MCP core: Streamable HTTP, per-user auth, policy, audit log, tracing and metrics, container image, Helm chart, Claude Desktop extension (the EKS deployment itself is done by the operator, outside this repository) |
 | 3 | Validation: rules, example payloads, dry-run validation, channel lookup, tracking |
 | 4 | Knowledge: searchable knowledge base, resources and prompts |
-| 5 | Hardening and hosting readiness: security and operations audit, shutdown and readiness, chart hardening, hosting handoff, runbook, alert rules, supply chain, first release (in progress) |
-| 6 | Norway: credential profile and `send_invoice` to TEST (in progress) |
+| 5 | Hardening and hosting readiness: security and operations audit, shutdown and readiness, chart hardening, hosting handoff, runbook, alert rules, supply chain, first release |
+| 6 | Norway: credential profile and `send_invoice` to TEST |
 | 7 | Production: PROD configuration and write-guard verification, dashboards, extension signing and distribution (deferred) |
 
 ## Stralfors client (library)

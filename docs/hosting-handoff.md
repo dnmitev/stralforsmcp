@@ -70,6 +70,8 @@ The chart sets the variables it knows; the rest go through `extraEnv`. The READM
 | `GET /readyz` | 200 while serving, 503 once shutdown starts. **Never depends on the vendor or the token list**, so a vendor outage does not take the pod out of rotation |
 | `GET :9464/metrics` | Prometheus text, separate listener |
 
+With `STRALFORS_ALLOW_WRITE=true` (TEST only) the server fetches each profile's token at startup, before it reports ready; one fetch can take up to 10 s. Give the readiness probe that headroom (initial delay or failure threshold).
+
 Vendor health is a metric, not a probe: `stralfors_up` (1 when every profile last probed UP). Other signals: `stralfors_client_cert_expiry_seconds`, `stralfors_credentials_reloads_total`, `mcp_token_list_stale_seconds`, `mcp_token_list_reloads_total`, `stralfors_requests_total`. The chart can ship example alert rules and a ServiceMonitor (`prometheusRule.enabled`, `serviceMonitor.enabled`, need the Prometheus Operator CRDs); each alert links to a section of the runbook.
 
 ## Rollouts and shutdown
