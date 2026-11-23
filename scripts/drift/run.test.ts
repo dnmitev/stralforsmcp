@@ -115,7 +115,12 @@ describe('06-01 AC-2: per-profile baseline, standing counts per channel', () => 
   });
   it('baseline file is per env and profile, with a path-safe profile id', () => {
     expect(baselineFile('/d', 'test', 'no')).toBe(join('/d', 'baseline-test-no.json'));
-    expect(baselineFile('/d', 'test', '../x/Y')).toBe(join('/d', 'baseline-test-___x_Y.json'));
+    expect(baselineFile('/d', 'test', '../x/Y')).toBe(join('/d', 'baseline-test-..%2Fx%2FY.json'));
+    expect(baselineFile('/d', 'test', '../x/Y')).not.toContain('/x/'); // no separator survives, the file stays in DRIFT_OUT
+  });
+  it('distinct profile ids never share a baseline file (Greptile #54)', () => {
+    const ids = ['no.test', 'no_test', 'no-test', 'no test', 'no/test'];
+    expect(new Set(ids.map((id) => baselineFile('/d', 'test', id))).size).toBe(ids.length);
   });
   it('the report names the profile', async () => {
     const r = await runDrift({ client: fake().client, env: 'test', profile: 'no' });

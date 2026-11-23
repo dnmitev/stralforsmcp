@@ -26,8 +26,10 @@ export function outDirOk(out: string | undefined, repo = REPO): out is string {
   return rel !== '' && (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)); // a child named `..x` is inside the repo
 }
 
-/** one baseline per env and profile; the id is made path-safe (it is a config label, never a path) */
-export const baselineFile = (out: string, env: string, profileId: string) => join(out, `baseline-${env}-${profileId.replace(/[^A-Za-z0-9_-]/g, '_')}.json`);
+/** profile id as a file-name part: percent-encoded, so it holds no path separator and distinct ids (`no.test`, `no_test`) never share a file */
+const fileId = (id: string) => encodeURIComponent(id);
+/** one baseline per env and profile */
+export const baselineFile = (out: string, env: string, profileId: string) => join(out, `baseline-${env}-${fileId(profileId)}.json`);
 
 const kindOf = (e: unknown) => (e instanceof StralforsError ? e.kind : 'unknown');
 const list = (s: string | undefined) => { const l = (s ?? '').split(',').map((x) => x.trim()).filter(Boolean); return l.length > 0 ? l : undefined; };
@@ -97,7 +99,7 @@ async function main(): Promise<number> {
     client = createClient({ config, profileId: profile.id });
     const res = await runDrift({ client, env: config.env, profile: profile.id }, { expectChannels: list(process.env['DRIFT_EXPECT_CHANNELS']), expectVersion: process.env['DRIFT_EXPECT_API_VERSION'] || undefined, baseline });
     await mkdir(out, { recursive: true, mode: 0o700 });
-    const name = `drift-${config.env}-${profile.id.replace(/[^A-Za-z0-9_-]/g, '_')}-${new Date().toISOString().replace(/[:.]/g, '-')}.md`;
+    const name = `drift-${config.env}-${fileId(profile.id)}-${new Date().toISOString().replace(/[:.]/g, '-')}.md`;
     await writeFile(join(out, name), `${res.report}\n`, { mode: 0o600 });
     if (process.env['DRIFT_WRITE_BASELINE'] === '1') {
       if (res.complete) await writeFile(file, `${JSON.stringify(res.baseline)}\n`, { mode: 0o600 });
