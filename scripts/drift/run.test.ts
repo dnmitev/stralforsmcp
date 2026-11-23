@@ -5,11 +5,11 @@ import { spawnSync } from 'node:child_process';
 import { afterAll, describe, expect, it } from 'vitest';
 import { UpstreamError } from '../../src/stralfors/index.ts';
 import type { RuleNode } from '../../src/stralfors/rules.ts';
-import { outDirOk, runDrift, type Baseline } from './run.ts';
+import { baselineFile, outDirOk, runDrift, type Baseline } from './run.ts';
 
 const CANARY = 'CANARY-vendor-text-9f3a';
 const tree = (extra: string[] = []): RuleNode[] => [{ id: '1', parameter: 'Document.A', ruleCriterias: ['Required', `ValidationCriteria: ${CANARY}`, ...extra], expectedPattern: '^x$' }];
-function fake(over: { version?: string; channels?: string[]; trees?: Record<string, RuleNode[]>; fail?: 'rules' } = {}) {
+function fake(over: { version?: string; channels?: string[]; trees?: Record<string, RuleNode[]>; fail?: 'rules'; failChannel?: string } = {}) {
   const calls: string[] = [];
   const channels = over.channels ?? ['ChanA', `${CANARY}-chan`];
   return {
@@ -18,7 +18,7 @@ function fake(over: { version?: string; channels?: string[]; trees?: Record<stri
       apiInfo: async () => { calls.push('apiInfo'); return { version: over.version ?? '2.0', name: CANARY }; },
       channels: async () => { calls.push('channels'); return channels; },
       templates: async () => { calls.push('templates'); return [{ standardId: 1, type: { name: CANARY } }]; },
-      rules: async (c: string) => { calls.push('rules'); if (over.fail === 'rules') throw new UpstreamError('boom'); return { channel: c, rules: over.trees?.[c] ?? tree() }; },
+      rules: async (c: string) => { calls.push('rules'); if (over.fail === 'rules' || c === over.failChannel) throw new UpstreamError('boom'); return { channel: c, rules: over.trees?.[c] ?? tree() }; },
     } as never,
   };
 }
@@ -77,6 +77,49 @@ describe('runDrift', () => {
     const r = await runDrift({ client: fake().client, env: 'test' }, { expectChannels: [] });
     expect(r.report).not.toContain(CANARY);
     expect(JSON.stringify(r.baseline)).not.toContain('ValidationCriteria');
+  });
+});
+
+describe('06-01 AC-2: per-profile baseline, standing counts per channel', () => {
+  const unk = (n: number): RuleNode[] => [{ id: '1', parameter: 'Document.A', ruleCriterias: Array.from({ length: n }, (_, i) => `Brand${i}: x`) }];
+  const two = (a: number, b: number, failChannel?: string) => fake({ channels: ['ChanA', 'ChanB'], trees: { ChanA: unk(a), ChanB: unk(b) }, ...(failChannel ? { failChannel } : {}) }).client;
+  it('baseline stores standing counts per channel', async () => {
+    const r = await runDrift({ client: two(2, 1), env: 'test' });
+    expect(r.baseline.standing).toEqual({ ChanA: { 'unknown-criterion': 2, 'pattern-not-compilable': 0 }, ChanB: { 'unknown-criterion': 1, 'pattern-not-compilable': 0 } });
+  });
+  it('a loss in one channel does not cancel a gain in another', async () => {
+    const first = await runDrift({ client: two(2, 1), env: 'test' });
+    const moved = await runDrift({ client: two(1, 2), env: 'test' }, { baseline: first.baseline });
+    expect(moved.findings).toEqual([{ check: 'unknown-criterion', count: 2 }]);
+  });
+  it('a channel whose rules fetch failed gets no standing comparison', async () => {
+    const first = await runDrift({ client: two(2, 1), env: 'test' });
+    const r = await runDrift({ client: two(2, 1, 'ChanB'), env: 'test' }, { baseline: first.baseline });
+    expect(r.findings).toEqual([{ check: 'fetch-failed', count: 1 }]);
+    expect(r.complete).toBe(false);
+  });
+  it('a new channel is compared against zero', async () => {
+    const first = await runDrift({ client: fake({ channels: ['ChanA'], trees: { ChanA: unk(1) } }).client, env: 'test' });
+    const r = await runDrift({ client: two(1, 3), env: 'test' }, { baseline: first.baseline });
+    expect(r.findings).toEqual(expect.arrayContaining([{ check: 'unknown-criterion', count: 3 }]));
+  });
+  it('an old baseline (flat counts, no standing) is compared by totals and the report asks for a rewrite', async () => {
+    const first = await runDrift({ client: two(2, 1), env: 'test' });
+    const { standing: _s, ...rest } = first.baseline;
+    const old: Baseline = { ...rest, counts: { 'unknown-criterion': 3, 'pattern-not-compilable': 0 } }; // the pre-06-01 shape: one total
+    const r = await runDrift({ client: two(1, 2), env: 'test' }, { baseline: old });
+    expect(r.findings).toEqual([]);
+    expect(r.report).toContain('baseline: old format, rewrite with DRIFT_WRITE_BASELINE=1');
+    const fresh = await runDrift({ client: two(2, 1), env: 'test' }, { baseline: first.baseline });
+    expect(fresh.report).not.toContain('old format');
+  });
+  it('baseline file is per env and profile, with a path-safe profile id', () => {
+    expect(baselineFile('/d', 'test', 'no')).toBe(join('/d', 'baseline-test-no.json'));
+    expect(baselineFile('/d', 'test', '../x/Y')).toBe(join('/d', 'baseline-test-___x_Y.json'));
+  });
+  it('the report names the profile', async () => {
+    const r = await runDrift({ client: fake().client, env: 'test', profile: 'no' });
+    expect(r.report).toContain('profile: no');
   });
 });
 

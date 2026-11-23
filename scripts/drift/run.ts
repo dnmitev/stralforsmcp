@@ -4,12 +4,14 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import { ConfigError, createClient, loadConfig, StralforsError, type StralforsClient } from '../../src/stralfors/index.ts';
+import { pickProfile } from '../live-read-check.ts';
 import type { RuleNode } from '../../src/stralfors/rules.ts';
 import { badPatterns, channelDiff, criteriaHashes, hashDiff, templateShape, unknownKinds, versionDiff, type Finding } from './checks.ts';
 
 type DriftClient = Pick<StralforsClient, 'apiInfo' | 'channels' | 'templates' | 'rules'>;
 const STABLE = ['unknown-criterion', 'pattern-not-compilable'];
-const baselineSchema = z.object({ counts: z.record(z.string(), z.number()).optional(), channels: z.array(z.string()), templates: z.array(z.number()), version: z.string().optional(), rules: z.record(z.string(), z.array(z.string())) });
+// `standing` (per channel) replaced the flat `counts` total in 06-01; a file with only `counts` is still read and compared by totals
+const baselineSchema = z.object({ counts: z.record(z.string(), z.number()).optional(), standing: z.record(z.string(), z.record(z.string(), z.number())).optional(), channels: z.array(z.string()), templates: z.array(z.number()), version: z.string().optional(), rules: z.record(z.string(), z.array(z.string())) });
 export type Baseline = z.infer<typeof baselineSchema>;
 export interface Opts { expectChannels?: string[] | undefined; expectVersion?: string | undefined; baseline?: Baseline | undefined }
 /** `complete` is false when any fetch failed: such a baseline would silently drop what could not be read, so it must not replace a good one */
@@ -24,10 +26,13 @@ export function outDirOk(out: string | undefined, repo = REPO): out is string {
   return rel !== '' && (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)); // a child named `..x` is inside the repo
 }
 
+/** one baseline per env and profile; the id is made path-safe (it is a config label, never a path) */
+export const baselineFile = (out: string, env: string, profileId: string) => join(out, `baseline-${env}-${profileId.replace(/[^A-Za-z0-9_-]/g, '_')}.json`);
+
 const kindOf = (e: unknown) => (e instanceof StralforsError ? e.kind : 'unknown');
 const list = (s: string | undefined) => { const l = (s ?? '').split(',').map((x) => x.trim()).filter(Boolean); return l.length > 0 ? l : undefined; };
 
-export async function runDrift({ client, env }: { client: DriftClient; env: string }, opts: Opts = {}): Promise<Result> {
+export async function runDrift({ client, env, profile }: { client: DriftClient; env: string; profile?: string }, opts: Opts = {}): Promise<Result> {
   const findings: Finding[] = [];
   const lines: string[] = [];
   const base = opts.baseline;
@@ -48,29 +53,36 @@ export async function runDrift({ client, env }: { client: DriftClient; env: stri
   if (newTemplates > 0) findings.push({ check: 'template-new', count: newTemplates });
 
   const rules: Record<string, string[]> = {};
+  const standing: Record<string, Record<string, number>> = {};
+  const total = (fs: Finding[], c: string) => fs.filter((f) => f.check === c).reduce((n, f) => n + f.count, 0);
   for (const channel of channels) {
     const r = await fetched('rules', () => client.rules(channel));
     if (!r) continue;
     const tree = r.rules as RuleNode[];
     rules[channel] = criteriaHashes(tree);
     const here = [...unknownKinds(tree), ...badPatterns(tree), ...(base?.rules[channel] ? hashDiff(rules[channel], base.rules[channel]) : [])];
+    standing[channel] = Object.fromEntries(STABLE.map((c) => [c, total(here, c)]));
     findings.push(...here);
     lines.push(`rules #${Object.keys(rules).length}: rules=${tree.length} findings=${here.reduce((n, f) => n + f.count, 0)}`);
   }
 
-  // known, standing facts of the environment (unknown kinds, .NET-only patterns) are drift only when their count changes against the baseline
-  const sum = (c: string) => findings.filter((f) => f.check === c).reduce((n, f) => n + f.count, 0);
-  const counts = Object.fromEntries(STABLE.map((c) => [c, sum(c)]));
-  const stable = base?.counts;
-  const out = stable ? [...findings.filter((f) => !STABLE.includes(f.check)), ...STABLE.map((c) => ({ check: c, count: Math.abs(counts[c]! - (stable[c] ?? 0)) })).filter((f) => f.count > 0)] : findings;
+  // known, standing facts of the environment (unknown kinds, .NET-only patterns) are drift only when their count changes against the baseline,
+  // compared per channel (a loss in one cannot cancel a gain in another); a channel whose rules fetch failed is absent from `standing` and not compared
+  const counts = Object.fromEntries(STABLE.map((c) => [c, total(findings, c)]));
+  const changed = (c: string) => base?.standing
+    ? Object.entries(standing).reduce((n, [ch, s]) => n + Math.abs(s[c]! - (base.standing![ch]?.[c] ?? 0)), 0)
+    : Math.abs(counts[c]! - (base?.counts?.[c] ?? 0));
+  const stable = base?.standing ?? base?.counts;
+  const out = stable ? [...findings.filter((f) => !STABLE.includes(f.check)), ...STABLE.map((c) => ({ check: c, count: changed(c) })).filter((f) => f.count > 0)] : findings;
   const byCheck = new Map<string, number>();
   for (const f of out) byCheck.set(f.check, (byCheck.get(f.check) ?? 0) + f.count);
   const report = [
-    `# Drift report`, `env: ${env}`, `channels: ${channels.length} templates: ${templates.length}`,
+    `# Drift report`, `env: ${env}`, ...(profile !== undefined ? [`profile: ${profile}`] : []), `channels: ${channels.length} templates: ${templates.length}`,
     `expectations: version ${expectVersion === undefined ? 'skipped' : 'set'}, channels ${expectChannels === undefined ? 'skipped' : 'set'}, baseline ${base ? 'present' : 'none'}`,
+    ...(base && !base.standing ? ['baseline: old format, rewrite with DRIFT_WRITE_BASELINE=1'] : []),
     ...lines, `findings: ${out.length === 0 ? 'none' : out.reduce((n, f) => n + f.count, 0)}${stable ? '' : ' (no baseline: standing unknown kinds and patterns included)'}`, ...[...byCheck].map(([c, n]) => `- ${c}: ${n}`),
   ].join('\n');
-  return { findings: out, report, complete: !findings.some((f) => f.check === 'fetch-failed'), baseline: { counts, channels: [...channels], templates: templates.map((t) => t.standardId), ...(info?.version !== undefined ? { version: info.version } : {}), rules } };
+  return { findings: out, report, complete: !findings.some((f) => f.check === 'fetch-failed'), baseline: { standing, channels: [...channels], templates: templates.map((t) => t.standardId), ...(info?.version !== undefined ? { version: info.version } : {}), rules } };
 }
 
 async function main(): Promise<number> {
@@ -79,20 +91,19 @@ async function main(): Promise<number> {
   let client: ReturnType<typeof createClient> | undefined;
   try {
     const config = loadConfig(process.env);
-    const profile = Object.values(config.profiles)[0];
-    if (!profile) throw new ConfigError('no profile configured');
-    const baselineFile = join(out, `baseline-${config.env}.json`);
-    const baseline = existsSync(baselineFile) ? baselineSchema.parse(JSON.parse(await readFile(baselineFile, 'utf8'))) : undefined;
+    const profile = pickProfile(config.profiles, process.env['LIVE_PROFILE']);
+    const file = baselineFile(out, config.env, profile.id);
+    const baseline = existsSync(file) ? baselineSchema.parse(JSON.parse(await readFile(file, 'utf8'))) : undefined;
     client = createClient({ config, profileId: profile.id });
-    const res = await runDrift({ client, env: config.env }, { expectChannels: list(process.env['DRIFT_EXPECT_CHANNELS']), expectVersion: process.env['DRIFT_EXPECT_API_VERSION'] || undefined, baseline });
+    const res = await runDrift({ client, env: config.env, profile: profile.id }, { expectChannels: list(process.env['DRIFT_EXPECT_CHANNELS']), expectVersion: process.env['DRIFT_EXPECT_API_VERSION'] || undefined, baseline });
     await mkdir(out, { recursive: true, mode: 0o700 });
-    const name = `drift-${config.env}-${new Date().toISOString().replace(/[:.]/g, '-')}.md`;
+    const name = `drift-${config.env}-${profile.id.replace(/[^A-Za-z0-9_-]/g, '_')}-${new Date().toISOString().replace(/[:.]/g, '-')}.md`;
     await writeFile(join(out, name), `${res.report}\n`, { mode: 0o600 });
     if (process.env['DRIFT_WRITE_BASELINE'] === '1') {
-      if (res.complete) await writeFile(baselineFile, `${JSON.stringify(res.baseline)}\n`, { mode: 0o600 });
+      if (res.complete) await writeFile(file, `${JSON.stringify(res.baseline)}\n`, { mode: 0o600 });
       else console.error('drift: a fetch failed, baseline not written');
     }
-    console.log(['env: ' + config.env, `findings: ${res.findings.reduce((n, f) => n + f.count, 0)}`, ...[...new Set(res.findings.map((f) => f.check))].map((c) => `  ${c}: ${res.findings.filter((f) => f.check === c).reduce((n, f) => n + f.count, 0)}`), `report: ${name}`].join('\n'));
+    console.log(['env: ' + config.env, `profile: ${profile.id}`, `findings: ${res.findings.reduce((n, f) => n + f.count, 0)}`, ...[...new Set(res.findings.map((f) => f.check))].map((c) => `  ${c}: ${res.findings.filter((f) => f.check === c).reduce((n, f) => n + f.count, 0)}`), `report: ${name}`].join('\n'));
     return res.findings.length > 0 ? 1 : 0;
   } catch (e) {
     console.error(e instanceof StralforsError ? `${e.kind}: ${e.message}` : e instanceof ConfigError ? e.message : 'drift: unexpected error');

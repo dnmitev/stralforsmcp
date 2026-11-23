@@ -13,7 +13,7 @@ export async function report(client: ChannelsClient, agreements: Profile['agreem
     `scopes: ${scopes.join(' ')}`,
     `exp: ${exp}`,
     `aud: ${aud.join(' ')}`,
-    `customerCountry: ${customerCountry}`,
+    `customerCountry: ${customerCountry ?? 'none'}`,
     `client channels: ${(await client.channels()).join(', ')}`,
   ];
   for (const [i, a] of agreements.entries()) {
