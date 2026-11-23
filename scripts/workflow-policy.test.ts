@@ -598,6 +598,8 @@ export function chartProblems(text: string): string[] {
   if (/secrets\.|id-token|packages:|registry login|helm" push|cosign/.test(k)) out.push('package must not log in, push or sign');
   if (!/if: github\.event_name == 'push' && github\.ref_type == 'tag' && !github\.event\.repository\.fork/.test(p)) out.push('publish must be gated to tag pushes, never forks');
   if (!/needs: package/.test(p)) out.push('publish must push the package job artifact');
+  if (!/concurrency:\n\s+group: chart-publish\n\s+cancel-in-progress: false/.test(p)) out.push('publish must run one at a time across tags');
+  if (!/cosign" login ghcr\.io/.test(p) || p.indexOf('cosign" login') > p.indexOf('cosign" sign')) out.push('cosign must log in before it signs');
   if (/attestations|contents:\s*write|sigstore\/cosign-installer|azure\/setup-helm/.test(text)) out.push('no write beyond packages, no installer actions');
   for (const [name, re] of [['helm', /helm-v[\d.]+-linux-amd64\.tar\.gz"?\n\s+curl[^\n]*\n\s+echo "[0-9a-f]{64}\s+\S+" \| sha256sum -c -/], ['cosign', /[0-9a-f]{64}\s+\S*cosign" \| sha256sum -c -/]] as const)
     if (!re.test(p)) out.push(`${name} binary is not pinned by sha256 in publish`);
@@ -621,6 +623,8 @@ describe('chart.yml (real file)', () => {
     ['no existence check', (t: string) => t.replace(/if "\$RUNNER_TEMP\/helm" show chart/, 'if false; then :; fi; if "$RUNNER_TEMP/helm" inspect chart'), /existence check/],
     ['an existing version only warns', (t: string) => t.replace(/release a new tag"\n\s+exit 1/, 'release a new tag"'), /must fail/],
     ['an unpinned cosign', (t: string) => t.replace(/echo "[0-9a-f]{64} {2}\$RUNNER_TEMP\/cosign" \| sha256sum -c -\n/, ''), /cosign binary/],
+    ['a per-tag publish group', (t: string) => t.replace('group: chart-publish', 'group: chart-publish-${{ github.ref }}'), /one at a time/],
+    ['no cosign login', (t: string) => t.replace(/\n\s+printf '%s' "\$TOKEN" \| "\$RUNNER_TEMP\/cosign" login[^\n]*/, ''), /log in before/],
     ['signing a tag', (t: string) => t.replace('stralforsmcp@${DIGEST}"', 'stralforsmcp:latest"'), /pushed digest/],
   ])('mutation: %s', (_, m, re) => {
     const t = m(real);

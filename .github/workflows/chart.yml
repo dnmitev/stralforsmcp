@@ -62,6 +62,12 @@ jobs:
     if: github.event_name == 'push' && github.ref_type == 'tag' && !github.event.repository.fork
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # One publish at a time across all tags, so two releases that reuse a chart version cannot both pass the lookup
+    # before either pushes. A later pending run replaces an earlier pending one (GitHub keeps one pending per group);
+    # that run shows as cancelled and is rerun by hand.
+    concurrency:
+      group: chart-publish
+      cancel-in-progress: false
     permissions:
       contents: read
       packages: write
@@ -85,7 +91,10 @@ jobs:
       - name: Registry login
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: printf '%s' "$TOKEN" | "$RUNNER_TEMP/helm" registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+        # helm keeps its own registry config; cosign reads the Docker config, so both log in.
+        run: |
+          printf '%s' "$TOKEN" | "$RUNNER_TEMP/helm" registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          printf '%s' "$TOKEN" | "$RUNNER_TEMP/cosign" login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
       # GHCR lets a tag be overwritten; this step is what keeps a published chart version immutable.
       # Any successful lookup means the version exists, so the run stops before pushing.
       - name: Refuse an already published version
