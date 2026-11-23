@@ -60,8 +60,9 @@ jobs:
           # A rename counts as both its old and new path.
           paths=$(printf '%s\n' "$rows" | tr '\t' '\n' | grep -v '^$' || true)
           # A Dockerfile change that only moves base image digests (a Dependabot bump) leaves the gate check: every changed
-          # line must be `FROM <image>@sha256:<64 hex> [AS <stage>]`, and with the digests removed the old and new lines
-          # must be identical (same images, tags and stages, same order). Anything else, a missing patch or a rename refuses.
+          # line must be `FROM [--platform=<p>] <image>@sha256:<64 hex> [AS <stage>]`, and with the digests removed the old and
+          # new sides of the patch must be identical, unchanged lines included (same images, tags, stages and positions).
+          # Anything else, a missing patch or a rename refuses.
           case $'\n'"$paths"$'\n' in
             *$'\nDockerfile\n'*)
               notdigest="the pull request changes gate or pipeline files (Dockerfile beyond a base image digest); it needs a real review"
@@ -70,10 +71,11 @@ jobs:
                 || refuse "Dockerfile diff unavailable"
               changed=$(printf '%s\n' "$patch" | grep -E '^[-+]' || true)
               [ -n "$changed" ] || refuse "$notdigest"
-              [ -z "$(printf '%s\n' "$changed" | grep -Ev '^[-+]FROM [^ @]+@sha256:[0-9a-f]{64}( AS [A-Za-z0-9_.-]+)?$' || true)" ] || refuse "$notdigest"
-              was=$(printf '%s\n' "$changed" | grep '^-' | cut -c2- | sed -E 's/@sha256:[0-9a-f]{64}//' || true)
-              now=$(printf '%s\n' "$changed" | grep '^+' | cut -c2- | sed -E 's/@sha256:[0-9a-f]{64}//' || true)
-              { [ -n "$was" ] && [ "$was" = "$now" ]; } || refuse "$notdigest"
+              [ -z "$(printf '%s\n' "$changed" | grep -Ev '^[-+]FROM (--platform=[^ ]+ )?[^ @]+@sha256:[0-9a-f]{64}( AS [A-Za-z0-9_.-]+)?$' || true)" ] || refuse "$notdigest"
+              # Rebuild each side of the patch with its unchanged lines (hunk headers kept, `\ No newline` markers dropped),
+              # so a FROM moved past other lines (which moves them into another stage) cannot pass as a digest bump.
+              side() { printf '%s\n' "$patch" | grep -v "^$1" | grep -v '^\\' | cut -c2- | sed -E 's/@sha256:[0-9a-f]{64}//' || true; }
+              [ "$(side +)" = "$(side -)" ] || refuse "$notdigest"
               paths=$(printf '%s\n' "$paths" | grep -vx 'Dockerfile' || true)
               ;;
           esac

@@ -127,9 +127,18 @@ describe('skip-confidence step (stub gh)', () => {
     it('a digest-only FROM change passes', () => {
       expect(run(docker(hunk(`-FROM ${img}@${d('a')}`, `+FROM ${img}@${d('b')}`))).posted).toBe(true);
     });
-    it('a multi-stage digest-only change with AS passes, next to a harmless file', () => {
-      const p = hunk(`-FROM node:26-slim@${d('1')} AS deps`, `-FROM ${img}@${d('a')}`, `+FROM node:26-slim@${d('2')} AS deps`, `+FROM ${img}@${d('b')}`);
+    // The build stage line as it stands in the real Dockerfile.
+    const deps = 'FROM --platform=$BUILDPLATFORM node:26-trixie-slim';
+    it('the real build stage (--platform, AS deps) digest-only change passes, next to a harmless file', () => {
+      const p = hunk(`-${deps}@${d('1')} AS deps`, `+${deps}@${d('2')} AS deps`);
       expect(run([...docker(p), 'package-lock.json']).posted).toBe(true);
+    });
+    it('both stages bumped in two hunks pass', () => {
+      const p = [
+        '@@ -1,4 +1,4 @@', ' # syntax', `-${deps}@${d('1')} AS deps`, `+${deps}@${d('2')} AS deps`, ' WORKDIR /app',
+        '@@ -9,4 +9,4 @@', ' # Runtime', `-FROM ${img}@${d('a')}`, `+FROM ${img}@${d('b')}`, ' ARG VERSION=0.0.0',
+      ].join('\n');
+      expect(run(docker(p)).posted).toBe(true);
     });
     it.each([
       ['a changed image name', hunk(`-FROM ${img}@${d('a')}`, `+FROM evil.example/node:nonroot@${d('b')}`)],
@@ -139,6 +148,11 @@ describe('skip-confidence step (stub gh)', () => {
       ['a dropped digest', hunk(`-FROM ${img}@${d('a')}`, `+FROM ${img}`)],
       ['an added FROM line only', hunk(`+FROM ${img}@${d('b')}`)],
       ['a short digest', hunk(`-FROM ${img}@${d('a')}`, `+FROM ${img}@sha256:abc`)],
+      // Moving a FROM past an unchanged line moves that line into another stage.
+      ['a FROM moved past an unchanged line', hunk(`-FROM ${img}@${d('a')}`, ' ARG X=1', `+FROM ${img}@${d('b')}`)],
+      ['a FROM moved across hunks', ['@@ -1,2 +1,1 @@', `-FROM ${img}@${d('a')}`, ' ARG X=1', '@@ -9,1 +9,2 @@', ' ARG Y=1', `+FROM ${img}@${d('b')}`].join('\n')],
+      ['a changed --platform', hunk(`-${deps}@${d('1')} AS deps`, `+FROM --platform=linux/amd64 node:26-trixie-slim@${d('2')} AS deps`)],
+      ['a CR at the end of a FROM line', hunk(`-FROM ${img}@${d('a')}`, `+FROM ${img}@${d('b')}\r`)],
       ['a missing patch (too large)', undefined],
       ['an empty patch', ''],
     ])('%s is refused', (_n, patch) => {
