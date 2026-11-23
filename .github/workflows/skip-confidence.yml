@@ -7,6 +7,7 @@ name: skip-confidence
 # changed files through the API (data, never executed) and writes one commit status.
 # It refuses when the pull request touches the files that make up the gate itself (workflows, scripts, agents,
 # image and chart, scanner configs): those need a real review.
+# One exception: a Dockerfile change that only moves FROM base image digests (Dependabot) passes; see the step.
 # The files are listed between the current tip of main and the head SHA from the event (never the live pull request
 # head), so a force-push during the run cannot swap the list under the check. The compare endpoint returns at most 300
 # files and no later pages, so 300 or more files refuse. Any doubt refuses.
@@ -58,6 +59,26 @@ jobs:
           [ "$(printf '%s\n' "$rows" | wc -l | tr -d ' ')" -lt 300 ] || refuse "300 or more changed files: the file list may be incomplete"
           # A rename counts as both its old and new path.
           paths=$(printf '%s\n' "$rows" | tr '\t' '\n' | grep -v '^$' || true)
+          # A Dockerfile change that only moves base image digests (a Dependabot bump) leaves the gate check: every changed
+          # line must be `FROM [--platform=<p>] <image>@sha256:<64 hex> [AS <stage>]`, and with the digests removed the old and
+          # new sides of the patch must be identical, unchanged lines included (same images, tags, stages and positions).
+          # Anything else, a missing patch or a rename refuses.
+          case $'\n'"$paths"$'\n' in
+            *$'\nDockerfile\n'*)
+              notdigest="the pull request changes gate or pipeline files (Dockerfile beyond a base image digest); it needs a real review"
+              patch=$(gh api "repos/$REPO/compare/$base...$HEAD_SHA" \
+                -q '[.files[] | select(.filename == "Dockerfile" and .status == "modified")] | if length == 1 then (.[0].patch // "") else "" end') \
+                || refuse "Dockerfile diff unavailable"
+              changed=$(printf '%s\n' "$patch" | grep -E '^[-+]' || true)
+              [ -n "$changed" ] || refuse "$notdigest"
+              [ -z "$(printf '%s\n' "$changed" | grep -Ev '^[-+]FROM (--platform=[^ ]+ )?[^ @]+@sha256:[0-9a-f]{64}( AS [A-Za-z0-9_.-]+)?$' || true)" ] || refuse "$notdigest"
+              # Rebuild each side of the patch with its unchanged lines (hunk headers kept, `\ No newline` markers dropped),
+              # so a FROM moved past other lines (which moves them into another stage) cannot pass as a digest bump.
+              side() { printf '%s\n' "$patch" | grep -v "^$1" | grep -v '^\\' | cut -c2- | sed -E 's/@sha256:[0-9a-f]{64}//' || true; }
+              [ "$(side +)" = "$(side -)" ] || refuse "$notdigest"
+              paths=$(printf '%s\n' "$paths" | grep -vx 'Dockerfile' || true)
+              ;;
+          esac
           gate='^\.github/|^\.claude/|^\.githooks/|^scripts/|^extension/|^Dockerfile$|^charts/|^\.dockerignore$|^\.gitignore$|^\.gitleaks\.toml$|^\.trivyignore\.yaml$|^\.oxlintrc\.json$|^\.nvmrc$|^vitest[^/]*\.config\.ts$|^stryker\.config\.json$|^tsconfig\.json$'
           [ -z "$(printf '%s\n' "$paths" | grep -E "$gate" || true)" ] || refuse "the pull request changes gate or pipeline files; it needs a real review"
           # package.json is fine to bump (dependencies), but its scripts block runs the tests and the build.
