@@ -12,7 +12,7 @@ These are repository settings that no workflow in this repository can apply for 
 - [ ] **Code-owner review:** decide and write down. `.github/CODEOWNERS` already names the owner of the trust-bearing paths; *requiring* their review needs a second person, otherwise the author cannot merge their own change. Leave it off with one maintainer.
 - [ ] **Ruleset for tags `v*`:** only the maintainer may create, update or delete them; block non-fast-forward. Anyone who can push a `v*` tag can start a publish, and the signature would be valid for it.
 - [ ] **GHCR package visibility** (private after the first push; making it public is irreversible and is yours to decide).
-- [ ] **Who has maintain or admin access:** only a person with one of those roles can use the `skip-confidence` label (the workflow checks the sender, not just the label), and only on a pull request that touches no gate or pipeline file. Note the one open hole: the docs-only status in `ci.yml` runs from the pull request's own copy of the workflow, so anyone with write access to the repository can post `review/confidence` for their own branch (ADR 0024). Keep write access narrow.
+- [ ] **Who has maintain or admin access:** only a person with one of those roles can use the `skip-confidence` label (the workflow checks the sender, not just the label), and only on a pull request that touches no gate or pipeline file (a `Dockerfile` change that only moves base image digests is the one exception). Note the one open hole: the docs-only status in `ci.yml` runs from the pull request's own copy of the workflow, so anyone with write access to the repository can post `review/confidence` for their own branch (ADR 0024). Keep write access narrow.
 
 ## Cutting a release
 
