@@ -495,7 +495,7 @@
       "id": 12,
       "type": "timeseries",
       "title": "Restarts",
-      "description": "Needs kube-state-metrics",
+      "description": "Needs kube-state-metrics; limited to the selected job's pods",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -513,7 +513,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\",container=\"stralforsmcp\"}[1h]))",
+          "expr": "sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=~\"$namespace\",container=\"stralforsmcp\"}[1h]) and on (namespace, pod) stralfors_write_blocked_total{namespace=~\"$namespace\",job=~\"$job\"})",
           "legendFormat": "{{pod}}"
         }
       ],

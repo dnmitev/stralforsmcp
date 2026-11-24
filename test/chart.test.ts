@@ -738,6 +738,9 @@ describe.skipIf(!helmOk)('07-02 alertLabels and Grafana dashboard', () => {
     expect(d.uid).toBe('stralforsmcp');
     expect(d.title).toBe('stralforsmcp');
     expect(json(render(dash({ uid: 'stralforsmcp-prod' }))).uid).toBe('stralforsmcp-prod');
+    // the sidecar writes each data key as a file: the key follows the uid so two releases cannot overwrite each other
+    expect(Object.keys(cm(render(dash()))[0].data)).toEqual(['stralforsmcp.json']);
+    expect(Object.keys(cm(render(dash({ uid: 'stralforsmcp-prod' })))[0].data)).toEqual(['stralforsmcp-prod.json']);
     expect((d.templating.list as Obj[]).map((v) => v.name)).toEqual(['datasource', 'namespace', 'job']);
   });
   it('AC-1: every metric in every panel is one the server exports (or a documented external one)', () => {
@@ -749,7 +752,6 @@ describe.skipIf(!helmOk)('07-02 alertLabels and Grafana dashboard', () => {
   it('AC-1: every query is scoped by the namespace and job variables, nothing hard-coded', () => {
     const d = json(render(dash()));
     for (const e of exprs(d)) {
-      if (e.includes('kube_pod_container_status_restarts_total')) { expect(e, e).toMatch(/namespace=~"\$namespace"/); continue; }
       expect(e, e).toMatch(/namespace=~"\$namespace"/);
       expect(e, e).toMatch(/job=~"\$job"/);
     }

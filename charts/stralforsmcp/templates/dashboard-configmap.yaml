@@ -13,5 +13,6 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 data:
-  stralforsmcp.json: {{ .Files.Get "dashboards/stralforsmcp.json" | replace "__UID__" .Values.grafanaDashboard.uid | toJson }}
+  # keyed by uid: a sidecar writes each key as a file, so two releases in one Grafana folder must not share a name
+  {{ printf "%s.json" .Values.grafanaDashboard.uid }}: {{ .Files.Get "dashboards/stralforsmcp.json" | replace "__UID__" .Values.grafanaDashboard.uid | toJson }}
 {{- end }}
