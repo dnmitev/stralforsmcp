@@ -52,6 +52,7 @@ Run these before colleagues use a new PROD release, and after every upgrade. Rec
 - [ ] **Alerts loaded.** The PrometheusRule of `<release>` in `<namespace>` contains `StralforsMcpWriteBlocked`, and your alert routing pages someone for `severity: critical`.
 - [ ] **Blocked-write series.** `/metrics` on the metrics port shows `stralfors_write_blocked_total 0`. Anything above 0 means follow the [runbook](runbook.md#write-blocked).
 - [ ] **Vendor.** `stralfors_up{env="prod"}` is 1.
+- [ ] **Dashboard.** If you enabled `grafanaDashboard`, the `stralforsmcp` dashboard loads for `<namespace>` and shows vendor health 1 and blocked writes 0.
 
 ## Secrets and identities
 

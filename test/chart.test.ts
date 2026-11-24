@@ -698,3 +698,74 @@ describe.skipIf(!helmOk)('05-03a alerts and ServiceMonitor', () => {
     expect(r.status, r.stdout + r.stderr).toBe(0);
   });
 });
+
+// ---- 07-02: alert routing labels and the opt-in Grafana dashboard ----
+describe.skipIf(!helmOk)('07-02 alertLabels and Grafana dashboard', () => {
+  const rulesOf = (v: Obj): Obj[] => kind(render(v), 'PrometheusRule')[0].spec.groups.flatMap((g: Obj) => g.rules);
+  const withRules = (extra: Obj = {}): Obj => ({ ...baseValues(), prometheusRule: { enabled: true, ...extra } });
+  const dash = (extra: Obj = {}): Obj => ({ ...baseValues(), grafanaDashboard: { enabled: true, ...extra } });
+  const cm = (docs: Obj[]) => kind(docs, 'ConfigMap').filter((c) => Object.keys(c.data ?? {}).some((k) => k.endsWith('.json')));
+  const json = (docs: Obj[]): Obj => JSON.parse(Object.values(cm(docs)[0].data as Record<string, string>)[0]!);
+  const exprs = (d: Obj): string[] => (d.panels as Obj[]).flatMap((p) => ((p.targets ?? []) as Obj[]).map((t) => String(t.expr)));
+
+  it('AC-1a: alertLabels reach every alert; severity stays the rule\'s own', () => {
+    const plain = rulesOf(withRules());
+    const routed = rulesOf(withRules({ alertLabels: { team: 'example-team', severity: 'none' } }));
+    expect(routed).toHaveLength(plain.length);
+    routed.forEach((r, i) => {
+      expect(r.labels.team, r.alert).toBe('example-team');
+      expect(r.labels.severity, r.alert).toBe(plain[i]!.labels.severity);
+      expect(r.expr, r.alert).toBe(plain[i]!.expr);
+    });
+    for (const r of plain) expect(Object.keys(r.labels), r.alert).toEqual(['severity']);
+  });
+  it('AC-1a: alertLabels values must be strings', () => {
+    expect(helmError(withRules({ alertLabels: { team: 1 } }))).toMatch(/alertLabels/);
+  });
+
+  it('AC-1: no dashboard by default', () => {
+    expect(cm(render(baseValues()))).toHaveLength(0);
+  });
+  it('AC-1: one ConfigMap with the sidecar label and annotations from values', () => {
+    const docs = render(dash({ annotations: { grafana_folder: 'Example' } }));
+    expect(cm(docs)).toHaveLength(1);
+    expect(cm(docs)[0].metadata.labels.grafana_dashboard).toBe('1');
+    expect(cm(docs)[0].metadata.annotations.grafana_folder).toBe('Example');
+    expect(cm(render(dash({ labels: { custom_dash: 'yes' } })))[0].metadata.labels).toMatchObject({ custom_dash: 'yes' });
+  });
+  it('AC-1: valid JSON, fixed title, uid from values, datasource/namespace/job variables', () => {
+    const d = json(render(dash()));
+    expect(d.uid).toBe('stralforsmcp');
+    expect(d.title).toBe('stralforsmcp');
+    expect(json(render(dash({ uid: 'stralforsmcp-prod' }))).uid).toBe('stralforsmcp-prod');
+    expect((d.templating.list as Obj[]).map((v) => v.name)).toEqual(['datasource', 'namespace', 'job']);
+  });
+  it('AC-1: every metric in every panel is one the server exports (or a documented external one)', () => {
+    const known = promNames();
+    const used = new Set(exprs(json(render(dash()))).flatMap((e) => e.match(METRIC) ?? []));
+    expect(used.size).toBeGreaterThan(5);
+    for (const m of used) expect(known.has(m) || EXTERNAL.has(m), m).toBe(true);
+  });
+  it('AC-1: every query is scoped by the namespace and job variables, nothing hard-coded', () => {
+    const d = json(render(dash()));
+    for (const e of exprs(d)) {
+      if (e.includes('kube_pod_container_status_restarts_total')) { expect(e, e).toMatch(/namespace=~"\$namespace"/); continue; }
+      expect(e, e).toMatch(/namespace=~"\$namespace"/);
+      expect(e, e).toMatch(/job=~"\$job"/);
+    }
+    expect(JSON.stringify(d)).not.toMatch(/stralforsmcp-stg|"rel-|example\.invalid/);
+    for (const p of d.panels as Obj[]) if (p.datasource) expect(p.datasource.uid, p.title).toBe('${datasource}');
+  });
+  it('AC-1: has the agreed panels', () => {
+    const titles = (json(render(dash())).panels as Obj[]).map((p) => p.title);
+    for (const t of ['Vendor health', 'Vendor error ratio', 'Blocked writes', 'Tool calls by outcome', 'Tool call p95 duration', 'Auth rejections', 'Rate limited', 'Certificate expiry (days)', 'Token list stale', 'Credential reload failures', 'HTTP 5xx ratio', 'Restarts']) expect(titles, t).toContain(t);
+  });
+  it('AC-1: the ConfigMap stays under 1 MiB and helm lint --strict passes', () => {
+    expect(JSON.stringify(cm(render(dash()))[0].data).length).toBeLessThan(1024 * 1024);
+    const r = spawnSync(HELM, ['lint', '--strict', CHART, '-f', valuesFile(dash())], { encoding: 'utf8' });
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+  });
+  it('AC-1a: the dashboard uid must be a Grafana-safe slug', () => {
+    expect(helmError(dash({ uid: 'has space' }))).toMatch(/uid/);
+  });
+});

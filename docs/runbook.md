@@ -7,7 +7,8 @@ Every command uses placeholders: replace `<release>`, `<namespace>` and file pat
 ## Where to look first
 
 - `kubectl logs deploy/<release>-stralforsmcp -n <namespace>`: one JSON object per line on stderr (operational logs). Fixed messages, no payloads. Useful `msg` values: `token_list.stale`, `reload.failed` (token list), `credentials.reload_failed` (certificate or key swap).
-- Metrics on port 9464 (separate `<release>-stralforsmcp-metrics` Service). Names: `stralfors_up`, `stralfors_requests_total`, `stralfors_client_cert_expiry_seconds`, `stralfors_credentials_reloads_total`, `mcp_token_list_stale_seconds`, `mcp_token_list_reloads_total`, `mcp_tool_calls_total`, `mcp_auth_rejections_total`, `mcp_http_rate_limited_total`, `http_server_request_duration_*`.
+- The Grafana dashboard `stralforsmcp` (chart value `grafanaDashboard.enabled`) shows the signals below per namespace.
+- Metrics on port 9464 (separate `<release>-stralforsmcp-metrics` Service). Names: `stralfors_up`, `stralfors_requests_total`, `stralfors_write_blocked_total`, `stralfors_client_cert_expiry_seconds`, `stralfors_credentials_reloads_total`, `mcp_token_list_stale_seconds`, `mcp_token_list_reloads_total`, `mcp_tool_calls_total`, `mcp_auth_rejections_total`, `mcp_http_rate_limited_total`, `http_server_request_duration_*`.
 - Audit lines (tool calls and refused tokens) go to stdout of the same container, as JSON lines; see the privacy section of the [README](../README.md#privacy-and-data-handling).
 - Readiness never depends on the vendor or the token list: a pod can be Ready while the vendor is down. Check `stralfors_up`.
 
