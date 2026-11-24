@@ -40,7 +40,7 @@ Use the token wizard from a checkout of this repository (`npm ci` once) on a tru
    User ids are generated (`u_` plus 8 random hex characters, nothing about the person); `--id` sets one explicitly. `issue` prints the token id, the user's id, name, role, environments and expiry, and the raw token once on stderr. Roles are `dev`, `qa`, `pm`; environments `test`, `prod` (ADR 0007). Only `dev` may use `prod`; on `test` all roles see the same tools.
 3. Update the Secret behind `tokenList.secretName` from the file (or paste `show --base64` into its `token-list.json` data key with `kubectl edit secret`); `kubectl create secret generic ... --from-file=token-list.json=<file> --dry-run=client -o yaml | kubectl apply -f -`, or your secret store).
 4. Wait for the reload (see latency below) and check `mcp_token_list_reloads_total{outcome="ok"}` increased and `mcp_token_list_stale_seconds` is 0.
-5. Send the raw token to the user over a private channel. Tell them to keep it in their client's secret store.
+5. Send the raw token to the user over a private channel. Tell them to keep it in their client's secret store. How they connect with it (Claude Code or Claude Desktop): [Managing tokens](../README.md#managing-tokens) in the README.
 
 Editing the JSON by hand still works (format in ADR 0006), but a wrong value stops new pods from starting.
 

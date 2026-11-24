@@ -307,7 +307,20 @@ npm run dev 2>/dev/null                              # audit only
 
 ### Managing tokens
 
-`npm run token` is a wizard for the token list: add users with a role (`dev`, `qa`, `pm`) and environments (`test`, `prod`) chosen from the allowed values, issue tokens (1 to 90 days), list them by 8-character id, revoke and prune; `show` prints the file (or `--base64` for a Secret) to copy. With `--kube-namespace` and `--kube-secret` it edits the Kubernetes Secret directly through `kubectl`, refusing to overwrite a concurrent change. Output is coloured in a terminal (`NO_COLOR` turns it off). It checks the whole file with the server's own parser before every write, so it never writes a list the server would refuse. `npm run token -- --help` lists the commands; `npm run token -- access` shows what each role may call per environment. Operating steps are in the [runbook](docs/runbook.md#issuing-a-token).
+`npm run token` is a wizard for the token list: add users with a role (`dev`, `qa`, `pm`) and environments (`test`, `prod`) chosen from the allowed values, issue tokens (1 to 90 days), list them by 8-character id, revoke and prune; `show` prints the file (or `--base64` for a Secret) to copy. With `--kube-namespace` and `--kube-secret` it edits the Kubernetes Secret directly through `kubectl`, refusing to overwrite a concurrent change. Output is coloured in a terminal (`NO_COLOR` turns it off). It checks the whole file with the server's own parser before every write, so it never writes a list the server would refuse.
+
+Quick start (replace `--file token-list.json` with `--kube-namespace <namespace> --kube-secret <secret>` to work on a deployed release):
+
+```sh
+npm run token -- --help                                    # every command and flag
+npm run token -- access                                    # what each role may call per environment
+npm run token -- add-user --file token-list.json --name "Alice Example" --role dev --env test   # prints the generated user id
+npm run token -- issue --file token-list.json --user <user id> --days 30                        # prints the token once
+npm run token -- list --file token-list.json                # token ids, never hashes
+npm run token -- revoke --file token-list.json --token <token id>
+```
+
+The server re-reads the list every 60 s, so a new token works within a minute, without a restart. Then connect a client with the token: Claude Code as in [Local run against TEST](#local-run-against-test) step 5 (use your server's URL), Claude Desktop through the [extension](#claude-desktop-extension). Operator steps, including Secrets and rotation: [Issuing a token](docs/runbook.md#issuing-a-token) and [Revoking a token](docs/runbook.md#revoking-a-token) in the runbook.
 
 ## Knowledge docs (`search_docs`)
 
