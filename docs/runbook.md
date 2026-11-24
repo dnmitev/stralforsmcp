@@ -76,9 +76,9 @@ Alert `StralforsMcpUpstreamErrors`: more than 20 % of vendor requests fail for 1
 
 ## Write blocked
 
-Alert `StralforsMcpWriteBlocked` (critical): at least one request in the last 5 minutes was refused by the server's own write guard before it left the pod (`stralfors_requests_total{operation="write_guard",outcome="blocked"}`). One is enough to fire.
+Alert `StralforsMcpWriteBlocked` (critical): at least one request in the last 5 minutes was refused by the server's own write guard before it left the pod (`stralfors_write_blocked_total`, which never counts toward vendor request metrics). One is enough to fire, also when it happened before the first scrape of a new pod.
 
-What it means: the client-side allowlist held, so nothing reached the vendor, but something asked for a write that this release must never send. On a PROD release no tool can do that, so treat it as a security event. On a TEST release it is a write other than the send route.
+What it means: the client-side allowlist held, so nothing reached the vendor, but something asked for a write that this release must never send. On a PROD release no tool can do that, so treat it as a security event. On a TEST release it is a write other than the send route, or a send attempted while `STRALFORS_ALLOW_WRITE=false`.
 
 1. Do not silence the alert before you know the caller.
 2. Find the audit line: `log.type` `audit`, `outcome` `blocked`, `reason` `write_guard`. It names the user, the method and the masked path; its `trace_id` leads to the trace and the logs (`write.blocked`).

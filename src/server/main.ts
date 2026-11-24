@@ -11,7 +11,7 @@ import { createClient, createLogger, loadConfig, type CreateClientOptions, type 
 import { createUpstreamLimit } from '../stralfors/limit.ts';
 import { createListChannels } from './channels.ts';
 import { serverInfo } from '../server-info.ts';
-import { activeIds, BLOCKED_WRITE, createTelemetry, logMixin, upstreamInstrument, type Telemetry } from '../telemetry/index.ts';
+import { activeIds, createTelemetry, logMixin, upstreamInstrument, type Telemetry } from '../telemetry/index.ts';
 import { currentPrincipal } from './context.ts';
 import { text } from './guards.ts';
 import { createHttpServer } from './http.ts';
@@ -191,10 +191,10 @@ export async function start(env: Record<string, string | undefined>, deps: Start
   let listening: { port: number };
   let metricsListening: number;
   try {
-    // the blocked series starts at 0, so increase() in the StralforsMcpWriteBlocked alert sees the first block
-    telemetry.instruments.upstreamRequests.add(0, BLOCKED_WRITE);
+    // a counter of its own (not stralfors.requests, whose error ratio it would dilute), at 0 from the start so the alert sees the first block
+    telemetry.instruments.writeBlocked.add(0);
     for (const id of Object.keys(config.profiles)) {
-      clients.set(id, make({ config, profileId: id, logger, now, instrument: upstreamInstrument(telemetry), onBlocked: (e) => { telemetry.instruments.upstreamRequests.add(1, BLOCKED_WRITE); audit.record({ ...fromBlocked(e), principal: currentPrincipal(), env: deploy }); }, onCredentialReload: (r) => telemetry.instruments.credentialReloads.add(1, { outcome: r.ok ? 'ok' : 'failed' }), upstreamLimit }));
+      clients.set(id, make({ config, profileId: id, logger, now, instrument: upstreamInstrument(telemetry), onBlocked: (e) => { telemetry.instruments.writeBlocked.add(1); audit.record({ ...fromBlocked(e), principal: currentPrincipal(), env: deploy }); }, onCredentialReload: (r) => telemetry.instruments.credentialReloads.add(1, { outcome: r.ok ? 'ok' : 'failed' }), upstreamLimit }));
     }
     if (allowWrite) {
       // write tools are listed only when a profile's real token holds the write scope (R-35): fetch each token once now, not on a request path

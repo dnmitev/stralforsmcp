@@ -16,6 +16,7 @@ export const INSTRUMENTS = {
   staleSeconds: { name: 'mcp.token_list.stale_seconds', kind: 'observable_gauge', unit: 's', keys: [], description: 'Seconds the token list has been served from the last good load while reloads fail' },
   tokenReloads: { name: 'mcp.token_list.reloads', kind: 'counter', unit: '{reload}', keys: ['outcome'], description: 'Token list reload attempts by outcome (ok, failed)' },
   clientCertExpiry: { name: 'stralfors.client_cert.expiry_seconds', kind: 'observable_gauge', unit: 's', keys: [], description: 'Seconds until the earliest client certificate not-after across profiles' },
+  writeBlocked: { name: 'stralfors.write.blocked', kind: 'counter', unit: '{request}', keys: [], description: 'Requests refused by the client write guard before they left the pod' },
   credentialReloads: { name: 'stralfors.credentials.reloads', kind: 'counter', unit: '{reload}', keys: ['outcome'], description: 'Client credential hot-swap attempts by outcome (ok, failed)' },
   upstreamUp: { name: 'stralfors.up', kind: 'observable_gauge', unit: '1', keys: ['api', 'env'], description: '1 when every profile last probed UP on the vendor health operation, else 0' },
 } as const satisfies Record<string, InstrumentSpec>;

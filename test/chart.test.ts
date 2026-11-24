@@ -623,6 +623,8 @@ const slug = (h: string) => h.toLowerCase().replace(/[^a-z0-9 -]/g, '').trim().r
 const runbook = existsSync(join(ROOT, 'docs', 'runbook.md')) ? readFileSync(join(ROOT, 'docs', 'runbook.md'), 'utf8') : '';
 const runbookSlugs = new Set([...runbook.matchAll(/^#{2,4} (.+)$/gm)].map((m) => slug(m[1]!)));
 
+const WRITE_BLOCKED_EXPR = 'sum by (namespace, job) (increase(stralfors_write_blocked_total[5m])) > 0 or sum by (namespace, job) (stralfors_write_blocked_total unless stralfors_write_blocked_total offset 5m) > 0';
+
 describe.skipIf(!helmOk)('05-03a alerts and ServiceMonitor', () => {
   const on = (): Obj => ({ ...baseValues(), prometheusRule: { enabled: true, runbookUrl: 'https://runbook.example.invalid/runbook.md', labels: { release: 'example' } }, serviceMonitor: { enabled: true, interval: '30s', labels: { release: 'example' } } });
   const rules = (docs: Obj[]): Obj[] => kind(docs, 'PrometheusRule')[0].spec.groups.flatMap((g: Obj) => g.rules);
@@ -658,8 +660,9 @@ describe.skipIf(!helmOk)('05-03a alerts and ServiceMonitor', () => {
   it('07-01: StralforsMcpWriteBlocked fires on the first blocked write, critical, no env filter, no delay', () => {
     const r = rules(render(on())).find((x) => x.alert === 'StralforsMcpWriteBlocked');
     expect(r).toBeDefined();
-    // the series is initialised at 0 on boot, so increase() sees the first block; one release serves one env, so no env filter
-    expect(r!.expr).toBe('sum by (namespace, job) (increase(stralfors_requests_total{operation="write_guard",outcome="blocked"}[5m])) > 0');
+    // increase() catches later blocks; the second leg catches a pod whose first scraped sample is already above 0 (blocked before the first scrape);
+    // one release serves one env, so no env filter
+    expect(r!.expr).toBe(WRITE_BLOCKED_EXPR);
     expect(r!.for).toBeUndefined();
     expect(r!.labels.severity).toBe('critical');
     expect(r!.annotations.runbook_url).toBe('https://runbook.example.invalid/runbook.md#write-blocked');

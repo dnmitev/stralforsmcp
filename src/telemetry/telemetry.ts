@@ -27,7 +27,7 @@ export interface TelemetryOptions {
 }
 export interface Instruments {
   httpDuration: Histogram; authRejections: Counter; rateLimited: Counter; toolCalls: Counter; toolDuration: Histogram;
-  upstreamRequests: Counter; upstreamDuration: Histogram; tokenReloads: Counter; credentialReloads: Counter;
+  upstreamRequests: Counter; upstreamDuration: Histogram; tokenReloads: Counter; credentialReloads: Counter; writeBlocked: Counter;
   /** the gauge callback reads this source in seconds; a later call replaces the source */
   observeStale(staleMs: () => number): void;
   /** seconds until the earliest client certificate expires; read at scrape time */
@@ -133,7 +133,7 @@ export function createTelemetry(o: TelemetryOptions): Telemetry {
     httpDuration: make('httpDuration') as Histogram, authRejections: make('authRejections') as Counter, rateLimited: make('rateLimited') as Counter,
     toolCalls: make('toolCalls') as Counter, toolDuration: make('toolDuration') as Histogram,
     upstreamRequests: make('upstreamRequests') as Counter, upstreamDuration: make('upstreamDuration') as Histogram,
-    tokenReloads: make('tokenReloads') as Counter, credentialReloads: make('credentialReloads') as Counter,
+    tokenReloads: make('tokenReloads') as Counter, credentialReloads: make('credentialReloads') as Counter, writeBlocked: make('writeBlocked') as Counter,
     observeStale: (fn) => void (stale = fn),
     observeCertExpiry: (fn) => void (certExpiry = fn),
     observeUp: (fn) => void (upNow = fn),
@@ -158,9 +158,6 @@ export function createTelemetry(o: TelemetryOptions): Telemetry {
 }
 
 const kindOf = (e: unknown): AuditReason => (e instanceof StralforsError ? e.kind : 'error');
-
-/** Labels of a write refused by the client guard: fixed values only, never the method or path the caller asked for. */
-export const BLOCKED_WRITE = { operation: 'write_guard', outcome: 'blocked' } as const;
 
 /** The `instrument` hook of createClient: one CLIENT span and the upstream metrics per request. Never a path, query or id. */
 export function upstreamInstrument(t: Telemetry): NonNullable<CreateClientOptions['instrument']> {

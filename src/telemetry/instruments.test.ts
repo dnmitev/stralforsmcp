@@ -9,7 +9,7 @@ import { ALLOWED_SPAN_KEYS, INSTRUMENTS, METHOD_LABEL, SECONDS } from './instrum
 const FORBIDDEN = ['userId', 'user_id', 'agreement', 'path', 'url', 'query', 'token', 'digest', 'traceId', 'trace_id', 'span_id', 'message'];
 
 describe('INSTRUMENTS', () => {
-  it('has exactly the twelve instruments with their names, kinds, units and label keys', () => {
+  it('has exactly the thirteen instruments with their names, kinds, units and label keys', () => {
     const rows = Object.entries(INSTRUMENTS).map(([k, v]) => [k, v.name, v.kind, v.unit, [...v.keys]]);
     expect(rows).toEqual([
       ['httpDuration', 'http.server.request.duration', 'histogram', 's', ['http.request.method', 'http.response.status_code', 'http.route']],
@@ -22,6 +22,7 @@ describe('INSTRUMENTS', () => {
       ['staleSeconds', 'mcp.token_list.stale_seconds', 'observable_gauge', 's', []],
       ['tokenReloads', 'mcp.token_list.reloads', 'counter', '{reload}', ['outcome']],
       ['clientCertExpiry', 'stralfors.client_cert.expiry_seconds', 'observable_gauge', 's', []],
+      ['writeBlocked', 'stralfors.write.blocked', 'counter', '{request}', []],
       ['credentialReloads', 'stralfors.credentials.reloads', 'counter', '{reload}', ['outcome']],
       ['upstreamUp', 'stralfors.up', 'observable_gauge', '1', ['api', 'env']],
     ]);
@@ -41,7 +42,7 @@ describe('INSTRUMENTS', () => {
       expect(i.description.length).toBeGreaterThan(5);
       for (const k of i.keys) expect(FORBIDDEN).not.toContain(k);
     }
-    expect(new Set(Object.values(INSTRUMENTS).map((i) => i.name)).size).toBe(12);
+    expect(new Set(Object.values(INSTRUMENTS).map((i) => i.name)).size).toBe(13);
   });
 
   it('the module imports nothing (pure data, Stryker-friendly)', () => {

@@ -50,7 +50,7 @@ Run these before colleagues use a new PROD release, and after every upgrade. Rec
 - [ ] **Roles.** A `qa` or `pm` token, or a token without `prod` in its `envs`, is refused.
 - [ ] **Not public.** `<host>` does not answer from outside your VPN.
 - [ ] **Alerts loaded.** The PrometheusRule of `<release>` in `<namespace>` contains `StralforsMcpWriteBlocked`, and your alert routing pages someone for `severity: critical`.
-- [ ] **Blocked-write series.** `/metrics` on the metrics port shows `stralfors_requests_total{operation="write_guard",outcome="blocked"} 0`. Anything above 0 means follow the [runbook](runbook.md#write-blocked).
+- [ ] **Blocked-write series.** `/metrics` on the metrics port shows `stralfors_write_blocked_total 0`. Anything above 0 means follow the [runbook](runbook.md#write-blocked).
 - [ ] **Vendor.** `stralfors_up{env="prod"}` is 1.
 
 ## Secrets and identities
