@@ -7,3 +7,5 @@
 # Re-exclude non-runtime files under src.
 src/**/*.test.ts
 src/**/*.md
+# Operator tooling (npm run token), not used by the server.
+src/admin/**

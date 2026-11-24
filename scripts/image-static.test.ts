@@ -107,6 +107,9 @@ describe('.dockerignore', () => {
     expect(lines.indexOf('src/**/*.test.ts')).toBeGreaterThan(lines.indexOf('!src/**'));
     expect(lines.indexOf('src/**/*.md')).toBeGreaterThan(lines.indexOf('!src/**'));
   });
+  it('keeps operator tooling (src/admin) out of the image', () => {
+    expect(lines.indexOf('src/admin/**')).toBeGreaterThan(lines.indexOf('!src/**'));
+  });
 });
 
 describe('package.json', () => {
