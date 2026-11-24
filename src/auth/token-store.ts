@@ -2,8 +2,10 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { ConfigError } from '../stralfors/errors.ts';
 
-export type Role = 'dev' | 'qa' | 'pm';
-export type Env = 'test' | 'prod';
+export const ROLES = ['dev', 'qa', 'pm'] as const;
+export const ENVS = ['test', 'prod'] as const;
+export type Role = (typeof ROLES)[number];
+export type Env = (typeof ENVS)[number];
 export interface Principal { userId: string; name: string; role: Role; envs: Env[] }
 
 export type VerifyCode = 'malformed' | 'unknown' | 'expired' | 'revoked';
@@ -25,8 +27,8 @@ const date = z.iso.datetime({ offset: true });
 const user = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
-  role: z.enum(['dev', 'qa', 'pm']),
-  envs: z.array(z.enum(['test', 'prod'])).min(1).refine((e) => new Set(e).size === e.length, 'is duplicate'),
+  role: z.enum(ROLES),
+  envs: z.array(z.enum(ENVS)).min(1).refine((e) => new Set(e).size === e.length, 'is duplicate'),
 }).strict();
 const token = z.object({
   hash: z.string().regex(/^[0-9a-f]{64}$/),
@@ -44,8 +46,8 @@ const schema = z.object({ users: z.array(user), tokens: z.array(token) }).strict
 const where = (path: PropertyKey[]) => path.reduce<string>((s, k) => (typeof k === 'number' ? `${s}[${k}]` : s ? `${s}.${String(k)}` : String(k)), '') || '(root)';
 const fail = (path: PropertyKey[], rule: string) => new ConfigError(`token list: ${where(path)} ${rule}`);
 
-/** Parses and cross-checks the file. Error text names the field path and rule only, never a value. */
-function parse(text: string): TokenList {
+/** Parses and cross-checks the file (startup, reload and the token wizard). Error text names the field path and rule only, never a value. */
+export function parseTokenList(text: string): TokenList {
   let json: unknown;
   try {
     json = JSON.parse(text);
@@ -101,7 +103,7 @@ export function createTokenStore(o: TokenStoreOptions): TokenStore {
     } catch {
       throw new ConfigError('token list: cannot read');
     }
-    const list = parse(text);
+    const list = parseTokenList(text);
     return { list, view: { users: new Map(list.users.map((u) => [u.id, u])), tokens: new Map(list.tokens.map((t) => [t.hash, t])) } };
   };
 

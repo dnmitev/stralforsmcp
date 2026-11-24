@@ -299,11 +299,15 @@ npm run dev 2>/dev/null                              # audit only
 | `STRALFORS_CERT_RELOAD_S must be a positive integer` / `... at most 2147483` | bad reload interval | correct or unset it |
 | `STRALFORS_PROFILE_<ID>_ACTION_IDS: invalid agreement id (...)` | an entry is not a UUID | fix the entry |
 | `token list: cannot read` | `MCP_TOKEN_LIST_FILE` missing or unreadable | step 2 |
-| `token list: <field> <rule>` | the file is not a valid token list | recreate it with step 2 (`npm run dev:token -- --force`) |
+| `token list: <field> <rule>` | the file is not a valid token list | recreate it with step 2 (`npm run dev:token -- --force`), or fix it; `npm run token -- list --file <file>` names the first invalid field |
 | `tool failed: forbidden` from `channel_lookup` | the client has no Channel Lookup scope on this environment (the vendor refuses the POST) | ask the vendor for the Channel Lookup scopes for this client |
 | `lookup still running; try again` | the vendor did not finish a lookup within about 20 s | call again; each call starts a new lookup |
 | `401` on `/mcp` | missing, wrong, expired or revoked token; the body is identical for every cause | recreate the token (step 2, `-- --force` to replace the file), export it again, restart if it still fails |
 | `403` / `404` / `405` on `/mcp` | host not in `MCP_HOSTNAMES`, wrong path, or not `POST` | use `localhost` and `POST /mcp` |
+
+### Managing tokens
+
+`npm run token` is a wizard for the token list: add users with a role (`dev`, `qa`, `pm`) and environments (`test`, `prod`) chosen from the allowed values, issue tokens (1 to 90 days), list them by 8-character id, revoke and prune; `show` prints the file (or `--base64` for a Secret) to copy. Output is coloured in a terminal (`NO_COLOR` turns it off). It checks the whole file with the server's own parser before every write, so it never writes a list the server would refuse. `npm run token -- --help` lists the commands; `npm run token -- access` shows what each role may call per environment. Operating steps are in the [runbook](docs/runbook.md#issuing-a-token).
 
 ## Knowledge docs (`search_docs`)
 
