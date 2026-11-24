@@ -38,6 +38,21 @@ A weekly workflow (`rescan.yml`) re-scans the published `edge` image so a newly 
 
 Run TEST and PROD as separate releases with separate Secrets and, if you use IAM roles for service accounts, separate roles. The chart refuses to render PROD with a public ingress, extra hostnames, `allowWrite` or no internal ingress class. It cannot see what your internal ingress class exposes: keeping it internal is your job.
 
+A token's `envs` only says which releases accept it. Each release talks to one vendor environment (`STRALFORS_ENV`) and mounts only that environment's credentials, so a TEST release can never reach PROD whatever a token says.
+
+### Verifying PROD
+
+Run these before colleagues use a new PROD release, and after every upgrade. Record the date, the image digest and the result of each check. Placeholders: `<release>`, `<namespace>`, `<host>`.
+
+- [ ] **Chart refusals.** `helm template` with `stralfors.env=prod` fails with `allowWrite=true`, and fails with the public ingress enabled.
+- [ ] **Read-only from your workstation.** `live:read-check` with `STRALFORS_ENV=prod` passes for each profile and makes only GET requests ([Running against production](../README.md#running-against-production-local-read-only)).
+- [ ] **Tools.** With a `dev` token, `tools/list` on `https://<host>/mcp` shows only `whoami`, `list_channels`, `get_rules`, `get_example_invoice`, `track_document` and `search_docs`, plus `validate_invoice` only when `STRALFORS_PROD_VALIDATE_ENABLED=true`. There is no `send_invoice` and no `channel_lookup`.
+- [ ] **Roles.** A `qa` or `pm` token, or a token without `prod` in its `envs`, is refused.
+- [ ] **Not public.** `<host>` does not answer from outside your VPN.
+- [ ] **Alerts loaded.** The PrometheusRule of `<release>` in `<namespace>` contains `StralforsMcpWriteBlocked`, and your alert routing pages someone for `severity: critical`.
+- [ ] **Blocked-write series.** `/metrics` on the metrics port shows `stralfors_write_blocked_total 0`. Anything above 0 means follow the [runbook](runbook.md#write-blocked).
+- [ ] **Vendor.** `stralfors_up{env="prod"}` is 1.
+
 ## Secrets and identities
 
 The chart never creates a Secret. You create these (by hand or with an external secret operator), and the chart mounts them as volumes without `subPath` so rotations reach the pod:

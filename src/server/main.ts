@@ -191,8 +191,10 @@ export async function start(env: Record<string, string | undefined>, deps: Start
   let listening: { port: number };
   let metricsListening: number;
   try {
+    // a counter of its own (not stralfors.requests, whose error ratio it would dilute), at 0 from the start so the alert sees the first block
+    telemetry.instruments.writeBlocked.add(0);
     for (const id of Object.keys(config.profiles)) {
-      clients.set(id, make({ config, profileId: id, logger, now, instrument: upstreamInstrument(telemetry), onBlocked: (e) => void audit.record({ ...fromBlocked(e), principal: currentPrincipal(), env: deploy }), onCredentialReload: (r) => telemetry.instruments.credentialReloads.add(1, { outcome: r.ok ? 'ok' : 'failed' }), upstreamLimit }));
+      clients.set(id, make({ config, profileId: id, logger, now, instrument: upstreamInstrument(telemetry), onBlocked: (e) => { telemetry.instruments.writeBlocked.add(1); audit.record({ ...fromBlocked(e), principal: currentPrincipal(), env: deploy }); }, onCredentialReload: (r) => telemetry.instruments.credentialReloads.add(1, { outcome: r.ok ? 'ok' : 'failed' }), upstreamLimit }));
     }
     if (allowWrite) {
       // write tools are listed only when a profile's real token holds the write scope (R-35): fetch each token once now, not on a request path
