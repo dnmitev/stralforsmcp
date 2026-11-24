@@ -11,12 +11,15 @@ export interface SecretMeta {
   annotations: Record<string, string>;
   type: string;
   otherData: Record<string, string>;
+  /** set by operators (for example an external-secrets controller); a replace must not drop them */
+  ownerReferences?: unknown[];
+  finalizers?: string[];
 }
 
 interface Raw {
   kind?: unknown;
   type?: unknown;
-  metadata?: { resourceVersion?: unknown; labels?: Record<string, string>; annotations?: Record<string, string> };
+  metadata?: { resourceVersion?: unknown; labels?: Record<string, string>; annotations?: Record<string, string>; ownerReferences?: unknown[]; finalizers?: string[] };
   data?: Record<string, string>;
 }
 
@@ -34,7 +37,11 @@ export function readSecret(json: string, key: string): { text: string | null; me
   const { [key]: value, ...otherData } = r.data ?? {};
   return {
     text: value === undefined ? null : Buffer.from(value, 'base64').toString('utf8'),
-    meta: { resourceVersion: r.metadata.resourceVersion, labels: { ...r.metadata.labels }, annotations: { ...r.metadata.annotations }, type, otherData },
+    meta: {
+      resourceVersion: r.metadata.resourceVersion, labels: { ...r.metadata.labels }, annotations: { ...r.metadata.annotations }, type, otherData,
+      ...(r.metadata.ownerReferences?.length && { ownerReferences: r.metadata.ownerReferences }),
+      ...(r.metadata.finalizers?.length && { finalizers: r.metadata.finalizers }),
+    },
   };
 }
 
@@ -52,6 +59,8 @@ export function secretManifest(ns: string, name: string, key: string, text: stri
       ...(meta && { resourceVersion: meta.resourceVersion }),
       ...(Object.keys(labels).length > 0 && { labels }),
       ...(Object.keys(annotations).length > 0 && { annotations }),
+      ...(meta?.ownerReferences && { ownerReferences: meta.ownerReferences }),
+      ...(meta?.finalizers && { finalizers: meta.finalizers }),
     },
     data: { ...meta?.otherData, [key]: Buffer.from(text).toString('base64') },
   });

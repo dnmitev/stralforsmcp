@@ -188,6 +188,7 @@ describe('npm run token (--kube-*)', () => {
     });
     const kube = (args: string[], stdin?: string) => {
       calls.push({ args, stdin });
+      if (args[0] === 'config') return { code: 0, stdout: 'ctx-a\n', stderr: '' };
       const verb = args.find((a) => ['get', 'replace', 'create'].includes(a));
       if (verb === 'get') return text === null ? { code: 1, stdout: '', stderr: 'Error from server (NotFound): secrets "tl" not found' } : { code: 0, stdout: secret(), stderr: '' };
       const m = JSON.parse(stdin!);
@@ -236,6 +237,18 @@ describe('npm run token (--kube-*)', () => {
     expect(parseTokenList(k.text()!).users.map((u) => u.id)).toEqual(['x']);
   });
 
+  it('resolves the current context once and passes it to every call', async () => {
+    const t = setup(['1', 'Ann', '1', 'test', '30', '9']);
+    const k = fakeKube('{"users":[],"tokens":[]}');
+    expect(await main(K, { ...t.io, kube: k.kube })).toBe(0);
+    expect(k.calls.filter((c) => c.args[0] === 'config')).toHaveLength(1);
+    expect(k.calls.filter((c) => c.args[0] !== 'config').every((c) => c.args[0] === '--context' && c.args[1] === 'ctx-a')).toBe(true);
+    expect(t.err.join('\n')).toContain('target: Secret ns/tl key token-list.json (context ctx-a)');
+    const none = setup();
+    expect(await main(['list', ...K], { ...none.io, kube: () => ({ code: 1, stdout: '', stderr: 'error: current-context is not set' }) })).toBe(1);
+    expect(none.err.join('\n')).toContain('no current kubectl context; pass --kube-context');
+  });
+
   it('uses the new resourceVersion for the next save in one wizard session', async () => {
     const t = setup(['1', 'Ann', '1', 'test', '30', '1', 'Ben', '2', 'test', '30', '9']);
     const k = fakeKube('{"users":[],"tokens":[]}');
@@ -261,7 +274,7 @@ describe('npm run token (--kube-*)', () => {
     const k = fakeKube('{"users":[{"id":"1","name":"X","role":"SA","envs":["test"]}],"tokens":[]}');
     expect(await main(['list', ...K], { ...t.io, kube: k.kube })).toBe(2);
     expect(t.err.join('\n')).toContain('users[0].role is invalid');
-    const failing = () => ({ code: 1, stdout: '', stderr: 'error: You must be logged in to the server (Unauthorized)\nsecond line' });
+    const failing = (args: string[]) => (args[0] === 'config' ? { code: 0, stdout: 'ctx-a', stderr: '' } : { code: 1, stdout: '', stderr: 'error: You must be logged in to the server (Unauthorized)\nsecond line' });
     expect(await main(['list', ...K], { ...t.io, kube: failing })).toBe(1);
     expect(t.err.join('\n')).toContain('kubectl get failed: error: You must be logged in to the server (Unauthorized)');
     expect(t.err.join('\n')).not.toContain('second line');

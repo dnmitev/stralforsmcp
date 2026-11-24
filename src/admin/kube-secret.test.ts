@@ -56,6 +56,13 @@ describe('secretManifest', () => {
     });
   });
 
+  it('keeps ownerReferences and finalizers set by an operator', () => {
+    const owner = [{ apiVersion: 'external-secrets.io/v1', kind: 'ExternalSecret', name: 'e', uid: '1', controller: true }];
+    const { meta } = readSecret(get({ metadata: { resourceVersion: '7', ownerReferences: owner, finalizers: ['f/1'] } }), 'k');
+    expect(JSON.parse(secretManifest('ns', 's', 'k', 'X', meta)).metadata).toEqual({ name: 's', namespace: 'ns', resourceVersion: '7', ownerReferences: owner, finalizers: ['f/1'] });
+    expect(readSecret(get(), 'k').meta).not.toHaveProperty('ownerReferences');
+  });
+
   it('omits empty labels and annotations', () => {
     const { meta } = readSecret(get({ metadata: { resourceVersion: '1', annotations: { [LAST_APPLIED]: 'x' } } }), 'k');
     expect(JSON.parse(secretManifest('ns', 's', 'k', 'X', meta)).metadata).toEqual({ name: 's', namespace: 'ns', resourceVersion: '1' });

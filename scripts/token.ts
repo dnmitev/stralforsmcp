@@ -94,14 +94,21 @@ const defaultKube = (args: string[], stdin?: string): KubeResult => {
 const firstLine = (s: string) => s.split('\n').find((l) => l.trim()) ?? 'unknown error';
 
 function kubeStore(o: { ns: string; name: string; key: string; context?: string }, kube: Io['kube'] = defaultKube): Store {
-  const base = o.context ? ['--context', o.context] : [];
+  // Resolve the context once and pass it to every call: switching contexts mid-session must not move the save to another cluster.
+  let context = o.context;
+  if (context === undefined) {
+    const r = kube(['config', 'current-context']);
+    context = r.code === 0 ? r.stdout.trim() : '';
+    if (!context) throw new InputError('no current kubectl context; pass --kube-context');
+  }
+  const base = ['--context', context];
   let meta: SecretMeta | null = null;
   const fail = (r: KubeResult, what: string): never => {
     if (/conflict|has been modified|already exists/i.test(r.stderr)) throw new InputError('the Secret changed since it was read; nothing was saved, run it again');
     throw new InputError(`kubectl ${what} failed: ${firstLine(r.stderr)}`);
   };
   return {
-    label: `Secret ${o.ns}/${o.name} key ${o.key} (${o.context ? `context ${o.context}` : 'current kubectl context'})`,
+    label: `Secret ${o.ns}/${o.name} key ${o.key} (context ${context})`,
     note: `For an immediate revocation restart the server's deployment in namespace ${o.ns} (kubectl rollout restart).`,
     load(mustExist) {
       const r = kube([...base, 'get', 'secret', o.name, '-n', o.ns, '-o', 'json']);
