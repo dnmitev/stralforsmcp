@@ -139,6 +139,25 @@ describe('npm run token (wizard)', () => {
     expect(t.out.join('\n')).toContain(readFileSync(t.file, 'utf8').trimEnd()); // menu item 8 printed the file
   });
 
+  it('refuses to overwrite a change made by someone else while it waited, then reloads', async () => {
+    const t = setup(['1', 'Bob', '1', 'test', '30', '3', '9']);
+    const other = JSON.stringify({ users: [{ id: 'x', name: 'X', role: 'pm', envs: ['test'] }], tokens: [] });
+    // gen runs between the read and the save: simulate another operator writing the file at that moment
+    t.io.gen = () => { writeFileSync(t.file, other); return gen(); };
+    expect(await main(['--file', t.file], t.io)).toBe(0);
+    expect(readFileSync(t.file, 'utf8')).toBe(other);
+    expect(t.err.join('\n')).toContain('the token list changed on disk since it was read; nothing was saved');
+    expect(t.out.join('\n')).toContain('pm'); // the next menu round listed the fresh file
+  });
+
+  it('reads the clock for each operation, not once at start', async () => {
+    const t = setup(['3', '1', 'Bob', '1', 'test', '30', '9']);
+    let calls = 0;
+    t.io.now = () => NOW + calls++ * 86_400_000;
+    expect(await main(['--file', t.file], t.io)).toBe(0);
+    expect(parseTokenList(readFileSync(t.file, 'utf8')).tokens[0]!.created).toBe(new Date(NOW + 86_400_000).toISOString());
+  });
+
   it('stops cleanly when input ends and never writes a partial user', async () => {
     const t = setup(['1', 'carol']);
     expect(await main(['--file', t.file], t.io)).toBe(1);

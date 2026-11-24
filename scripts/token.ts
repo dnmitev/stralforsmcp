@@ -45,16 +45,26 @@ function show(list: TokenList, base64: boolean, io: Io): void {
   io.out(base64 ? Buffer.from(text).toString('base64') : text.trimEnd());
 }
 
+// Text of each file as last read or written (null: did not exist). `save` refuses when the file changed since,
+// so a slow wizard session never overwrites someone else's change (for example a revocation).
+const seen = new Map<string, string | null>();
+const current = (path: string): string | null => (existsSync(path) ? readFileSync(path, 'utf8') : null);
+
 function load(path: string): TokenList {
-  return existsSync(path) ? parseTokenList(readFileSync(path, 'utf8')) : emptyList();
+  const text = current(path);
+  seen.set(path, text);
+  return text === null ? emptyList() : parseTokenList(text);
 }
 
 /** New 0600 file beside the target, renamed over it: never a half-written list, never a looser inherited mode. */
 function save(path: string, list: TokenList): void {
+  // ponytail: compare-then-rename leaves a millisecond window; a lock file is the upgrade if several operators share one file
+  if (current(path) !== seen.get(path)) throw new InputError('the token list changed on disk since it was read; nothing was saved, run it again');
   const text = fileText(list);
   const tmp = `${path}.${process.pid}.tmp`;
   writeFileSync(tmp, text, { mode: 0o600, flag: 'wx' });
   renameSync(tmp, path);
+  seen.set(path, text);
 }
 
 const pad = (s: string, n: number) => s.padEnd(n);
@@ -158,7 +168,7 @@ function runCommand(cmd: string, f: Record<string, string | string[] | boolean |
   io.out(RELOAD_NOTE());
 }
 
-async function wizard(path: string, io: Io, now: number): Promise<void> {
+async function wizard(path: string, io: Io, clock: () => number): Promise<void> {
   // Lines are read through the async iterator, which buffers: piped input is never dropped between prompts.
   const rl = createInterface({ input: io.input ?? process.stdin, terminal: false });
   const lines = rl[Symbol.asyncIterator]();
@@ -200,7 +210,7 @@ async function wizard(path: string, io: Io, now: number): Promise<void> {
       const what = await choose(`token list ${path}`, ['add user and issue token', 'issue token', 'list', 'revoke', 'change user access', 'prune expired', 'show access', 'show token-list.json', 'quit'] as const);
       try {
         if (what === 'quit') return;
-        if (what === 'list') { printList(list, now, io.out); continue; }
+        if (what === 'list') { printList(list, clock(), io.out); continue; }
         if (what === 'show access') { printAccess(io.out); continue; }
         if (what === 'show token-list.json') { show(list, false, io); continue; }
         if (what === 'add user and issue token') {
@@ -209,17 +219,17 @@ async function wizard(path: string, io: Io, now: number): Promise<void> {
           const role = await choose('role:', ROLES);
           const added = addUser(list, { name, role, envs: await pickEnvs() }, io.rand);
           const days = await retry(async () => parseDays((await ask('days valid (1-90) [30]:')) || undefined));
-          const r = issueToken(added.list, added.id, days, now, io.gen);
+          const r = issueToken(added.list, added.id, days, clock(), io.gen);
           save(path, r.list);
           issued(io, r);
         } else if (what === 'issue token') {
           const id = await pickUser(list);
           const days = await retry(async () => parseDays((await ask('days valid (1-90) [30]:')) || undefined));
-          const r = issueToken(list, id, days, now, io.gen);
+          const r = issueToken(list, id, days, clock(), io.gen);
           save(path, r.list);
           issued(io, r);
         } else if (what === 'revoke') {
-          printList(list, now, io.out);
+          printList(list, clock(), io.out);
           const how = await choose('revoke:', ['one token', 'all tokens of a user'] as const);
           const r = how === 'one token' ? revokeToken(list, await ask('token id:')) : revokeUser(list, await pickUser(list));
           save(path, r.list);
@@ -229,7 +239,7 @@ async function wizard(path: string, io: Io, now: number): Promise<void> {
           printAccess(io.out);
           save(path, setUser(list, id, { role: await choose('role:', ROLES), envs: await pickEnvs() }));
         } else if (what === 'prune expired') {
-          const r = prune(list, {}, now);
+          const r = prune(list, {}, clock());
           save(path, r.list);
           io.out(`removed ${r.tokens} token(s)`);
         }
@@ -246,7 +256,7 @@ async function wizard(path: string, io: Io, now: number): Promise<void> {
 
 /** Returns the exit code: 0 ok, 1 bad input, 2 the existing file is not a valid token list. */
 export async function main(argv: string[], io: Io): Promise<number> {
-  const now = (io.now ?? Date.now)();
+  const clock = io.now ?? Date.now;
   try {
     const { values, positionals } = parseArgs({
       args: argv,
@@ -261,8 +271,8 @@ export async function main(argv: string[], io: Io): Promise<number> {
     if (values.help) { io.out(USAGE); return 0; }
     if (positionals.length > 1) throw new InputError(USAGE);
     const path = resolve(values.file ?? 'token-list.json');
-    if (positionals[0] === undefined) await wizard(path, io, now);
-    else runCommand(positionals[0], values, path, io, now);
+    if (positionals[0] === undefined) await wizard(path, io, clock);
+    else runCommand(positionals[0], values, path, io, clock());
     return 0;
   } catch (e) {
     if (e instanceof ConfigError) {
