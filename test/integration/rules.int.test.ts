@@ -142,6 +142,43 @@ describe.skipIf(!enabled)('07-02 alert rules evaluated by promtool (offline cont
     for (const n of names) expect(TESTS.some((t) => t.alerts.some((a) => a.alertname === n)), String(n)).toBe(true);
   }, 180_000);
 
+  it('dashboard ratio panels show 0, not no data, while no error has ever happened (promql_expr_test)', async () => {
+    const values = join(dir, 'dash-values.json');
+    writeFileSync(values, JSON.stringify({
+      image: { tag: '0.0.0-example' },
+      profiles: [{ id: 'test-a', country: 'XX', secretName: 'example-profile-a' }],
+      tokenList: { secretName: 'example-token-list' },
+      ingress: { internal: { enabled: true, className: 'example', hosts: [{ host: 'mcp.example.invalid', paths: [{ path: '/', pathType: 'Prefix' }] }] } },
+      grafanaDashboard: { enabled: true },
+    }));
+    const out = execFileSync(HELM, ['template', 'rel', CHART, '-f', values], { encoding: 'utf8' });
+    const cm = parseAllDocuments(out).map((d) => d.toJS() as Obj).find((d) => d?.['kind'] === 'ConfigMap')!;
+    const dash = JSON.parse(Object.values(cm['data'] as Record<string, string>)[0]!) as { panels: { title: string; targets: { expr: string }[] }[] };
+    const expr = (title: string) => dash.panels.find((p) => p.title === title)!.targets[0]!.expr.replaceAll('$namespace', '.*').replaceAll('$job', '.*');
+    const ratio = (title: string, name: string, errLabels: Record<string, string>, okLabels: Record<string, string>) => ({
+      name: `${title}: 0 with no errors ever, 0.25 with one error in four`,
+      interval: '1m',
+      input_series: [
+        { series: sel(name, { ...okLabels, ...L }), values: '0+4x10' },
+        { series: sel(name, { ...okLabels, namespace: 'ns2', job: 'j' }), values: '0+3x10' },
+        { series: sel(name, { ...errLabels, namespace: 'ns2', job: 'j' }), values: '0+1x10' },
+      ],
+      promql_expr_test: [{ expr: expr(title), eval_time: '8m', exp_samples: [{ labels: `{job="j",namespace="ns"}`, value: 0 }, { labels: `{job="j",namespace="ns2"}`, value: 0.25 }] }],
+    });
+    writeFileSync(join(dir, 'empty.yml'), stringify({ groups: [] }));
+    writeFileSync(join(dir, 'dash-tests.yml'), stringify({
+      rule_files: ['empty.yml'],
+      evaluation_interval: '1m',
+      tests: [
+        ratio('Vendor error ratio', 'stralfors_requests_total', { operation: 'channels', outcome: 'error' }, { operation: 'channels', outcome: 'ok' }),
+        ratio('HTTP 5xx ratio', 'http_server_request_duration_count', { http_response_status_code: '500' }, { http_response_status_code: '200' }),
+      ],
+    }));
+    chmodSync(dir, 0o755);
+    const r = spawnSync('docker', ['run', '--rm', '--network', 'none', '-v', `${dir}:/w:ro`, '--entrypoint', 'promtool', IMAGE, 'test', 'rules', '/w/dash-tests.yml'], { encoding: 'utf8', timeout: 120_000 });
+    expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
+  }, 180_000);
+
   it('every scenario passes promtool test rules', async () => {
     const rules = renderRules();
     writeFileSync(join(dir, 'rules.yml'), stringify(rules));
