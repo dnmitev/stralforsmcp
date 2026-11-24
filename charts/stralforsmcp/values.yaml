@@ -94,11 +94,22 @@ prometheusRule:
   labels: {}
   # each alert links to <runbookUrl>#<section> in docs/runbook.md
   runbookUrl: https://github.com/dnmitev/stralforsmcp/blob/main/docs/runbook.md
+  # extra labels on every alert, for Alertmanager routing (e.g. team: my-team); severity is always the rule's own
+  alertLabels: {}
 
 serviceMonitor:
   enabled: false
   labels: {}
   interval: 30s
+
+# Opt-in Grafana dashboard as a ConfigMap for the Grafana sidecar (label below is the kube-prometheus-stack default).
+# Several releases in one Grafana: give each its own uid, or enable it on one release only (the dashboard has a namespace picker).
+grafanaDashboard:
+  enabled: false
+  uid: stralforsmcp
+  labels:
+    grafana_dashboard: "1"
+  annotations: {}
 
 podAnnotations: {}
 nodeSelector: {}

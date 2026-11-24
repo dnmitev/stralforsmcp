@@ -70,7 +70,18 @@
       "properties": {
         "enabled": { "type": "boolean" },
         "labels": { "type": "object", "additionalProperties": { "type": "string" } },
-        "runbookUrl": { "type": "string", "pattern": "^https?://[^#\\s]+$" }
+        "runbookUrl": { "type": "string", "pattern": "^https?://[^#\\s]+$" },
+        "alertLabels": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    },
+    "grafanaDashboard": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "uid": { "type": "string", "pattern": "^[a-zA-Z0-9_-]{1,40}$" },
+        "labels": { "type": "object", "additionalProperties": { "type": "string" } },
+        "annotations": { "type": "object", "additionalProperties": { "type": "string" } }
       }
     },
     "serviceMonitor": {

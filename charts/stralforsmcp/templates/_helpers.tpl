@@ -62,3 +62,9 @@ STRALFORS_ENV STRALFORS_PROFILES STRALFORS_ALLOW_WRITE STRALFORS_PROD_VALIDATE_E
 {{- range .Values.profiles }}{{- $ids = append $ids .id -}}{{- end -}}
 {{- join "," $ids -}}
 {{- end }}
+
+{{/* Labels of one alert: the rule's severity, plus prometheusRule.alertLabels for routing; severity always wins. Arg: (list $ "warning"). */}}
+{{- define "stralforsmcp.alertLabels" -}}
+{{- $root := index . 0 -}}
+{{- merge (dict "severity" (index . 1)) (deepCopy ($root.Values.prometheusRule.alertLabels | default dict)) | toJson -}}
+{{- end -}}
