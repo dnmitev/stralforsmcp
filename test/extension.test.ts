@@ -10,7 +10,7 @@ import { unzipSync } from 'fflate';
 import { afterAll, describe, expect, it } from 'vitest';
 import { generateToken } from '../src/auth/index.ts';
 import { useStartWorld } from './helpers/start.ts';
-import { LINES, bundle, callWhoami, cleanupBundle, connectBridge, destroyingListener, initialize, initialized, listTools, recordingUpstream, runBridge } from './helpers/stdio-bridge.ts';
+import { LINES, bundle, callWhoami, cleanupBundle, connectBridge, destroyingListener, initialize, initialized, listTools, recordingUpstream, runBridge, scriptedUpstream } from './helpers/stdio-bridge.ts';
 
 const W = useStartWorld();
 afterAll(cleanupBundle);
@@ -174,6 +174,37 @@ describe('AC-4 stdout is protocol only', () => {
     expect(r.stderr).toBe(`${LINES.upstream}\n`);
     for (const l of r.stdout.split('\n').filter(Boolean)) expect(JSON.parse(l)).toMatchObject({ jsonrpc: '2.0' });
     expect(r.frames[0]).toMatchObject({ id: 1, error: expect.anything() });
+  });
+});
+
+// 07-03 R-39: a busy or briefly unavailable server (429 from the rate limiter, 503 from an ingress without a ready pod) must not end the
+// Desktop session. The request is answered with a fixed error and is never resent by the bridge (a tools/call may be send_invoice, ADR 0028).
+describe('R-39 busy upstream', () => {
+  const BUSY = 'server busy or unavailable; try again, but check whether a send went through (track_document) before repeating it';
+
+  it('429 then 503: each request gets the busy error, the bridge keeps running, the next request succeeds, one POST per request', async () => {
+    const up = await scriptedUpstream([429, 503, 200]);
+    const token = generateToken();
+    const r = await runBridge({ MCP_URL: up.url, MCP_TOKEN: token }, [listTools(1), listTools(2), listTools(3)], 3);
+    await up.close();
+    const byId = new Map(r.frames.map((f) => [f['id'], f]));
+    expect(byId.get(1)).toMatchObject({ error: { code: -32000, message: BUSY } });
+    expect(byId.get(2)).toMatchObject({ error: { code: -32000, message: BUSY } });
+    expect(byId.get(3)).toMatchObject({ result: { tools: [] } });
+    expect(up.posts.map((p) => p.id).sort()).toEqual([1, 2, 3]); // no resend
+    expect(r.code).toBe(0); // still alive: ended by closing stdin
+    expect(r.stderr.split('\n').filter(Boolean).sort()).toEqual([LINES.busy(429), LINES.busy(503)]);
+    expect(text(r)).not.toContain('secret upstream body');
+    expect(text(r)).not.toContain(token);
+  });
+
+  it('a 500 still answers the request and exits with the fixed upstream line', async () => {
+    const up = await scriptedUpstream([500]);
+    const r = await runBridge({ MCP_URL: up.url, MCP_TOKEN: generateToken() }, [listTools(1)], 1);
+    await up.close();
+    expect(r.frames[0]).toMatchObject({ id: 1, error: { message: 'upstream error' } });
+    expect(r.code).toBe(1);
+    expect(r.stderr).toBe(`${LINES.upstream}\n`);
   });
 });
 

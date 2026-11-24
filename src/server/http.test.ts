@@ -1,6 +1,7 @@
 /*
  * R10 HTTP front, real node:http server on port 0, raw requests. API under test (src/server/http.ts): createHttpServer(o) => { listen, close, setReady, server }.
  */
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { generateToken, hashToken } from '../auth/index.ts';
 import { UNAUTHORIZED_BODY, WWW_AUTHENTICATE, toAuthInfo } from './auth.ts';
@@ -240,5 +241,25 @@ describe('canary sweep', () => {
     const everything = [...seen, h.s.text(), ...h.errors.map((e) => `${e.message}\n${e.stack}`), ...out.mock.calls.map((a) => String(a[0])), ...err.mock.calls.map((a) => String(a[0]))].join('\n');
     // the audit sink writes to its own array, so process.stdout is expected to be quiet of canaries
     for (const canary of canaries) expect(everything).not.toContain(canary);
+  });
+});
+
+// 07-03 (R-39 safety argument): the Desktop bridge answers 429/503 as "busy, try again" and never resends. That is only safe while this
+// server answers /mcp with 503 never and with 429 only before any handler runs. A source pin, so a later change has to face this test.
+// Inside Stryker's sandbox http.ts is the instrumented copy (each mutant is a second variant of the line), so the pin only applies to the
+// real source; the unit run (check jobs) enforces it.
+const httpSrc = readFileSync(new URL('./http.ts', import.meta.url), 'utf8');
+describe.skipIf(/stryMutAct_|stryCov_/.test(httpSrc))('/mcp never answers 503; 429 only from the limiter', () => {
+  const src = httpSrc;
+  const lines = src.split('\n');
+  it('every status 503 in http.ts is on the /readyz line (or a comment)', () => {
+    const hits = lines.filter((l) => /\b503\b/.test(l) && !/^\s*(\/\/|\*|\/\*\*)/.test(l));
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatch(/path === '\/readyz'/);
+  });
+  it('every status 429 in http.ts is the rate-limit answer', () => {
+    const hits = lines.filter((l) => /\b429\b/.test(l) && !/^\s*(\/\/|\*|\/\*\*)/.test(l));
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatch(/Retry-After/);
   });
 });

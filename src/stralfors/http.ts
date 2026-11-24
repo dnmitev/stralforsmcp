@@ -31,7 +31,9 @@ export function isAllowed(policy: { env: 'test' | 'prod'; allowWrite: boolean; p
   const u = new URL(pathWithQuery, 'http://x');
   const path = u.pathname;
   const m = method.toUpperCase();
-  const dryRun = m === 'PUT' && path === `${BASE}/v2/invoices/validate` && u.searchParams.getAll('test').join() === 'true';
+  // the vendor binds query keys case-insensitively (.NET case folding, first value wins), so no key may sit next to the flag: the dry run is
+  // exactly `?test=true` and nothing else (R-33, R-45)
+  const dryRun = m === 'PUT' && path === `${BASE}/v2/invoices/validate` && u.search === '?test=true';
   if (policy.env === 'prod') return (m === 'GET' && (PROD_READS.has(path) || trackRead(path))) || (dryRun && policy.prodValidateEnabled);
   if (m === 'GET' || dryRun || (m === 'POST' && path === LOOKUP && u.search === '')) return true;
   return policy.allowWrite && m === 'POST' && path === SEND && u.search === ''; // fail closed: the flag opens the send route and nothing else

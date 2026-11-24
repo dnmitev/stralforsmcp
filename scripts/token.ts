@@ -11,10 +11,10 @@ import { ENVS, parseTokenList, ROLES, type TokenList } from '../src/auth/index.t
 import {
   accessTable, addUser, emptyList, InputError, type Issued, issueToken, listView, parseDays, parseEnvs, parseRole, prune, revokeToken, revokeUser, setUser,
 } from '../src/admin/token-list.ts';
-import { readSecret, secretManifest, type SecretMeta } from '../src/admin/kube-secret.ts';
+import { managedBy, readSecret, secretManifest, type SecretMeta } from '../src/admin/kube-secret.ts';
 import { ConfigError } from '../src/stralfors/errors.ts';
 
-export const USAGE = `usage: npm run token -- [command] [--file token-list.json | --kube-namespace NS --kube-secret NAME [--kube-context CTX] [--kube-key token-list.json]] [flags]
+export const USAGE = `usage: npm run token -- [command] [--file token-list.json | --kube-namespace NS --kube-secret NAME [--kube-context CTX] [--kube-key token-list.json] [--force-managed]] [flags]
   (no command)                                   interactive wizard
   add-user  --name NAME --role ${ROLES.join('|')} --env ${ENVS.join('|')} [--env ...] [--id ID]   (id generated when omitted)
   set-user  --id ID [--name NAME] [--role ROLE] [--env ENV ...]
@@ -24,7 +24,8 @@ export const USAGE = `usage: npm run token -- [command] [--file token-list.json 
   revoke    --token TOKEN_ID | --user ID
   prune     [--older-than-days N] [--users]
   access                                         what each role may call per environment
-With --kube-* the list is read from and written to that Kubernetes Secret with kubectl (replace with the read resourceVersion).`;
+With --kube-* the list is read from and written to that Kubernetes Secret with kubectl (replace with the read resourceVersion).
+A Secret that another tool manages (owner reference, Argo CD, External Secrets, Flux, managed-by label) is not written: its next sync would undo the change. --force-managed writes it anyway.`;
 
 class InputClosed extends Error {}
 
@@ -93,7 +94,7 @@ const defaultKube = (args: string[], stdin?: string): KubeResult => {
 /** First stderr line only: kubectl errors name objects and fields, never the Secret data. */
 const firstLine = (s: string) => s.split('\n').find((l) => l.trim()) ?? 'unknown error';
 
-function kubeStore(o: { ns: string; name: string; key: string; context?: string }, kube: Io['kube'] = defaultKube): Store {
+function kubeStore(o: { ns: string; name: string; key: string; context?: string; forceManaged?: boolean }, kube: Io['kube'] = defaultKube): Store {
   // Resolve the context once and pass it to every call: switching contexts mid-session must not move the save to another cluster.
   let context = o.context;
   if (context === undefined) {
@@ -123,6 +124,8 @@ function kubeStore(o: { ns: string; name: string; key: string; context?: string 
       return got.text === null ? emptyList() : parseTokenList(got.text);
     },
     save(list) {
+      const by = meta && !o.forceManaged ? managedBy(meta) : null;
+      if (by) throw new InputError(`the Secret is managed by ${by}: its next sync would undo this change. Change the token list at its source, or pass --force-managed; nothing was saved`);
       const manifest = secretManifest(o.ns, o.name, o.key, fileText(list), meta);
       const r = kube([...base, meta ? 'replace' : 'create', '-f', '-', '-o', 'json'], manifest);
       if (r.code !== 0) fail(r, meta ? 'replace' : 'create');
@@ -335,7 +338,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
         file: { type: 'string' }, id: { type: 'string' }, name: { type: 'string' }, role: { type: 'string' },
         env: { type: 'string', multiple: true }, user: { type: 'string' }, days: { type: 'string' }, token: { type: 'string' },
         'older-than-days': { type: 'string' }, users: { type: 'boolean' }, base64: { type: 'boolean' }, help: { type: 'boolean', short: 'h' },
-        'kube-namespace': { type: 'string' }, 'kube-secret': { type: 'string' }, 'kube-context': { type: 'string' }, 'kube-key': { type: 'string' },
+        'kube-namespace': { type: 'string' }, 'kube-secret': { type: 'string' }, 'kube-context': { type: 'string' }, 'kube-key': { type: 'string' }, 'force-managed': { type: 'boolean' },
       },
     });
     if (values.help) { io.out(USAGE); return 0; }
@@ -346,7 +349,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
     if (kubeFlag && (ns === undefined || secret === undefined)) throw new InputError('--kube-namespace and --kube-secret go together');
     if (kubeFlag && values.file !== undefined) throw new InputError('use either --file or --kube-*, not both');
     const store = kubeFlag
-      ? kubeStore({ ns: ns!, name: secret!, key: values['kube-key'] ?? 'token-list.json', context: values['kube-context'] }, io.kube)
+      ? kubeStore({ ns: ns!, name: secret!, key: values['kube-key'] ?? 'token-list.json', context: values['kube-context'], forceManaged: values['force-managed'] === true }, io.kube)
       : fileStore(resolve(values.file ?? 'token-list.json'));
     if (kubeFlag) io.err(`target: ${store.label}`);
     if (positionals[0] === undefined) await wizard(store, io, clock);

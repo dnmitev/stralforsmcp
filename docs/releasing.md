@@ -8,7 +8,7 @@ A signature proves **where an image came from** (built and scanned by this repos
 
 These are repository settings that no workflow in this repository can apply for itself. Record in your private notes who set them and when.
 
-- [ ] **Ruleset for `main`:** pull request required; required checks `check (24)`, `check (26)` and the leak scan (use the names as they appear on a pull request); no bypass for anyone; force-push and deletion blocked.
+- [ ] **Ruleset for `main`:** pull request required; required checks `check (24)`, `check (26)`, `leak-scan`, `integration`, `scope` and `mutation` (ADR 0029; use the names as they appear on a pull request; `mutation` enforces the per-file safety ceilings); no bypass for anyone; force-push and deletion blocked.
 - [ ] **Code-owner review:** decide and write down. `.github/CODEOWNERS` already names the owner of the trust-bearing paths; *requiring* their review needs a second person, otherwise the author cannot merge their own change. Leave it off with one maintainer.
 - [ ] **Ruleset for tags `v*`:** only the maintainer may create, update or delete them; block non-fast-forward. Anyone who can push a `v*` tag can start a publish, and the signature would be valid for it.
 - [ ] **GHCR package visibility** (private after the first push; making it public is irreversible and is yours to decide).

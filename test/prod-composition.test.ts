@@ -76,6 +76,7 @@ describe.each([[false], [true]])('PROD, validate flag %s', (validate) => {
       ['PUT validate, no test flag', () => client.put(`${A}/v2/invoices/validate`, {})],
       ['PUT validate, test=false', () => client.put(`${A}/v2/invoices/validate`, {}, { query: { test: 'false' } })],
       ['DELETE channels', () => client.delete(`${A}/v2/invoices/channels`)],
+      ['PUT validate, test=true with a TEST=false key first (R-33)', () => client.put(`${A}/v2/invoices/validate?TEST=false`, {}, { query: { test: 'true' } })],
     ];
     for (const [label, run] of attempts) await expect(run(), label).rejects.toMatchObject({ kind: 'write_blocked' });
     expect(W.api.fake.apiRequests.length).toBe(before);

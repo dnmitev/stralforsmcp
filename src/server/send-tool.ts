@@ -1,5 +1,5 @@
 import * as z from 'zod/v4';
-import { AgreementNotFoundError, BadRequestError, ConflictError, ResponseTooLargeError, TimeoutError, TlsError, UpstreamError, ValidationFailedError } from '../stralfors/errors.ts';
+import { AgreementNotFoundError, BadRequestError, ConflictError, ResponseTooLargeError, StralforsError, TimeoutError, TlsError, UpstreamError, ValidationFailedError } from '../stralfors/errors.ts';
 import { fromBadRequest, fromViolations, type Finding } from '../stralfors/findings.ts';
 import type { Config, StralforsClient } from '../stralfors/index.ts';
 import { WRITE_SCOPE } from '../policy/index.ts';
@@ -56,13 +56,13 @@ export function createSendInvoice(deps: SendDeps): ToolDef<typeof sendInput, typ
       try {
         await client.sendInvoice({ actionId: agreement.id, consignmentId: args.consignmentId, document: args.document });
       } catch (e) {
+        // a failure while fetching the token comes before any POST: nothing was sent, so no answer from that stage may read as a send outcome (R-49)
+        if (e instanceof StralforsError && e.operation === 'token') throw e;
         if (e instanceof ValidationFailedError) return done('rejected', rejected(fromViolations(e.violations)));
         if (e instanceof BadRequestError) return done('rejected', rejected(fromBadRequest(e.errors ?? {})));
         if (e instanceof ConflictError) return done('rejected', [{ ...DUPLICATE }], HINT.duplicate); // usually a retry after unknown: never invite a resend
-        // the body may have arrived: a timeout, a 5xx or network failure (a reset can surface as TLS), an answer too large to read;
-        // the same failures while fetching the token come before any POST, so nothing was sent and the call fails with its kind
-        const maybeSent = e instanceof TimeoutError || e instanceof UpstreamError || e instanceof ResponseTooLargeError || e instanceof TlsError;
-        if (maybeSent && e.operation !== 'token') return done('unknown');
+        // the body may have arrived: a timeout, a 5xx or network failure (a reset can surface as TLS), an answer too large to read
+        if (e instanceof TimeoutError || e instanceof UpstreamError || e instanceof ResponseTooLargeError || e instanceof TlsError) return done('unknown');
         if (e instanceof AgreementNotFoundError) throw new ToolInputError('agreement not found for this profile', 'agreement_not_found');
         throw e; // nothing was accepted (auth, busy, write guard, cancelled before start): the call fails with its kind
       }

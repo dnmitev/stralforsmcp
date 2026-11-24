@@ -101,8 +101,13 @@ jobs:
         run: |
           pkg=$(ls pkg/*.tgz)
           v=$(basename "$pkg" .tgz); v=${v#stralforsmcp-}
-          if "$RUNNER_TEMP/helm" show chart "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/charts/stralforsmcp" --version "$v" > /dev/null 2>&1; then
+          if out=$("$RUNNER_TEMP/helm" show chart "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/charts/stralforsmcp" --version "$v" 2>&1); then
             echo "chart stralforsmcp $v is already published; bump version in charts/stralforsmcp/Chart.yaml and release a new tag"
+            exit 1
+          fi
+          # only "not found" means unpublished; any other failure (network, auth, registry) stops the run instead of risking an overwrite
+          if ! grep -qiE 'not found|manifest unknown|404' <<< "$out"; then
+            echo "could not check whether chart stralforsmcp $v is published; stopping before push"
             exit 1
           fi
       - name: Push

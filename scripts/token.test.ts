@@ -177,13 +177,13 @@ describe('npm run token (--kube-*)', () => {
   const LAST = 'kubectl.kubernetes.io/last-applied-configuration';
 
   /** In-memory Secret with resourceVersion; records every kubectl call. */
-  function fakeKube(initial: string | null) {
+  function fakeKube(initial: string | null, extra: { labels?: Record<string, string>; annotations?: Record<string, string>; ownerReferences?: unknown[] } = {}) {
     let text = initial;
     let rv = 1;
     const calls: { args: string[]; stdin?: string }[] = [];
     const secret = () => JSON.stringify({
       kind: 'Secret', type: 'Opaque',
-      metadata: { name: 'tl', namespace: 'ns', resourceVersion: String(rv), labels: { app: 'x' }, annotations: { [LAST]: '{"data":"copy"}', keep: 'y' } },
+      metadata: { name: 'tl', namespace: 'ns', resourceVersion: String(rv), labels: { app: 'x', ...extra.labels }, annotations: { [LAST]: '{"data":"copy"}', keep: 'y', ...extra.annotations }, ...(extra.ownerReferences && { ownerReferences: extra.ownerReferences }) },
       data: { 'token-list.json': b64(text!) },
     });
     const kube = (args: string[], stdin?: string) => {
@@ -225,6 +225,34 @@ describe('npm run token (--kube-*)', () => {
     expect(t.err.join('\n')).toContain('target: Secret ns/tl key token-list.json (context c1)');
     expect(t.out.join('\n')).toContain('restart the server\'s deployment in namespace ns');
     expect(k.calls.flatMap((c) => c.args).join(' ')).not.toContain('users');
+  });
+
+  // AEGIS F-10-104: a Secret another tool reconciles would silently undo an issue or a revocation on its next sync
+  it.each([
+    ['an owner (ExternalSecret)', { ownerReferences: [{ apiVersion: 'external-secrets.io/v1', kind: 'ExternalSecret', name: 'tl', uid: 'u' }] }, 'ExternalSecret'],
+    ['an Argo CD instance label', { labels: { 'argocd.argoproj.io/instance': 'app' } }, 'argocd.argoproj.io/instance'],
+    ['an Argo CD tracking annotation', { annotations: { 'argocd.argoproj.io/tracking-id': 'app:/Secret:ns/tl' } }, 'argocd.argoproj.io/tracking-id'],
+    ['a managed-by label', { labels: { 'app.kubernetes.io/managed-by': 'Helm' } }, 'app.kubernetes.io/managed-by=Helm'],
+    ['an external-secrets annotation', { annotations: { 'reconcile.external-secrets.io/data-hash': 'h' } }, 'reconcile.external-secrets.io/data-hash'],
+    ['a Flux label', { labels: { 'kustomize.toolkit.fluxcd.io/name': 'apps' } }, 'kustomize.toolkit.fluxcd.io/name'],
+  ])('refuses to write a Secret managed by another tool: %s', async (_n, extra, by) => {
+    const t = setup();
+    const k = fakeKube('{"users":[],"tokens":[]}', extra);
+    expect(await main(['add-user', '--name', 'A', '--role', 'dev', '--env', 'test', ...K], { ...t.io, kube: k.kube })).toBe(1);
+    expect(t.err.join('\n')).toContain(`managed by ${by}`);
+    expect(t.err.join('\n')).toContain('--force-managed');
+    expect(k.calls.some((c) => c.args.includes('replace') || c.args.includes('create'))).toBe(false);
+    expect(parseTokenList(k.text()!).users).toEqual([]);
+  });
+  it('reads a managed Secret, and writes it only with --force-managed', async () => {
+    const extra = { ownerReferences: [{ kind: 'ExternalSecret', name: 'tl' }] };
+    const r = setup();
+    expect(await main(['list', ...K], { ...r.io, kube: fakeKube('{"users":[],"tokens":[]}', extra).kube })).toBe(0);
+    const t = setup();
+    const k = fakeKube('{"users":[],"tokens":[]}', extra);
+    expect(await main(['add-user', '--name', 'A', '--role', 'dev', '--env', 'test', ...K, '--force-managed'], { ...t.io, kube: k.kube })).toBe(0);
+    expect(parseTokenList(k.text()!).users).toHaveLength(1);
+    expect(JSON.parse(k.calls.find((c) => c.args.includes('replace'))!.stdin!).metadata.ownerReferences).toEqual(extra.ownerReferences);
   });
 
   it('refuses a conflict and writes nothing more', async () => {

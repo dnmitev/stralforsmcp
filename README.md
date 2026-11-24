@@ -231,7 +231,7 @@ Prerequisites: Node 24+, `npm ci` run once in this checkout, and your TEST crede
 
    ```sh
    npm run dev:token
-   export STRALFORSMCP_TOKEN=<the token printed above>   # this shell only, never in a file in this repository
+   read -rs STRALFORSMCP_TOKEN && export STRALFORSMCP_TOKEN   # paste the token printed above, then Enter; nothing is echoed or kept in shell history
    ```
 
 3. **Start the server** (leave it running; use a second terminal, with `STRALFORSMCP_TOKEN` exported there too, for the rest). It restarts when a source file changes (`node --watch`).
@@ -307,7 +307,7 @@ npm run dev 2>/dev/null                              # audit only
 
 ### Managing tokens
 
-`npm run token` is a wizard for the token list: add users with a role (`dev`, `qa`, `pm`) and environments (`test`, `prod`) chosen from the allowed values, issue tokens (1 to 90 days), list them by 8-character id, revoke and prune; `show` prints the file (or `--base64` for a Secret) to copy. With `--kube-namespace` and `--kube-secret` it edits the Kubernetes Secret directly through `kubectl`, refusing to overwrite a concurrent change. Output is coloured in a terminal (`NO_COLOR` turns it off). It checks the whole file with the server's own parser before every write, so it never writes a list the server would refuse.
+`npm run token` is a wizard for the token list: add users with a role (`dev`, `qa`, `pm`) and environments (`test`, `prod`) chosen from the allowed values, issue tokens (1 to 90 days), list them by 8-character id, revoke and prune; `show` prints the file (or `--base64` for a Secret) to copy. With `--kube-namespace` and `--kube-secret` it edits the Kubernetes Secret directly through `kubectl`, refusing to overwrite a concurrent change and refusing a Secret that another tool (External Secrets, Argo CD, Flux) manages, whose next sync would undo the edit. Output is coloured in a terminal (`NO_COLOR` turns it off). It checks the whole file with the server's own parser before every write, so it never writes a list the server would refuse.
 
 Quick start (replace `--file token-list.json` with `--kube-namespace <namespace> --kube-secret <secret>` to work on a deployed release):
 

@@ -25,7 +25,7 @@ Use the token wizard from a checkout of this repository (`npm ci` once) on a tru
    npm run token -- list --kube-namespace <namespace> --kube-secret <secret>
    ```
 
-   It writes with `kubectl replace` and the `resourceVersion` it read, so a change someone else made in between is refused, not overwritten. It never writes the `kubectl.kubernetes.io/last-applied-configuration` annotation (that annotation repeats the whole list; one created by an earlier `kubectl apply` is dropped on the first write). Step 3 is then not needed.
+   It writes with `kubectl replace` and the `resourceVersion` it read, so a change someone else made in between is refused, not overwritten. It never writes the `kubectl.kubernetes.io/last-applied-configuration` annotation (that annotation repeats the whole list; one created by an earlier `kubectl apply` is dropped on the first write). Step 3 is then not needed. If the Secret is managed by another tool (an owner reference such as an ExternalSecret, Argo CD or Flux labels, an `app.kubernetes.io/managed-by` label), the wizard refuses to write it: that tool's next sync would silently undo the change, including a revocation. Change the token list at its source (for example the secret store an external secret operator reads), or pass `--force-managed` only if you know nothing reconciles it.
 2. **Elsewhere**, get the current list into a local file (keep it mode 600 and delete it afterwards), then run the wizard on it, or use the commands directly:
 
    ```sh

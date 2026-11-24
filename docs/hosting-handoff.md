@@ -92,7 +92,7 @@ Vendor health is a metric, not a probe: `stralfors_up` (1 when every profile las
 
 ## Rollouts and shutdown
 
-On SIGTERM `/readyz` turns 503 and the server keeps serving for `readyDelayMs` (default 5 s) so endpoints are removed, then drains for `drainMs` (default 10 s), then closes the vendor connections and flushes telemetry. The chart refuses to render unless `terminationGracePeriodSeconds * 1000` exceeds `readyDelayMs + drainMs + 8000` (ADR 0023). There is no `preStop` hook: the image has no shell. The Claude Desktop bridge has no reconnect (ADR 0015): a user whose connection was cut by a rollout may need to restart the extension. The server holds no session state.
+On SIGTERM `/readyz` turns 503 and the server keeps serving for `readyDelayMs` (default 5 s) so endpoints are removed, then drains for `drainMs` (default 45 s: longer than one send_invoice, token fetch up to 10 s plus the 30 s vendor timeout), then closes the vendor connections and flushes telemetry. The chart refuses to render unless `terminationGracePeriodSeconds * 1000` exceeds `readyDelayMs + drainMs + 8000` (ADR 0023). There is no `preStop` hook: the image has no shell. The Claude Desktop bridge has no reconnect (ADR 0015): a user whose connection was cut by a rollout may need to restart the extension. The server holds no session state.
 
 ## Capacity and limits
 

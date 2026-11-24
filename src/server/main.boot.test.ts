@@ -158,6 +158,9 @@ describe('configuration errors refuse to start before anything opens', () => {
     ['a ACTION_IDS invalid', (e) => ({ ...e, STRALFORS_PROFILE_A_ACTION_IDS: 'x:not-a-uuid' }), 'STRALFORS_PROFILE_A_ACTION_IDS: invalid agreement id (entry 1)'],
     ['STRALFORS_ENV staging', (e) => ({ ...e, STRALFORS_ENV: 'staging' }), 'STRALFORS_ENV is invalid'],
     ['prod with write', (e) => ({ ...e, STRALFORS_ENV: 'prod', STRALFORS_ALLOW_WRITE: 'true' }), 'write is never allowed in prod (STRALFORS_ALLOW_WRITE)'],
+    // R-37: the composition root refuses PROD writes itself, before settings it reads later (here an invalid metrics host) and before loadConfig,
+    // whose own refusal has its own test in config.test.ts; removing either refusal alone fails a test
+    ['prod with write, refused by the composition root first', (e) => ({ ...e, STRALFORS_ENV: 'prod', STRALFORS_ALLOW_WRITE: 'true', MCP_METRICS_HOST: ' ' }), 'write is never allowed in prod (STRALFORS_ALLOW_WRITE)'],
     ['MCP_RATE_PER_MINUTE 0', (e) => ({ ...e, MCP_RATE_PER_MINUTE: '0' }), 'MCP_RATE_PER_MINUTE is invalid'],
     ['MCP_RATE_PER_MINUTE 1.5', (e) => ({ ...e, MCP_RATE_PER_MINUTE: '1.5' }), 'MCP_RATE_PER_MINUTE is invalid'],
     ['MCP_RATE_BURST -1', (e) => ({ ...e, MCP_RATE_BURST: '-1' }), 'MCP_RATE_BURST is invalid'],

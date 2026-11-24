@@ -152,6 +152,10 @@ describe('AC-4: outcomes and audit', () => {
     ['upstream', new UpstreamError('u', { profile: 'no', operation: 'token' })],
     ['too_large', new ResponseTooLargeError('l', { profile: 'no', operation: 'token' })],
     ['tls', new TlsError('s', { profile: 'no', operation: 'token' })],
+    // AEGIS F-03-102 / R-49: a token-stage answer that looks like a send outcome must not be read as one (nothing was posted)
+    ['conflict', new ConflictError('c', { profile: 'no', operation: 'token' })],
+    ['bad_request', new BadRequestError('b', { profile: 'no', operation: 'token' })],
+    ['agreement_not_found', new AgreementNotFoundError('n', { profile: 'no', operation: 'token' })],
   ])('the token fetch failed (%s) before any POST: the call fails with its kind, never "unknown"', async (kind, err) => {
     const w = world({ send: async () => { throw err; } });
     expect(await w.call(args())).toMatchObject({ isError: true, content: [{ text: `tool failed: ${kind}` }] });
