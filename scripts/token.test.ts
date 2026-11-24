@@ -171,3 +171,112 @@ describe('npm run token (wizard)', () => {
     expect(t.err.join('\n')).toContain('token list: (root) has unknown key');
   });
 });
+
+describe('npm run token (--kube-*)', () => {
+  const b64 = (s: string) => Buffer.from(s).toString('base64');
+  const LAST = 'kubectl.kubernetes.io/last-applied-configuration';
+
+  /** In-memory Secret with resourceVersion; records every kubectl call. */
+  function fakeKube(initial: string | null) {
+    let text = initial;
+    let rv = 1;
+    const calls: { args: string[]; stdin?: string }[] = [];
+    const secret = () => JSON.stringify({
+      kind: 'Secret', type: 'Opaque',
+      metadata: { name: 'tl', namespace: 'ns', resourceVersion: String(rv), labels: { app: 'x' }, annotations: { [LAST]: '{"data":"copy"}', keep: 'y' } },
+      data: { 'token-list.json': b64(text!) },
+    });
+    const kube = (args: string[], stdin?: string) => {
+      calls.push({ args, stdin });
+      if (args[0] === 'config') return { code: 0, stdout: 'ctx-a\n', stderr: '' };
+      const verb = args.find((a) => ['get', 'replace', 'create'].includes(a));
+      if (verb === 'get') return text === null ? { code: 1, stdout: '', stderr: 'Error from server (NotFound): secrets "tl" not found' } : { code: 0, stdout: secret(), stderr: '' };
+      const m = JSON.parse(stdin!);
+      if (verb === 'replace' && m.metadata.resourceVersion !== String(rv)) return { code: 1, stdout: '', stderr: 'Error from server (Conflict): the object has been modified' };
+      text = Buffer.from(m.data['token-list.json'], 'base64').toString();
+      rv++;
+      return { code: 0, stdout: secret(), stderr: '' };
+    };
+    return { kube, calls, text: () => text, bump: (t: string) => { text = t; rv++; } };
+  }
+  const K = ['--kube-namespace', 'ns', '--kube-secret', 'tl'];
+
+  it('never runs kubectl without --kube-* and checks flag combinations', async () => {
+    const t = setup();
+    const kube = () => { throw new Error('kubectl must not run'); };
+    expect(await main(['list', '--file', t.file], { ...t.io, kube })).toBe(0);
+    expect(await main(['list', '--kube-namespace', 'ns'], { ...t.io, kube })).toBe(1);
+    expect(await main(['list', ...K, '--file', t.file], { ...t.io, kube })).toBe(1);
+    expect(t.err.join('\n')).toContain('--kube-namespace and --kube-secret go together');
+    expect(t.err.join('\n')).toContain('use either --file or --kube-*, not both');
+  });
+
+  it('reads, edits and replaces the Secret: manifest on stdin only, resourceVersion kept, last-applied dropped', async () => {
+    const t = setup();
+    const k = fakeKube('{"users":[],"tokens":[]}');
+    expect(await main(['add-user', '--name', 'A', '--role', 'dev', '--env', 'test', ...K, '--kube-context', 'c1'], { ...t.io, kube: k.kube })).toBe(0);
+    expect(k.calls.map((c) => c.args)).toEqual([
+      ['--context', 'c1', 'get', 'secret', 'tl', '-n', 'ns', '-o', 'json'],
+      ['--context', 'c1', 'replace', '-f', '-', '-o', 'json'],
+    ]);
+    const m = JSON.parse(k.calls[1]!.stdin!);
+    expect(m.metadata).toEqual({ name: 'tl', namespace: 'ns', resourceVersion: '1', labels: { app: 'x' }, annotations: { keep: 'y' } });
+    expect(parseTokenList(k.text()!).users[0]).toMatchObject({ id: 'u_c0ffee00', role: 'dev' });
+    expect(t.err.join('\n')).toContain('target: Secret ns/tl key token-list.json (context c1)');
+    expect(t.out.join('\n')).toContain('restart the server\'s deployment in namespace ns');
+    expect(k.calls.flatMap((c) => c.args).join(' ')).not.toContain('users');
+  });
+
+  it('refuses a conflict and writes nothing more', async () => {
+    const t = setup(['1', 'Bob', '1', 'test', '30', '9']);
+    const k = fakeKube('{"users":[],"tokens":[]}');
+    // someone else writes between the wizard's get and its replace
+    t.io.gen = () => { k.bump('{"users":[{"id":"x","name":"X","role":"pm","envs":["test"]}],"tokens":[]}'); return gen(); };
+    expect(await main(K, { ...t.io, kube: k.kube })).toBe(0);
+    expect(t.err.join('\n')).toContain('the Secret changed since it was read; nothing was saved, run it again');
+    expect(parseTokenList(k.text()!).users.map((u) => u.id)).toEqual(['x']);
+  });
+
+  it('resolves the current context once and passes it to every call', async () => {
+    const t = setup(['1', 'Ann', '1', 'test', '30', '9']);
+    const k = fakeKube('{"users":[],"tokens":[]}');
+    expect(await main(K, { ...t.io, kube: k.kube })).toBe(0);
+    expect(k.calls.filter((c) => c.args[0] === 'config')).toHaveLength(1);
+    expect(k.calls.filter((c) => c.args[0] !== 'config').every((c) => c.args[0] === '--context' && c.args[1] === 'ctx-a')).toBe(true);
+    expect(t.err.join('\n')).toContain('target: Secret ns/tl key token-list.json (context ctx-a)');
+    const none = setup();
+    expect(await main(['list', ...K], { ...none.io, kube: () => ({ code: 1, stdout: '', stderr: 'error: current-context is not set' }) })).toBe(1);
+    expect(none.err.join('\n')).toContain('no current kubectl context; pass --kube-context');
+  });
+
+  it('uses the new resourceVersion for the next save in one wizard session', async () => {
+    const t = setup(['1', 'Ann', '1', 'test', '30', '1', 'Ben', '2', 'test', '30', '9']);
+    const k = fakeKube('{"users":[],"tokens":[]}');
+    let r = 0;
+    t.io.rand = () => ['aaaaaaaa', 'bbbbbbbb'][r++]!;
+    expect(await main(K, { ...t.io, kube: k.kube })).toBe(0);
+    expect(parseTokenList(k.text()!).users.map((u) => u.name)).toEqual(['Ann', 'Ben']);
+    expect(t.err.join('\n')).not.toContain('changed since');
+  });
+
+  it('creates a missing Secret on write; list on a missing Secret exits 1', async () => {
+    const t = setup();
+    const k = fakeKube(null);
+    expect(await main(['list', ...K], { ...t.io, kube: k.kube })).toBe(1);
+    expect(t.err.join('\n')).toContain('Secret ns/tl not found');
+    expect(await main(['add-user', '--name', 'A', '--role', 'qa', '--env', 'test', ...K], { ...t.io, kube: k.kube })).toBe(0);
+    const create = k.calls.find((c) => c.args.includes('create'))!;
+    expect(JSON.parse(create.stdin!).metadata).toEqual({ name: 'tl', namespace: 'ns' });
+  });
+
+  it('an invalid list in the Secret exits 2; kubectl errors exit 1 with the first stderr line only', async () => {
+    const t = setup();
+    const k = fakeKube('{"users":[{"id":"1","name":"X","role":"SA","envs":["test"]}],"tokens":[]}');
+    expect(await main(['list', ...K], { ...t.io, kube: k.kube })).toBe(2);
+    expect(t.err.join('\n')).toContain('users[0].role is invalid');
+    const failing = (args: string[]) => (args[0] === 'config' ? { code: 0, stdout: 'ctx-a', stderr: '' } : { code: 1, stdout: '', stderr: 'error: You must be logged in to the server (Unauthorized)\nsecond line' });
+    expect(await main(['list', ...K], { ...t.io, kube: failing })).toBe(1);
+    expect(t.err.join('\n')).toContain('kubectl get failed: error: You must be logged in to the server (Unauthorized)');
+    expect(t.err.join('\n')).not.toContain('second line');
+  });
+});

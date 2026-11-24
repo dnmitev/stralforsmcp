@@ -17,8 +17,15 @@ Tokens are `smcp_` strings. Only the SHA-256 hash is stored, in the token list S
 
 Use the token wizard from a checkout of this repository (`npm ci` once) on a trusted machine. It works on a local copy of the token list and refuses to write anything the server would reject (unknown role or environment, more than 90 days, duplicate or unknown ids). An existing file that is already invalid is refused with the same message the server logs (for example `token list: users[0].role is invalid`) and left unchanged.
 
-1. Get the current list into a local file (for example from the Secret behind `tokenList.secretName`; keep it mode 600 and delete it afterwards).
-2. Run the wizard and follow the menu, or use the commands directly:
+1. **On Kubernetes**, point the wizard at the Secret behind `tokenList.secretName`; it reads and writes it with `kubectl` (your current context, or `--kube-context`), so no copy of the list is left on disk:
+
+   ```sh
+   npm run token -- --kube-namespace <namespace> --kube-secret <secret>          # interactive
+   npm run token -- list --kube-namespace <namespace> --kube-secret <secret>
+   ```
+
+   It writes with `kubectl replace` and the `resourceVersion` it read, so a change someone else made in between is refused, not overwritten. It never writes the `kubectl.kubernetes.io/last-applied-configuration` annotation (that annotation repeats the whole list; one created by an earlier `kubectl apply` is dropped on the first write). Step 3 is then not needed.
+2. **Elsewhere**, get the current list into a local file (keep it mode 600 and delete it afterwards), then run the wizard on it, or use the commands directly:
 
    ```sh
    npm run token -- --file token-list.json                       # interactive
