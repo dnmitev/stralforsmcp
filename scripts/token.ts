@@ -5,7 +5,7 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
-import { parseArgs } from 'node:util';
+import { parseArgs, styleText } from 'node:util';
 import { ENVS, parseTokenList, ROLES, type TokenList } from '../src/auth/index.ts';
 import {
   accessTable, addUser, emptyList, InputError, type Issued, issueToken, listView, parseDays, parseEnvs, parseRole, prune, revokeToken, revokeUser, setUser,
@@ -18,13 +18,14 @@ export const USAGE = `usage: npm run token -- [command] [--file token-list.json]
   set-user  --id ID [--name NAME] [--role ROLE] [--env ENV ...]
   issue     --user ID [--days 1-90, default 30]
   list
+  show      [--base64]                           the file as JSON (or base64 for a Secret's data field), plain text for copy-paste
   revoke    --token TOKEN_ID | --user ID
   prune     [--older-than-days N] [--users]
   access                                         what each role may call per environment`;
 
 class InputClosed extends Error {}
 
-const RELOAD_NOTE = 'saved. The server re-reads the list within about 60 s; a revocation can take about 2 minutes (restart the pods to apply it at once).';
+const RELOAD_NOTE = () => `${ok('saved.')} The server re-reads the list within about 60 s; a revocation can take about 2 minutes (restart the pods to apply it at once).`;
 
 export interface Io {
   out: (s: string) => void;
@@ -36,13 +37,21 @@ export interface Io {
   rand?: () => string;
 }
 
+/** Exactly the text `save` writes: what goes into the Secret's token-list.json key. */
+const fileText = (list: TokenList): string => `${JSON.stringify(parseTokenList(JSON.stringify(list)), null, 2)}\n`;
+
+function show(list: TokenList, base64: boolean, io: Io): void {
+  const text = fileText(list);
+  io.out(base64 ? Buffer.from(text).toString('base64') : text.trimEnd());
+}
+
 function load(path: string): TokenList {
   return existsSync(path) ? parseTokenList(readFileSync(path, 'utf8')) : emptyList();
 }
 
 /** New 0600 file beside the target, renamed over it: never a half-written list, never a looser inherited mode. */
 function save(path: string, list: TokenList): void {
-  const text = `${JSON.stringify(parseTokenList(JSON.stringify(list)), null, 2)}\n`;
+  const text = fileText(list);
   const tmp = `${path}.${process.pid}.tmp`;
   writeFileSync(tmp, text, { mode: 0o600, flag: 'wx' });
   renameSync(tmp, path);
@@ -50,30 +59,41 @@ function save(path: string, list: TokenList): void {
 
 const pad = (s: string, n: number) => s.padEnd(n);
 
+// Colours only when the stream is a terminal and NO_COLOR / NODE_DISABLE_COLORS are unset (styleText checks both).
+type Style = Parameters<typeof styleText>[0];
+const paint = (stream: NodeJS.WriteStream) => (f: Style, s: string) => styleText(f, s, { stream });
+const o = paint(process.stdout);
+const ep = paint(process.stderr);
+const bad = (s: string) => ep('red', s);
+const ok = (s: string) => o('green', s);
+const bold = (s: string) => o('bold', s);
+const STATE: Record<string, Style> = { active: 'green', expired: 'gray', revoked: 'red' };
+const cell = (s: string, n: number) => o(s === 'yes' ? 'green' : s.startsWith('only') ? 'yellow' : 'red', pad(s, n));
+
 function printList(list: TokenList, now: number, out: Io['out']): void {
   const v = listView(list, now);
-  out('users:');
+  out(bold('users:'));
   if (!v.users.length) out('  (none)');
-  for (const u of v.users) out(`  ${pad(u.id, 16)} ${pad(u.role, 4)} ${pad(u.envs.join(','), 10)} active tokens: ${u.active}  ${u.name}`);
-  out('tokens:');
+  for (const u of v.users) out(`  ${o('cyan', pad(u.id, 16))} ${pad(u.role, 4)} ${pad(u.envs.join(','), 10)} active tokens: ${u.active}  ${u.name}`);
+  out(bold('tokens:'));
   if (!v.tokens.length) out('  (none)');
-  for (const t of v.tokens) out(`  ${t.id}  ${pad(t.userId, 16)} ${pad(t.state, 8)} expires ${t.expires}`);
+  for (const t of v.tokens) out(`  ${o('cyan', t.id)}  ${pad(t.userId, 16)} ${o(STATE[t.state]!, pad(t.state, 8))} expires ${t.expires}`);
 }
 
 function printAccess(out: Io['out']): void {
-  out('access per role and environment (the user also needs that environment in --env):');
+  out(bold('access per role and environment (the user also needs that environment in --env):'));
   out(`  ${pad('role', 5)}${pad('env', 6)}${pad('read', 11)}${pad('validate', 49)}${pad('write', 40)}lookup`);
   for (const role of ROLES) for (const env of ENVS) {
     const r = (a: string) => accessTable().find((x) => x.role === role && x.env === env && x.access === a)!.result;
-    out(`  ${pad(role, 5)}${pad(env, 6)}${pad(r('read'), 11)}${pad(r('validate'), 49)}${pad(r('write'), 40)}${r('lookup')}`);
+    out(`  ${pad(role, 5)}${pad(env, 6)}${cell(r('read'), 11)}${cell(r('validate'), 49)}${cell(r('write'), 40)}${cell(r('lookup'), 0)}`);
   }
   out('  read = whoami, list_channels, get_rules, get_example_invoice, track_document, search_docs; validate = validate_invoice;');
   out('  write = send_invoice (test only); lookup = channel_lookup (test only). Stralfors scopes of the profile apply on top.');
 }
 
 function issued(io: Io, r: Issued): void {
-  io.out(`issued token ${r.id} for user ${r.user.id} (${r.user.name}), role ${r.user.role}, environments ${r.user.envs.join(', ')}, expires ${r.expires}`);
-  io.err(`token (shown once, give it to the user over a private channel): ${r.raw}`);
+  io.out(`${ok('issued')} token ${o('cyan', r.id)} for user ${o('cyan', r.user.id)} (${bold(r.user.name)}), role ${bold(r.user.role)}, environments ${r.user.envs.join(', ')}, expires ${r.expires}`);
+  io.err(`token (shown once, give it to the user over a private channel): ${ep(['bold', 'yellow'], r.raw)}`);
 }
 
 const need = (v: string | undefined, flag: string): string => {
@@ -92,10 +112,13 @@ function runCommand(cmd: string, f: Record<string, string | string[] | boolean |
     case 'access':
       printAccess(io.out);
       return;
+    case 'show':
+      show(list, f['base64'] === true, io);
+      return;
     case 'add-user': {
       const r = addUser(list, { id: s('id'), name: need(s('name'), '--name'), role: parseRole(need(s('role'), '--role')), envs: parseEnvs(envs ?? []) }, io.rand);
       list = r.list;
-      io.out(`added user ${r.id}`);
+      io.out(`${ok('added')} user ${o('cyan', r.id)}`);
       break;
     }
     case 'set-user': {
@@ -108,7 +131,7 @@ function runCommand(cmd: string, f: Record<string, string | string[] | boolean |
       list = r.list;
       save(path, list);
       issued(io, r);
-      io.out(RELOAD_NOTE);
+      io.out(RELOAD_NOTE());
       return;
     }
     case 'revoke': {
@@ -132,7 +155,7 @@ function runCommand(cmd: string, f: Record<string, string | string[] | boolean |
       throw new InputError(`unknown command ${cmd}\n${USAGE}`);
   }
   save(path, list);
-  io.out(RELOAD_NOTE);
+  io.out(RELOAD_NOTE());
 }
 
 async function wizard(path: string, io: Io, now: number): Promise<void> {
@@ -147,12 +170,12 @@ async function wizard(path: string, io: Io, now: number): Promise<void> {
   };
   const choose = async <T extends string>(q: string, opts: readonly T[]): Promise<T> => {
     for (;;) {
-      io.out(`${q}\n${opts.map((o, i) => `  ${i + 1}) ${o}`).join('\n')}`);
+      io.out(`${bold(q)}\n${opts.map((x, i) => `  ${o('cyan', String(i + 1))}) ${x}`).join('\n')}`);
       const a = await ask('>');
       const i = Number(a) - 1;
       if (Number.isInteger(i) && opts[i] !== undefined) return opts[i]!;
       if ((opts as readonly string[]).includes(a)) return a as T;
-      io.err(`choose 1-${opts.length}`);
+      io.err(bad(`choose 1-${opts.length}`));
     }
   };
   const retry = async <T>(f: () => Promise<T>): Promise<T> => {
@@ -161,7 +184,7 @@ async function wizard(path: string, io: Io, now: number): Promise<void> {
         return await f();
       } catch (e) {
         if (!(e instanceof InputError)) throw e;
-        io.err(e.message);
+        io.err(bad(e.message));
       }
     }
   };
@@ -174,11 +197,12 @@ async function wizard(path: string, io: Io, now: number): Promise<void> {
   try {
     for (;;) {
       let list = load(path);
-      const what = await choose(`token list ${path}`, ['add user and issue token', 'issue token', 'list', 'revoke', 'change user access', 'prune expired', 'show access', 'quit'] as const);
+      const what = await choose(`token list ${path}`, ['add user and issue token', 'issue token', 'list', 'revoke', 'change user access', 'prune expired', 'show access', 'show token-list.json', 'quit'] as const);
       try {
         if (what === 'quit') return;
         if (what === 'list') { printList(list, now, io.out); continue; }
         if (what === 'show access') { printAccess(io.out); continue; }
+        if (what === 'show token-list.json') { show(list, false, io); continue; }
         if (what === 'add user and issue token') {
           const name = await retry(async () => { const v = await ask('full name:'); if (!v) throw new InputError('--name must not be empty'); return v; });
           printAccess(io.out);
@@ -209,10 +233,10 @@ async function wizard(path: string, io: Io, now: number): Promise<void> {
           save(path, r.list);
           io.out(`removed ${r.tokens} token(s)`);
         }
-        io.out(RELOAD_NOTE);
+        io.out(RELOAD_NOTE());
       } catch (e) {
         if (!(e instanceof InputError)) throw e;
-        io.err(e.message);
+        io.err(bad(e.message));
       }
     }
   } finally {
@@ -231,7 +255,7 @@ export async function main(argv: string[], io: Io): Promise<number> {
       options: {
         file: { type: 'string' }, id: { type: 'string' }, name: { type: 'string' }, role: { type: 'string' },
         env: { type: 'string', multiple: true }, user: { type: 'string' }, days: { type: 'string' }, token: { type: 'string' },
-        'older-than-days': { type: 'string' }, users: { type: 'boolean' }, help: { type: 'boolean', short: 'h' },
+        'older-than-days': { type: 'string' }, users: { type: 'boolean' }, base64: { type: 'boolean' }, help: { type: 'boolean', short: 'h' },
       },
     });
     if (values.help) { io.out(USAGE); return 0; }
@@ -242,11 +266,11 @@ export async function main(argv: string[], io: Io): Promise<number> {
     return 0;
   } catch (e) {
     if (e instanceof ConfigError) {
-      io.err(`${e.message} — fix the file first; nothing was changed`);
+      io.err(bad(`${e.message} — fix the file first; nothing was changed`));
       return 2;
     }
-    if (e instanceof InputError) { io.err(e.message); return 1; }
-    if (e instanceof InputClosed) { io.err('input closed; nothing more was changed'); return 1; }
+    if (e instanceof InputError) { io.err(bad(e.message)); return 1; }
+    if (e instanceof InputClosed) { io.err(bad('input closed; nothing more was changed')); return 1; }
     if (e instanceof TypeError && 'code' in e && String(e.code).startsWith('ERR_PARSE_ARGS')) { io.err(`${e.message}\n${USAGE}`); return 1; }
     throw e;
   }

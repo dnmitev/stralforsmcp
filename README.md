@@ -307,7 +307,7 @@ npm run dev 2>/dev/null                              # audit only
 
 ### Managing tokens
 
-`npm run token` is a wizard for the token list: add users with a role (`dev`, `qa`, `pm`) and environments (`test`, `prod`) chosen from the allowed values, issue tokens (1 to 90 days), list them by 8-character id, revoke and prune. It checks the whole file with the server's own parser before every write, so it never writes a list the server would refuse. `npm run token -- --help` lists the commands; `npm run token -- access` shows what each role may call per environment. Operating steps are in the [runbook](docs/runbook.md#issuing-a-token).
+`npm run token` is a wizard for the token list: add users with a role (`dev`, `qa`, `pm`) and environments (`test`, `prod`) chosen from the allowed values, issue tokens (1 to 90 days), list them by 8-character id, revoke and prune; `show` prints the file (or `--base64` for a Secret) to copy. Output is coloured in a terminal (`NO_COLOR` turns it off). It checks the whole file with the server's own parser before every write, so it never writes a list the server would refuse. `npm run token -- --help` lists the commands; `npm run token -- access` shows what each role may call per environment. Operating steps are in the [runbook](docs/runbook.md#issuing-a-token).
 
 ## Knowledge docs (`search_docs`)
 

@@ -91,6 +91,24 @@ describe('npm run token (flags)', () => {
     expect(t.err.join('\n').match(/smcp_/g)).toHaveLength(1);
   });
 
+  it('show prints the exact file (JSON or base64), plain, without raw tokens', async () => {
+    const t = setup();
+    await t.run('add-user', '--name', 'A', '--role', 'dev', '--env', 'test');
+    await t.run('issue', '--user', 'u_c0ffee00');
+    const file = readFileSync(t.file, 'utf8');
+    t.out.length = 0;
+    expect(await t.run('show')).toBe(0);
+    expect(t.out).toEqual([file.trimEnd()]);
+    t.out.length = 0;
+    expect(await t.run('show', '--base64')).toBe(0);
+    expect(Buffer.from(t.out[0]!, 'base64').toString()).toBe(file);
+    expect(t.out.join('\n')).not.toContain('smcp_');
+    expect(t.out.join('\n')).not.toContain(String.fromCharCode(27)); // no colour codes in copy-paste output
+    const empty = setup();
+    expect(await empty.run('show')).toBe(0);
+    expect(JSON.parse(empty.out[0]!)).toEqual({ users: [], tokens: [] });
+  });
+
   it('set-user changes access; access prints the policy table; --help prints usage', async () => {
     const t = setup();
     await t.run('add-user', '--id', 'a', '--name', 'A', '--role', 'pm', '--env', 'test');
@@ -107,7 +125,7 @@ describe('npm run token (flags)', () => {
 
 describe('npm run token (wizard)', () => {
   it('re-asks on invalid choices and writes a valid user + token', async () => {
-    const t = setup(['1', 'Bob Builder', 'SA', '9', '2', 'stage', 'test', '91', '14', '8']);
+    const t = setup(['1', 'Bob Builder', 'SA', '9', '2', 'stage', 'test', '91', '14', '8', '9']);
     expect(await main(['--file', t.file], t.io)).toBe(0);
     const list = parseTokenList(readFileSync(t.file, 'utf8'));
     expect(list.users).toEqual([{ id: 'u_c0ffee00', name: 'Bob Builder', role: 'qa', envs: ['test'] }]);
@@ -118,6 +136,7 @@ describe('npm run token (wizard)', () => {
     expect(e).toContain('--env must be one or more of: test, prod');
     expect(e).toContain('--days must be a whole number from 1 to 90');
     expect(e.match(/smcp_/g)).toHaveLength(1);
+    expect(t.out.join('\n')).toContain(readFileSync(t.file, 'utf8').trimEnd()); // menu item 8 printed the file
   });
 
   it('stops cleanly when input ends and never writes a partial user', async () => {
@@ -127,7 +146,7 @@ describe('npm run token (wizard)', () => {
   });
 
   it('refuses to start on an invalid existing file', async () => {
-    const t = setup(['8']);
+    const t = setup(['9']);
     writeFileSync(t.file, '{"users":[],"tokens":[],"x":1}');
     expect(await main(['--file', t.file], t.io)).toBe(2);
     expect(t.err.join('\n')).toContain('token list: (root) has unknown key');
