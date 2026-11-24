@@ -246,8 +246,11 @@ describe('canary sweep', () => {
 
 // 07-03 (R-39 safety argument): the Desktop bridge answers 429/503 as "busy, try again" and never resends. That is only safe while this
 // server answers /mcp with 503 never and with 429 only before any handler runs. A source pin, so a later change has to face this test.
-describe('/mcp never answers 503; 429 only from the limiter', () => {
-  const src = readFileSync(new URL('./http.ts', import.meta.url), 'utf8');
+// Inside Stryker's sandbox http.ts is the instrumented copy (each mutant is a second variant of the line), so the pin only applies to the
+// real source; the unit run (check jobs) enforces it.
+const httpSrc = readFileSync(new URL('./http.ts', import.meta.url), 'utf8');
+describe.skipIf(/stryMutAct_|stryCov_/.test(httpSrc))('/mcp never answers 503; 429 only from the limiter', () => {
+  const src = httpSrc;
   const lines = src.split('\n');
   it('every status 503 in http.ts is on the /readyz line (or a comment)', () => {
     const hits = lines.filter((l) => /\b503\b/.test(l) && !/^\s*(\/\/|\*|\/\*\*)/.test(l));
