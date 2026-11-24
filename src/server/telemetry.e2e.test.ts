@@ -215,10 +215,10 @@ describe('privacy canary: every path, every sink', () => {
       http_route: /^\/mcp$/,
       reason: /^(malformed|unknown|expired|revoked)$/,
       tool: /^(whoami|list_channels)$/,
-      outcome: /^(allowed|denied|error|ok)$/,
+      outcome: /^(allowed|denied|error|ok|blocked)$/, // blocked: the write-guard series, always present at 0 (07-01)
       env: /^(test|prod)$/,
       error_type: /^[a-z_]+$/,
-      operation: /^(channels|raw)$/,
+      operation: /^(channels|raw|write_guard)$/,
       le: /^(\+Inf|[0-9.]+)$/,
     };
     let seen = 0;

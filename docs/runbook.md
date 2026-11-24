@@ -74,6 +74,17 @@ Alert `StralforsMcpUpstreamErrors`: more than 20 % of vendor requests fail for 1
 3. If only one operation fails, it is probably a vendor-side issue for that operation. Check the vendor status channel before changing anything.
 4. Audit reason `busy`: the per-pod cap `MCP_UPSTREAM_CONCURRENCY` was full, usually because the vendor is slow and calls pile up. Fix the slowness first; raise the cap only with memory headroom. Reason `cancelled`: the caller cancelled or disconnected and the vendor request was aborted; a burst of them alongside `timeout` means clients give up before the vendor answers.
 
+## Write blocked
+
+Alert `StralforsMcpWriteBlocked` (critical): at least one request in the last 5 minutes was refused by the server's own write guard before it left the pod (`stralfors_requests_total{operation="write_guard",outcome="blocked"}`). One is enough to fire.
+
+What it means: the client-side allowlist held, so nothing reached the vendor, but something asked for a write that this release must never send. On a PROD release no tool can do that, so treat it as a security event. On a TEST release it is a write other than the send route.
+
+1. Do not silence the alert before you know the caller.
+2. Find the audit line: `log.type` `audit`, `outcome` `blocked`, `reason` `write_guard`. It names the user, the method and the masked path; its `trace_id` leads to the trace and the logs (`write.blocked`).
+3. If the user is `anonymous`, the attempt did not come from a tool call. Check what runs in the pod and which image digest is deployed.
+4. On PROD, revoke the caller's token ([Revoking a token](#revoking-a-token)) until the cause is known, and report the event to the owner of the deployment.
+
 ## Vendor heartbeat down
 
 Alert `StralforsMcpVendorDown`: `stralfors_up` has been 0 for 10 minutes (the probe runs every `MCP_HEARTBEAT_S`, default 60). Knowledge tools keep working; Stralfors-backed tools fail.

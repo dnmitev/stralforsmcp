@@ -655,6 +655,16 @@ describe.skipIf(!helmOk)('05-03a alerts and ServiceMonitor', () => {
       for (const x of sums) expect(x, r.alert).toMatch(/sum by \(namespace, job\) \(/);
     }
   });
+  it('07-01: StralforsMcpWriteBlocked fires on the first blocked write, critical, no env filter, no delay', () => {
+    const r = rules(render(on())).find((x) => x.alert === 'StralforsMcpWriteBlocked');
+    expect(r).toBeDefined();
+    // the series is initialised at 0 on boot, so increase() sees the first block; one release serves one env, so no env filter
+    expect(r!.expr).toBe('sum by (namespace, job) (increase(stralfors_requests_total{operation="write_guard",outcome="blocked"}[5m])) > 0');
+    expect(r!.for).toBeUndefined();
+    expect(r!.labels.severity).toBe('critical');
+    expect(r!.annotations.runbook_url).toBe('https://runbook.example.invalid/runbook.md#write-blocked');
+    expect(runbookSlugs.has('write-blocked')).toBe(true);
+  });
   it('labels the rule object with prometheusRule.labels', () => {
     expect(kind(render(on()), 'PrometheusRule')[0].metadata.labels.release).toBe('example');
   });

@@ -1,9 +1,10 @@
 // R-32: the PROD write guard verified through ALL layers at once: start() in PROD mode -> auth -> policy -> tool registry -> real client -> mTLS fake API.
 // Each layer has its own stub-based tests; this one fails if the wiring between them lets a method or path through.
 import { describe, expect, it } from 'vitest';
-import { loadConfig } from '../src/stralfors/index.ts';
+import { loadConfig, type StralforsClient } from '../src/stralfors/index.ts';
 import { connect } from './helpers/server.ts';
 import { useStartWorld } from './helpers/start.ts';
+import { get, memTelemetry } from './helpers/telemetry.ts';
 
 const W = useStartWorld();
 const A = '/rest/outputmanagement/apiomni';
@@ -79,5 +80,33 @@ describe.each([[false], [true]])('PROD, validate flag %s', (validate) => {
     for (const [label, run] of attempts) await expect(run(), label).rejects.toMatchObject({ kind: 'write_blocked' });
     expect(W.api.fake.apiRequests.length).toBe(before);
     await client.close();
+  });
+});
+
+// 07-01 AC-1a: the blocked-write series exists at 0 before any block (so increase() sees the first one), counts each block once,
+// with fixed labels only, and every count has its audit line (both come from the same onBlocked hook).
+describe('07-01 blocked writes are counted with their audit line', () => {
+  const BLOCKED = /^stralfors_requests_total\{([^}]*)\} (\d+)$/m;
+  const blockedSeries = (text: string) => text.split('\n').filter((l) => l.startsWith('stralfors_requests_total{') && l.includes('outcome="blocked"'));
+
+  it.each([['prod'], ['test']])('%s: 0 on boot, +1 per forced write, labels fixed, one audit line per block', async (envName) => {
+    const m = memTelemetry();
+    const made: StralforsClient[] = [];
+    const b = await W.boot(W.mcpEnv({ STRALFORS_ENV: envName, MCP_HEARTBEAT_S: '0' }), { telemetry: m.t, clientFactory: (o) => { const c = W.real(o); made.push(c); return c; } });
+    const scrape = async () => blockedSeries((await get(b.s.metricsPort, '/metrics')).text);
+
+    expect(await scrape()).toEqual(['stralfors_requests_total{operation="write_guard",outcome="blocked"} 0']);
+    const before = W.api.fake.apiRequests.length;
+    await expect(made[0]!.post(`${A}/v2/invoices/00000000-0000-0000-0000-000000000000/true?id=12345678901`, { x: 1 })).rejects.toMatchObject({ kind: 'write_blocked' });
+    await expect(made[0]!.delete(`${A}/v2/invoices/channels`)).rejects.toMatchObject({ kind: 'write_blocked' });
+    expect(W.api.fake.apiRequests.length).toBe(before);
+
+    const lines = await scrape();
+    expect(lines).toEqual(['stralfors_requests_total{operation="write_guard",outcome="blocked"} 2']);
+    // fixed labels only: no path, method text, query or id reaches the series
+    for (const l of lines) expect(BLOCKED.exec(l)![1]).toBe('operation="write_guard",outcome="blocked"');
+    const blocked = b.audit().filter((a) => a.reason === 'write_guard');
+    expect(blocked).toHaveLength(2);
+    for (const a of blocked) expect(a).toMatchObject({ outcome: 'blocked', env: envName });
   });
 });

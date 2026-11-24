@@ -159,6 +159,9 @@ export function createTelemetry(o: TelemetryOptions): Telemetry {
 
 const kindOf = (e: unknown): AuditReason => (e instanceof StralforsError ? e.kind : 'error');
 
+/** Labels of a write refused by the client guard: fixed values only, never the method or path the caller asked for. */
+export const BLOCKED_WRITE = { operation: 'write_guard', outcome: 'blocked' } as const;
+
 /** The `instrument` hook of createClient: one CLIENT span and the upstream metrics per request. Never a path, query or id. */
 export function upstreamInstrument(t: Telemetry): NonNullable<CreateClientOptions['instrument']> {
   return (info, run) =>
