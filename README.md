@@ -231,7 +231,7 @@ Prerequisites: Node 24+, `npm ci` run once in this checkout, and your TEST crede
 
    ```sh
    npm run dev:token
-   export STRALFORSMCP_TOKEN=<the token printed above>   # this shell only, never in a file in this repository
+   read -rs STRALFORSMCP_TOKEN && export STRALFORSMCP_TOKEN   # paste the token printed above, then Enter; nothing is echoed or kept in shell history
    ```
 
 3. **Start the server** (leave it running; use a second terminal, with `STRALFORSMCP_TOKEN` exported there too, for the rest). It restarts when a source file changes (`node --watch`).

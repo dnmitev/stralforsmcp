@@ -53,6 +53,18 @@ describe('PROD policy, validate flag on', () => {
   });
 });
 
+// 07-03 R-33: the vendor (.NET) binds query keys case-insensitively and takes the first value, so a `TEST` key next to `test=true` could turn the
+// dry run into a real create while this guard, reading only the lower-case key, saw `true`. Any spelling of the key counts.
+describe('R-33 the dry-run flag cannot be smuggled with another key casing', () => {
+  const smuggled = [`${VALIDATE}?TEST=false&test=true`, `${VALIDATE}?test=true&TEST=false`, `${VALIDATE}?Test=false&test=true`, `${VALIDATE}?test=true&tEsT=true`, `${VALIDATE}?TEST=true`];
+  it.each(smuggled)('PROD (validate on): PUT %s denied', (path) => expect(isAllowed({ ...prod, prodValidateEnabled: true }, 'PUT', path)).toBe(false));
+  it.each(smuggled)('TEST: PUT %s denied', (path) => expect(isAllowed(test, 'PUT', path)).toBe(false));
+  it('the plain dry run still opens', () => {
+    expect(isAllowed({ ...prod, prodValidateEnabled: true }, 'PUT', `${VALIDATE}?test=true`)).toBe(true);
+    expect(isAllowed(test, 'PUT', `${VALIDATE}?test=true`)).toBe(true);
+  });
+});
+
 describe('PROD near-miss paths are denied', () => {
   const p = { ...prod, prodValidateEnabled: true };
   it.each([

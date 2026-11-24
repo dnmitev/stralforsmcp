@@ -13,6 +13,7 @@ export const LINES = {
   url: 'stralforsmcp-bridge: MCP_URL must be https, or http on localhost',
   upstream: 'stralforsmcp-bridge: upstream error',
   auth: 'stralforsmcp-bridge: authorization failed',
+  busy: (status: number) => `stralforsmcp-bridge: upstream busy (${status})`,
 };
 
 let built: Promise<{ dir: string; file: string; metafile: { inputs: Record<string, unknown>; outputs: Record<string, { imports: { path: string; kind: string; external?: boolean }[] }> } }> | undefined;
@@ -90,6 +91,27 @@ export async function recordingUpstream() {
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   const port = (server.address() as AddressInfo).port;
   return { port, url: `http://127.0.0.1:${port}/mcp`, seen, close: () => new Promise<void>((r) => server.close(() => r())) };
+}
+
+/** Upstream that answers the n-th JSON-RPC request with statuses[n] (200 = a valid result); counts every POST it receives. */
+export async function scriptedUpstream(statuses: number[]) {
+  const posts: { id: unknown; status: number }[] = [];
+  const server = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (c: Buffer) => chunks.push(c));
+    req.on('end', () => {
+      let id: unknown;
+      try { id = (JSON.parse(Buffer.concat(chunks).toString('utf8')) as { id?: unknown }).id; } catch { /* not JSON */ }
+      if (id === undefined) { res.writeHead(202).end(); return; }
+      const status = statuses[posts.length] ?? 200;
+      posts.push({ id, status });
+      if (status !== 200) { res.writeHead(status, { 'content-type': 'text/plain', 'retry-after': '1' }).end('secret upstream body'); return; }
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ jsonrpc: '2.0', id, result: { tools: [] } }));
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const port = (server.address() as AddressInfo).port;
+  return { url: `http://127.0.0.1:${port}/mcp`, posts, close: () => new Promise<void>((r) => server.close(() => r())) };
 }
 
 /** Test-owned TCP listener that accepts and immediately destroys every connection (a transport failure that needs no assumption about free ports). */
