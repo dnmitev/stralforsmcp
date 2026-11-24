@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "stralforsmcp",
   "display_name": "Stralfors MCP",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Connects Claude Desktop to a hosted Stralfors MCP server using your personal token.",
   "author": { "name": "stralforsmcp contributors" },
   "server": {

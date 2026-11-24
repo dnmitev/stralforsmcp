@@ -2,7 +2,7 @@ apiVersion: v2
 name: stralforsmcp
 description: Hosted MCP server for the Stralfors API. Reads every credential from Kubernetes Secrets the cluster owner creates.
 type: application
-version: 0.1.2
+version: 0.2.0
 # appVersion follows package.json (test/release-version.test.ts). `version` is the chart's own version: bump it when
 # templates or values change (docs/releasing.md).
-appVersion: "0.3.0"
+appVersion: "0.4.0"
