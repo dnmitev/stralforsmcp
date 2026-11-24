@@ -16,6 +16,7 @@
     "dev:debug": "node --watch --inspect --env-file=.env.local src/server/main.ts",
     "dev:debug:brk": "node --watch --inspect-brk --env-file=.env.local src/server/main.ts",
     "dev:token": "node --env-file=.env.local scripts/dev-token.ts",
+    "token": "node scripts/token.ts",
     "mcpb:build": "node scripts/build-mcpb.ts",
     "live:channels": "node scripts/live-channels.ts",
     "live:read-check": "node scripts/live-read-check.ts",

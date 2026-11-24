@@ -15,30 +15,30 @@ Every command uses placeholders: replace `<release>`, `<namespace>` and file pat
 
 Tokens are `smcp_` strings. Only the SHA-256 hash is stored, in the token list Secret. The raw token is shown once and cannot be recovered.
 
-1. Generate a token and its hash on a trusted machine, from a checkout of this repository (`npm ci` once):
+Use the token wizard from a checkout of this repository (`npm ci` once) on a trusted machine. It works on a local copy of the token list and refuses to write anything the server would reject (unknown role or environment, more than 90 days, duplicate or unknown ids). An existing file that is already invalid is refused with the same message the server logs (for example `token list: users[0].role is invalid`) and left unchanged.
+
+1. Get the current list into a local file (for example from the Secret behind `tokenList.secretName`; keep it mode 600 and delete it afterwards).
+2. Run the wizard and follow the menu, or use the commands directly:
 
    ```sh
-   node -e "import('./src/auth/index.ts').then(({generateToken,hashToken})=>{const t=generateToken();console.log('token (give to the user once):',t);console.log('hash (goes in the list):',hashToken(t))})"
+   npm run token -- --file token-list.json                       # interactive
+   npm run token -- access                                       # what each role may call per environment
+   npm run token -- add-user --file token-list.json --id alice --name "Alice Example" --role dev --env test
+   npm run token -- issue --file token-list.json --user alice --days 30
+   npm run token -- list --file token-list.json                  # 8-character token ids, never hashes
    ```
 
-2. Add the user (if new) and the token to the token list, for example:
-
-   ```json
-   {
-     "users": [{ "id": "alice", "name": "Alice Example", "role": "dev", "envs": ["test"] }],
-     "tokens": [{ "hash": "<hash>", "userId": "alice", "created": "2030-01-01T00:00:00Z", "expires": "2030-03-01T00:00:00Z" }]
-   }
-   ```
-
-   `expires` must be after `created` and at most 90 days later. Roles and environments are explained in ADR 0007.
-3. Update the Secret behind `tokenList.secretName` from the edited file (`kubectl create secret generic ... --dry-run=client -o yaml | kubectl apply -f -`, or your secret store).
+   `issue` prints the raw token once on stderr. Roles are `dev`, `qa`, `pm`; environments `test`, `prod` (ADR 0007). Only `dev` may use `prod`; on `test` all roles see the same tools.
+3. Update the Secret behind `tokenList.secretName` from the file (`kubectl create secret generic ... --from-file=token-list.json=<file> --dry-run=client -o yaml | kubectl apply -f -`, or your secret store).
 4. Wait for the reload (see latency below) and check `mcp_token_list_reloads_total{outcome="ok"}` increased and `mcp_token_list_stale_seconds` is 0.
 5. Send the raw token to the user over a private channel. Tell them to keep it in their client's secret store.
 
+Editing the JSON by hand still works (format in ADR 0006), but a wrong value stops new pods from starting.
+
 ## Revoking a token
 
-1. Set `"revoked": true` on the token entry. Do not delete it in the same edit: a revoked entry answers 401 for that token, and keeping it for a while leaves a trace of why.
-2. Update the Secret as above. Delete entries (and users with no tokens) in a later edit.
+1. `npm run token -- revoke --file token-list.json --token <id>` (one token, id from `list`) or `--user <id>` (all tokens of a user). The entry is kept with `"revoked": true`: a revoked entry answers 401 for that token and leaves a trace of why.
+2. Update the Secret as above. Later, `npm run token -- prune --file token-list.json [--older-than-days N] [--users]` removes tokens that expired at least N days ago and, with `--users`, users left without tokens.
 3. Confirm the reload counter increased with `outcome="ok"`.
 
 **Latency.** The server re-reads the list every 60 seconds. A revoked token keeps working until the pod's next successful reload, plus the time Kubernetes takes to propagate the Secret into the pod (up to about a minute or more). Plan for roughly two minutes. To skip the wait, restart the pods (`kubectl rollout restart deploy/<release>-stralforsmcp -n <namespace>`) and wait for `kubectl rollout status deploy/<release>-stralforsmcp -n <namespace>`: the revocation applies as each pod is replaced.
