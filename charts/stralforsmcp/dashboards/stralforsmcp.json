@@ -115,7 +115,7 @@
       "id": 2,
       "type": "timeseries",
       "title": "Vendor error ratio",
-      "description": "Alert StralforsMcpUpstreamErrors above 20 % for 10 m",
+      "description": "Alert StralforsMcpUpstreamErrors above 20 % for 10 m; 0 while no error has happened",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -133,7 +133,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (namespace, job) (rate(stralfors_requests_total{outcome=\"error\",namespace=~\"$namespace\",job=~\"$job\"}[5m])) / sum by (namespace, job) (rate(stralfors_requests_total{namespace=~\"$namespace\",job=~\"$job\"}[5m]))",
+          "expr": "(sum by (namespace, job) (rate(stralfors_requests_total{outcome=\"error\",namespace=~\"$namespace\",job=~\"$job\"}[5m])) or sum by (namespace, job) (rate(stralfors_requests_total{namespace=~\"$namespace\",job=~\"$job\"}[5m])) * 0) / sum by (namespace, job) (rate(stralfors_requests_total{namespace=~\"$namespace\",job=~\"$job\"}[5m]))",
           "legendFormat": "{{namespace}}"
         }
       ],
@@ -355,7 +355,7 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "d",
+          "unit": "none",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -372,7 +372,8 @@
                 "value": 30
               }
             ]
-          }
+          },
+          "decimals": 0
         },
         "overrides": []
       },
@@ -461,7 +462,7 @@
       "id": 11,
       "type": "timeseries",
       "title": "HTTP 5xx ratio",
-      "description": "Alert StralforsMcpServerErrors above 5 %",
+      "description": "Alert StralforsMcpServerErrors above 5 %; 0 while no 5xx has happened",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -479,7 +480,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (namespace, job) (rate(http_server_request_duration_count{http_response_status_code=~\"5..\",namespace=~\"$namespace\",job=~\"$job\"}[5m])) / sum by (namespace, job) (rate(http_server_request_duration_count{namespace=~\"$namespace\",job=~\"$job\"}[5m]))",
+          "expr": "(sum by (namespace, job) (rate(http_server_request_duration_count{http_response_status_code=~\"5..\",namespace=~\"$namespace\",job=~\"$job\"}[5m])) or sum by (namespace, job) (rate(http_server_request_duration_count{namespace=~\"$namespace\",job=~\"$job\"}[5m])) * 0) / sum by (namespace, job) (rate(http_server_request_duration_count{namespace=~\"$namespace\",job=~\"$job\"}[5m]))",
           "legendFormat": "{{namespace}}"
         }
       ],

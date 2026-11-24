@@ -762,6 +762,11 @@ describe.skipIf(!helmOk)('07-02 alertLabels and Grafana dashboard', () => {
     const titles = (json(render(dash())).panels as Obj[]).map((p) => p.title);
     for (const t of ['Vendor health', 'Vendor error ratio', 'Blocked writes', 'Tool calls by outcome', 'Tool call p95 duration', 'Auth rejections', 'Rate limited', 'Certificate expiry (days)', 'Token list stale', 'Credential reload failures', 'HTTP 5xx ratio', 'Restarts']) expect(titles, t).toContain(t);
   });
+  it('certificate expiry is a plain number of days (Grafana duration units round it into weeks)', () => {
+    const p = (json(render(dash())).panels as Obj[]).find((x) => x.title === 'Certificate expiry (days)')!;
+    expect(p.fieldConfig.defaults.unit).toBe('none');
+    expect(p.fieldConfig.defaults.decimals).toBe(0);
+  });
   it('AC-1: the ConfigMap stays under 1 MiB and helm lint --strict passes', () => {
     expect(JSON.stringify(cm(render(dash()))[0].data).length).toBeLessThan(1024 * 1024);
     const r = spawnSync(HELM, ['lint', '--strict', CHART, '-f', valuesFile(dash())], { encoding: 'utf8' });
