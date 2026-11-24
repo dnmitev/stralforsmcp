@@ -20,6 +20,7 @@ function setup(lines?: string[]) {
     err: (s: string) => err.push(s),
     now: () => NOW,
     gen,
+    rand: () => 'c0ffee00',
     ...(lines && { input: Readable.from(lines.map((l) => `${l}\n`)) }),
   };
   const run = (...args: string[]) => main([...args, '--file', file], io);
@@ -38,9 +39,13 @@ describe('npm run token (flags)', () => {
     const t = setup();
     expect(await t.run('add-user', '--id', 'a', '--name', 'A', '--role', 'dev', '--env', 'stage')).toBe(1);
     expect(await t.run('add-user', '--id', 'a', '--name', 'A', '--role', 'dev')).toBe(1);
-    expect(await t.run('add-user', '--name', 'A', '--role', 'dev', '--env', 'test')).toBe(1);
-    expect(t.err.join('\n')).toContain('--id is required');
+    expect(await t.run('add-user', '--role', 'dev', '--env', 'test')).toBe(1);
+    expect(t.err.join('\n')).toContain('--name is required');
     expect(await t.run('add-user', '--id', 'a', '--name', 'A', '--role', 'dev', '--env', 'test')).toBe(0);
+    expect(await t.run('add-user', '--id', 'a', '--name', 'A2', '--role', 'dev', '--env', 'test')).toBe(1);
+    expect(t.err.join('\n')).toContain('user a already exists');
+    expect(await t.run('add-user', '--name', 'Gen', '--role', 'pm', '--env', 'test')).toBe(0);
+    expect(t.out.join('\n')).toContain('added user u_c0ffee00');
     expect(await t.run('issue', '--user', 'a', '--days', '91')).toBe(1);
     expect(await t.run('list', '--bogus')).toBe(1);
     expect(await t.run('nope')).toBe(1);
@@ -61,6 +66,7 @@ describe('npm run token (flags)', () => {
     const t = setup();
     expect(await t.run('add-user', '--id', 'alice', '--name', 'Alice', '--role', 'qa', '--env', 'test', '--env', 'prod')).toBe(0);
     expect(await t.run('issue', '--user', 'alice', '--days', '1')).toBe(0);
+    expect(t.out.join('\n')).toMatch(/issued token [0-9a-f]{8} for user alice \(Alice\), role qa, environments test, prod, expires /);
     const raw = t.err.join('\n').match(/smcp_\S+/)![0];
     const list = parseTokenList(readFileSync(t.file, 'utf8'));
     expect(list.users[0]).toMatchObject({ role: 'qa', envs: ['test', 'prod'] });
@@ -101,10 +107,11 @@ describe('npm run token (flags)', () => {
 
 describe('npm run token (wizard)', () => {
   it('re-asks on invalid choices and writes a valid user + token', async () => {
-    const t = setup(['1', 'bob', 'Bob Builder', 'SA', '9', '2', 'stage', 'test', '91', '14', '8']);
+    const t = setup(['1', 'Bob Builder', 'SA', '9', '2', 'stage', 'test', '91', '14', '8']);
     expect(await main(['--file', t.file], t.io)).toBe(0);
     const list = parseTokenList(readFileSync(t.file, 'utf8'));
-    expect(list.users).toEqual([{ id: 'bob', name: 'Bob Builder', role: 'qa', envs: ['test'] }]);
+    expect(list.users).toEqual([{ id: 'u_c0ffee00', name: 'Bob Builder', role: 'qa', envs: ['test'] }]);
+    expect(t.out.join('\n')).toMatch(/issued token [0-9a-f]{8} for user u_c0ffee00 \(Bob Builder\), role qa, environments test, expires 2030-01-24T00:00:00.000Z/);
     expect(Date.parse(list.tokens[0]!.expires) - NOW).toBe(14 * 86_400_000);
     const e = t.err.join('\n');
     expect(e).toContain('choose 1-3');

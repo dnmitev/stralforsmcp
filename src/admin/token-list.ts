@@ -2,6 +2,7 @@
 // before it is returned, so a list built here is always one the server accepts.
 import { ENVS, generateToken, hashToken, MAX_TOKEN_LIFETIME_MS, parseTokenList, ROLES, type Env, type Role, type TokenList, type TokenListUser } from '../auth/index.ts';
 import { decide, type Access } from '../policy/index.ts';
+import { randomBytes } from 'node:crypto';
 
 const DAY = 86_400_000;
 export const DEFAULT_DAYS = 30;
@@ -46,11 +47,21 @@ const findUser = (list: TokenList, id: string): TokenListUser => {
   return u;
 };
 
-export function addUser(list: TokenList, u: TokenListUser): TokenList {
-  const id = nonEmpty(u.id, '--id');
+/** Random 'u_' + 8 hex characters, unique in the list. Carries nothing about the person. */
+export function newUserId(list: TokenList, rand: () => string = () => randomBytes(4).toString('hex')): string {
+  for (let i = 0; i < 100; i++) {
+    const id = `u_${rand()}`;
+    if (!list.users.some((u) => u.id === id)) return id;
+  }
+  throw new InputError('could not find a free user id');
+}
+
+/** Adds a user; without an id one is generated (newUserId). Returns the new list and the id used. */
+export function addUser(list: TokenList, u: Omit<TokenListUser, 'id'> & { id?: string }, rand?: () => string): { list: TokenList; id: string } {
+  const id = u.id === undefined ? newUserId(list, rand) : nonEmpty(u.id, '--id');
   const name = nonEmpty(u.name, '--name');
   if (list.users.some((x) => x.id === id)) throw new InputError(`user ${id} already exists`);
-  return checked({ ...list, users: [...list.users, { id, name, role: u.role, envs: [...u.envs] }] });
+  return { list: checked({ ...list, users: [...list.users, { id, name, role: u.role, envs: [...u.envs] }] }), id };
 }
 
 export function setUser(list: TokenList, id: string, patch: Partial<Omit<TokenListUser, 'id'>>): TokenList {
@@ -62,13 +73,16 @@ export function setUser(list: TokenList, id: string, patch: Partial<Omit<TokenLi
   });
 }
 
-export function issueToken(list: TokenList, userId: string, days: number, now: number, gen: () => string = generateToken): { list: TokenList; raw: string; id: string } {
-  findUser(list, userId);
+export interface Issued { list: TokenList; raw: string; id: string; user: TokenListUser; expires: string }
+
+export function issueToken(list: TokenList, userId: string, days: number, now: number, gen: () => string = generateToken): Issued {
+  const user = findUser(list, userId);
   parseDays(String(days));
   const raw = gen();
   const hash = hashToken(raw);
-  const next = checked({ ...list, tokens: [...list.tokens, { hash, userId, created: new Date(now).toISOString(), expires: new Date(now + days * DAY).toISOString() }] });
-  return { list: next, raw, id: tokenId(hash) };
+  const expires = new Date(now + days * DAY).toISOString();
+  const next = checked({ ...list, tokens: [...list.tokens, { hash, userId, created: new Date(now).toISOString(), expires }] });
+  return { list: next, raw, id: tokenId(hash), user: { ...user, envs: [...user.envs] }, expires };
 }
 
 export function revokeToken(list: TokenList, id: string): { list: TokenList; count: number } {

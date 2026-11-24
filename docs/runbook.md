@@ -23,12 +23,12 @@ Use the token wizard from a checkout of this repository (`npm ci` once) on a tru
    ```sh
    npm run token -- --file token-list.json                       # interactive
    npm run token -- access                                       # what each role may call per environment
-   npm run token -- add-user --file token-list.json --id alice --name "Alice Example" --role dev --env test
-   npm run token -- issue --file token-list.json --user alice --days 30
+   npm run token -- add-user --file token-list.json --name "Alice Example" --role dev --env test   # prints the generated id, e.g. u_3f9c2a71
+   npm run token -- issue --file token-list.json --user u_3f9c2a71 --days 30
    npm run token -- list --file token-list.json                  # 8-character token ids, never hashes
    ```
 
-   `issue` prints the raw token once on stderr. Roles are `dev`, `qa`, `pm`; environments `test`, `prod` (ADR 0007). Only `dev` may use `prod`; on `test` all roles see the same tools.
+   User ids are generated (`u_` plus 8 random hex characters, nothing about the person); `--id` sets one explicitly. `issue` prints the token id, the user's id, name, role, environments and expiry, and the raw token once on stderr. Roles are `dev`, `qa`, `pm`; environments `test`, `prod` (ADR 0007). Only `dev` may use `prod`; on `test` all roles see the same tools.
 3. Update the Secret behind `tokenList.secretName` from the file (`kubectl create secret generic ... --from-file=token-list.json=<file> --dry-run=client -o yaml | kubectl apply -f -`, or your secret store).
 4. Wait for the reload (see latency below) and check `mcp_token_list_reloads_total{outcome="ok"}` increased and `mcp_token_list_stale_seconds` is 0.
 5. Send the raw token to the user over a private channel. Tell them to keep it in their client's secret store.

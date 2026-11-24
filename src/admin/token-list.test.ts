@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { hashToken, parseTokenList, type TokenList } from '../auth/index.ts';
 import {
-  accessTable, addUser, DEFAULT_DAYS, emptyList, InputError, issueToken, listView, MAX_DAYS, parseDays, parseEnvs, parseRole,
+  accessTable, addUser, DEFAULT_DAYS, newUserId, emptyList, InputError, issueToken, listView, MAX_DAYS, parseDays, parseEnvs, parseRole,
   prune, revokeToken, revokeUser, setUser, tokenId,
 } from './token-list.ts';
 
@@ -11,7 +11,7 @@ let n = 0;
 const gen = () => `smcp_${String(++n).padStart(43, 'A')}`;
 
 const withUser = (id = 'alice', role: 'dev' | 'qa' | 'pm' = 'dev'): TokenList =>
-  addUser(emptyList(), { id, name: 'Alice Example', role, envs: ['test'] });
+  addUser(emptyList(), { id, name: 'Alice Example', role, envs: ['test'] }).list;
 
 describe('input validators', () => {
   it('accepts only the server roles and names them on refusal', () => {
@@ -43,6 +43,17 @@ describe('users', () => {
     expect(() => parseTokenList(JSON.stringify(l))).not.toThrow();
   });
 
+  it('generates a random u_ id when none is given, unique in the list', () => {
+    const ids = ['aaaaaaaa', 'aaaaaaaa', 'bbbbbbbb'];
+    const rand = () => ids.shift()!;
+    const a = addUser(emptyList(), { name: 'A', role: 'qa', envs: ['test'] }, rand);
+    expect(a.id).toBe('u_aaaaaaaa');
+    const b = addUser(a.list, { name: 'B', role: 'qa', envs: ['test'] }, rand); // first draw collides
+    expect(b.id).toBe('u_bbbbbbbb');
+    expect(newUserId(emptyList())).toMatch(/^u_[0-9a-f]{8}$/);
+    expect(() => newUserId(a.list, () => 'aaaaaaaa')).toThrow('could not find a free user id');
+  });
+
   it('refuses a duplicate id, a blank id or a blank name', () => {
     expect(() => addUser(withUser(), { id: 'alice', name: 'X', role: 'qa', envs: ['test'] })).toThrow('user alice already exists');
     expect(() => addUser(emptyList(), { id: ' ', name: 'X', role: 'qa', envs: ['test'] })).toThrow('--id must not be empty');
@@ -54,7 +65,7 @@ describe('users', () => {
   });
 
   it('changes access of an existing user without touching others', () => {
-    const l = addUser(withUser(), { id: 'bob', name: 'Bob', role: 'pm', envs: ['test'] });
+    const l = addUser(withUser(), { id: 'bob', name: 'Bob', role: 'pm', envs: ['test'] }).list;
     const u = setUser(l, 'alice', { role: 'qa', envs: ['test', 'prod'] });
     expect(u.users[0]).toEqual({ id: 'alice', name: 'Alice Example', role: 'qa', envs: ['test', 'prod'] });
     expect(u.users[1]).toEqual(l.users[1]);
@@ -65,7 +76,9 @@ describe('users', () => {
 
 describe('tokens', () => {
   it('issues a token: raw returned once, only its hash stored, bounded expiry', () => {
-    const { list, raw, id } = issueToken(withUser(), 'alice', 30, NOW, gen);
+    const { list, raw, id, user, expires } = issueToken(withUser(), 'alice', 30, NOW, gen);
+    expect(user).toEqual({ id: 'alice', name: 'Alice Example', role: 'dev', envs: ['test'] });
+    expect(expires).toBe(new Date(NOW + 30 * DAY).toISOString());
     expect(raw).toMatch(/^smcp_/);
     const t = list.tokens[0]!;
     expect(t.hash).toBe(hashToken(raw));
@@ -108,7 +121,7 @@ describe('tokens', () => {
   });
 
   it('prunes tokens expired at least N days ago, and users only on request', () => {
-    let l = addUser(withUser(), { id: 'bob', name: 'Bob', role: 'qa', envs: ['test'] });
+    let l = addUser(withUser(), { id: 'bob', name: 'Bob', role: 'qa', envs: ['test'] }).list;
     l = issueToken(l, 'alice', 1, NOW - 10 * DAY, gen).list; // expired 9 days ago
     l = issueToken(l, 'alice', 30, NOW, gen).list; // active
     l = revokeToken(l, tokenId(l.tokens[1]!.hash)).list; // revoked, not expired: kept as a trace

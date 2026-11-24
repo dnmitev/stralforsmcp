@@ -8,13 +8,13 @@ import { createInterface } from 'node:readline';
 import { parseArgs } from 'node:util';
 import { ENVS, parseTokenList, ROLES, type TokenList } from '../src/auth/index.ts';
 import {
-  accessTable, addUser, emptyList, InputError, issueToken, listView, parseDays, parseEnvs, parseRole, prune, revokeToken, revokeUser, setUser,
+  accessTable, addUser, emptyList, InputError, type Issued, issueToken, listView, parseDays, parseEnvs, parseRole, prune, revokeToken, revokeUser, setUser,
 } from '../src/admin/token-list.ts';
 import { ConfigError } from '../src/stralfors/errors.ts';
 
 export const USAGE = `usage: npm run token -- [command] [--file token-list.json] [flags]
   (no command)                                   interactive wizard
-  add-user  --id ID --name NAME --role ${ROLES.join('|')} --env ${ENVS.join('|')} [--env ...]
+  add-user  --name NAME --role ${ROLES.join('|')} --env ${ENVS.join('|')} [--env ...] [--id ID]   (id generated when omitted)
   set-user  --id ID [--name NAME] [--role ROLE] [--env ENV ...]
   issue     --user ID [--days 1-90, default 30]
   list
@@ -32,6 +32,8 @@ export interface Io {
   input?: NodeJS.ReadableStream;
   now?: () => number;
   gen?: () => string;
+  /** random part of generated user ids (tests) */
+  rand?: () => string;
 }
 
 function load(path: string): TokenList {
@@ -69,8 +71,9 @@ function printAccess(out: Io['out']): void {
   out('  write = send_invoice (test only); lookup = channel_lookup (test only). Stralfors scopes of the profile apply on top.');
 }
 
-function issued(io: Io, r: { raw: string; id: string }): void {
-  io.err(`token id ${r.id} (shown once, give it to the user over a private channel): ${r.raw}`);
+function issued(io: Io, r: Issued): void {
+  io.out(`issued token ${r.id} for user ${r.user.id} (${r.user.name}), role ${r.user.role}, environments ${r.user.envs.join(', ')}, expires ${r.expires}`);
+  io.err(`token (shown once, give it to the user over a private channel): ${r.raw}`);
 }
 
 const need = (v: string | undefined, flag: string): string => {
@@ -89,9 +92,12 @@ function runCommand(cmd: string, f: Record<string, string | string[] | boolean |
     case 'access':
       printAccess(io.out);
       return;
-    case 'add-user':
-      list = addUser(list, { id: need(s('id'), '--id'), name: need(s('name'), '--name'), role: parseRole(need(s('role'), '--role')), envs: parseEnvs(envs ?? []) });
+    case 'add-user': {
+      const r = addUser(list, { id: s('id'), name: need(s('name'), '--name'), role: parseRole(need(s('role'), '--role')), envs: parseEnvs(envs ?? []) }, io.rand);
+      list = r.list;
+      io.out(`added user ${r.id}`);
       break;
+    }
     case 'set-user': {
       const role = s('role');
       list = setUser(list, need(s('id'), '--id'), { name: s('name'), role: role === undefined ? undefined : parseRole(role), envs: envs === undefined ? undefined : parseEnvs(envs) });
@@ -162,7 +168,8 @@ async function wizard(path: string, io: Io, now: number): Promise<void> {
   const pickEnvs = () => retry(async () => parseEnvs((await ask(`environments (${ENVS.join(', ')}; comma-separated) [test]:`) || 'test').split(',').map((x) => x.trim()).filter(Boolean)));
   const pickUser = async (list: TokenList) => {
     if (!list.users.length) throw new InputError('no users yet: add one first');
-    return choose('user:', list.users.map((u) => u.id));
+    const labels = list.users.map((u) => `${u.id}  ${u.name} (${u.role}; ${u.envs.join(', ')})`);
+    return list.users[labels.indexOf(await choose('user:', labels))]!.id;
   };
   try {
     for (;;) {
@@ -173,13 +180,12 @@ async function wizard(path: string, io: Io, now: number): Promise<void> {
         if (what === 'list') { printList(list, now, io.out); continue; }
         if (what === 'show access') { printAccess(io.out); continue; }
         if (what === 'add user and issue token') {
-          const id = await retry(async () => { const v = await ask('user id:'); if (!v) throw new InputError('--id must not be empty'); if (list.users.some((u) => u.id === v)) throw new InputError(`user ${v} already exists`); return v; });
           const name = await retry(async () => { const v = await ask('full name:'); if (!v) throw new InputError('--name must not be empty'); return v; });
           printAccess(io.out);
           const role = await choose('role:', ROLES);
-          list = addUser(list, { id, name, role, envs: await pickEnvs() });
+          const added = addUser(list, { name, role, envs: await pickEnvs() }, io.rand);
           const days = await retry(async () => parseDays((await ask('days valid (1-90) [30]:')) || undefined));
-          const r = issueToken(list, id, days, now, io.gen);
+          const r = issueToken(added.list, added.id, days, now, io.gen);
           save(path, r.list);
           issued(io, r);
         } else if (what === 'issue token') {
