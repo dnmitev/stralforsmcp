@@ -320,7 +320,7 @@ npm run token -- list --file token-list.json                # token ids, never h
 npm run token -- revoke --file token-list.json --token <token id>
 ```
 
-The server re-reads the list every 60 s, so a new token works within a minute, without a restart. Then connect a client with the token: Claude Code as in [Local run against TEST](#local-run-against-test) step 5 (use your server's URL), Claude Desktop through the [extension](#claude-desktop-extension). Operator steps, including Secrets and rotation: [Issuing a token](docs/runbook.md#issuing-a-token) and [Revoking a token](docs/runbook.md#revoking-a-token) in the runbook.
+No restart is needed: the server re-reads the list every 60 s. With a local file a new token works within a minute; with a Kubernetes Secret, the kubelet first has to sync the mounted file (usually up to a minute or two), so allow a few minutes before treating a 401 as an error. Then connect a client with the token: Claude Code as in [Local run against TEST](#local-run-against-test) step 5 (use your server's URL), Claude Desktop through the [extension](#claude-desktop-extension). Operator steps, including Secrets and rotation: [Issuing a token](docs/runbook.md#issuing-a-token) and [Revoking a token](docs/runbook.md#revoking-a-token) in the runbook.
 
 ## Knowledge docs (`search_docs`)
 
