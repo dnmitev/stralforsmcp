@@ -180,7 +180,7 @@ describe('AC-4 stdout is protocol only', () => {
 // 07-03 R-39: a busy or briefly unavailable server (429 from the rate limiter, 503 from an ingress without a ready pod) must not end the
 // Desktop session. The request is answered with a fixed error and is never resent by the bridge (a tools/call may be send_invoice, ADR 0028).
 describe('R-39 busy upstream', () => {
-  const BUSY = 'server busy or unavailable, try again';
+  const BUSY = 'server busy or unavailable; try again, but check whether a send went through (track_document) before repeating it';
 
   it('429 then 503: each request gets the busy error, the bridge keeps running, the next request succeeds, one POST per request', async () => {
     const up = await scriptedUpstream([429, 503, 200]);

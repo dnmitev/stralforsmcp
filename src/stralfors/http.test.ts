@@ -100,12 +100,15 @@ describe('R5 HTTP core', () => {
   it('PUT sends JSON content-type and body, query values are encoded', async () => {
     fake = await startFakeApi({ pki, api: ping });
     const { client } = testClient(pki, fake);
-    await client.put(`${BASE}/v2/invoices/validate`, { a: 1 }, { query: { test: 'true', q: 'a b&c' } });
-    const r = fake.apiRequests[0]!;
-    expect(r.method).toBe('PUT');
-    expect(r.url).toBe(`${BASE}/v2/invoices/validate?test=true&q=a%20b%26c`);
-    expect(r.headers['content-type']).toContain('application/json');
-    expect(JSON.parse(r.body)).toEqual({ a: 1 });
+    // the dry run admits exactly `?test=true` (R-45), so the encoding of extra query values is checked on a GET
+    await client.put(`${BASE}/v2/invoices/validate`, { a: 1 }, { query: { test: 'true' } });
+    await client.get(`${BASE}/v2/invoices/channels`, { query: { q: 'a b&c' } });
+    const [r, g] = fake.apiRequests;
+    expect(r!.method).toBe('PUT');
+    expect(r!.url).toBe(`${BASE}/v2/invoices/validate?test=true`);
+    expect(r!.headers['content-type']).toContain('application/json');
+    expect(JSON.parse(r!.body)).toEqual({ a: 1 });
+    expect(g!.url).toBe(`${BASE}/v2/invoices/channels?q=a%20b%26c`);
   });
 
   it('path guard', async () => {

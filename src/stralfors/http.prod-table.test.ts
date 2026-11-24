@@ -56,7 +56,8 @@ describe('PROD policy, validate flag on', () => {
 // 07-03 R-33: the vendor (.NET) binds query keys case-insensitively and takes the first value, so a `TEST` key next to `test=true` could turn the
 // dry run into a real create while this guard, reading only the lower-case key, saw `true`. Any spelling of the key counts.
 describe('R-33 the dry-run flag cannot be smuggled with another key casing', () => {
-  const smuggled = [`${VALIDATE}?TEST=false&test=true`, `${VALIDATE}?test=true&TEST=false`, `${VALIDATE}?Test=false&test=true`, `${VALIDATE}?test=true&tEsT=true`, `${VALIDATE}?TEST=true`];
+  // R-45 (AEGIS F-03-101): a .NET comparison may fold U+017F (long s) to S, which toLowerCase does not; only the exact query passes
+  const smuggled = [`${VALIDATE}?te%C5%BFt=false&test=true`, `${VALIDATE}?test=true&te\u017ft=false`, `${VALIDATE}?test=true&x=1`, `${VALIDATE}?x=1&test=true`, `${VALIDATE}?test=true&`, `${VALIDATE}?TEST=false&test=true`, `${VALIDATE}?test=true&TEST=false`, `${VALIDATE}?Test=false&test=true`, `${VALIDATE}?test=true&tEsT=true`, `${VALIDATE}?TEST=true`];
   it.each(smuggled)('PROD (validate on): PUT %s denied', (path) => expect(isAllowed({ ...prod, prodValidateEnabled: true }, 'PUT', path)).toBe(false));
   it.each(smuggled)('TEST: PUT %s denied', (path) => expect(isAllowed(test, 'PUT', path)).toBe(false));
   it('the plain dry run still opens', () => {

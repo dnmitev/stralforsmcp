@@ -38,7 +38,7 @@ stdio.onmessage = async (msg) => {
     if (busy) {
       // stay up and never resend: a tools/call may be send_invoice (ADR 0028); the client decides whether to try again
       process.stderr.write(`${P}upstream busy (${status})\n`);
-      await answer('server busy or unavailable, try again');
+      await answer('server busy or unavailable; try again, but check whether a send went through (track_document) before repeating it');
       return;
     }
     const denied = status === 401;

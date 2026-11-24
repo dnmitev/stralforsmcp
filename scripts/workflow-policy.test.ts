@@ -607,7 +607,9 @@ export function chartProblems(text: string): string[] {
   const push = p.indexOf('helm" push');
   const sign = p.indexOf('cosign" sign');
   if (exists < 0 || push < 0 || exists > push) out.push('the existence check must run before the push');
-  if (!/if "\$RUNNER_TEMP\/helm" show chart[^\n]*\n[^\n]*\n\s+exit 1/.test(p)) out.push('an existing version must fail the run');
+  if (!/if out=\$\("\$RUNNER_TEMP\/helm" show chart[^\n]*\n[^\n]*\n\s+exit 1/.test(p)) out.push('an existing version must fail the run');
+  // AEGIS R-46: only "not found" means unpublished; any other lookup failure must stop before the push
+  if (!/if ! grep -qiE 'not found[^']*' <<< "\$out"; then\n[^\n]*\n\s+exit 1/.test(p)) out.push('a failed lookup must stop the run');
   if (sign < 0 || sign < push) out.push('the signature must follow the push');
   if (!/cosign" sign --yes "ghcr\.io\/\$\{GITHUB_REPOSITORY_OWNER,,\}\/charts\/stralforsmcp@\$\{DIGEST\}"/.test(p)) out.push('the signature must use the pushed digest');
   return out;
@@ -620,7 +622,8 @@ describe('chart.yml (real file)', () => {
     ['a main-branch push trigger', (t: string) => t.replace("  push:\n    tags: ['v*']", "  push:\n    branches: [main]\n    tags: ['v*']"), /v\* tags only/],
     ['id-token in package', (t: string) => t.replace('    timeout-minutes: 10\n    permissions:\n      contents: read\n    steps', '    timeout-minutes: 10\n    permissions:\n      contents: read\n      id-token: write\n    steps'), /publish only/],
     ['an ungated publish', (t: string) => t.replace(" && github.ref_type == 'tag'", ''), /gated/],
-    ['no existence check', (t: string) => t.replace(/if "\$RUNNER_TEMP\/helm" show chart/, 'if false; then :; fi; if "$RUNNER_TEMP/helm" inspect chart'), /existence check/],
+    ['no existence check', (t: string) => t.replace(/if out=\$\("\$RUNNER_TEMP\/helm" show chart/, 'if false; then :; fi; if out=$("$RUNNER_TEMP/helm" inspect chart'), /existence check/],
+    ['a failed lookup treated as unpublished', (t: string) => t.replace(/stopping before push"\n\s+exit 1/, 'stopping before push"'), /failed lookup/],
     ['an existing version only warns', (t: string) => t.replace(/release a new tag"\n\s+exit 1/, 'release a new tag"'), /must fail/],
     ['an unpinned cosign', (t: string) => t.replace(/echo "[0-9a-f]{64} {2}\$RUNNER_TEMP\/cosign" \| sha256sum -c -\n/, ''), /cosign binary/],
     ['a per-tag publish group', (t: string) => t.replace('group: chart-publish', 'group: chart-publish-${{ github.ref }}'), /one at a time/],
