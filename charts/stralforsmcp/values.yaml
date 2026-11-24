@@ -39,9 +39,10 @@ replicas: 1
 # readyDelayMs (endpoint propagation), then drains for drainMs. Rendering fails unless
 # terminationGracePeriodSeconds * 1000 > readyDelayMs + drainMs + 8000 (3 s client close + 5 s flush).
 # There is no preStop hook: the image has no shell or sleep and the server delays itself.
+# drainMs outlasts one send_invoice (token fetch <= 10 s + STRALFORS_TIMEOUT_MS 30 s), so a rollout does not cut a send (AEGIS F-07-101)
 readyDelayMs: 5000
-drainMs: 10000
-terminationGracePeriodSeconds: 30
+drainMs: 45000
+terminationGracePeriodSeconds: 60
 
 # Node old-space limit in MiB: about 75 % of resources.limits.memory (256Mi -> 192).
 heapMaxMb: 192

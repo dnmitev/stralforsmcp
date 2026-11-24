@@ -233,8 +233,10 @@ describe.skipIf(!helmOk)(helmOk ? 'chart' : 'chart (SKIPPED: helm binary not fou
       for (const side of ['requests', 'limits']) for (const r of ['cpu', 'memory']) expect(c.resources?.[side]?.[r], `${side}.${r}`).toBeTruthy();
       expect(c.livenessProbe.httpGet.path).toBe('/healthz');
       expect(c.readinessProbe.httpGet.path).toBe('/readyz');
-      expect(envVal(docs, 'MCP_DRAIN_MS')).toBe('10000');
-      expect(podSpec(docs).terminationGracePeriodSeconds).toBe(30);
+      // AEGIS F-07-101: the default drain outlasts one send_invoice (token fetch <= 10 s + vendor request 30 s), so a rollout does not cut it
+      expect(Number(envVal(docs, 'MCP_DRAIN_MS'))).toBeGreaterThan(10_000 + 30_000);
+      expect(envVal(docs, 'MCP_DRAIN_MS')).toBe('45000');
+      expect(podSpec(docs).terminationGracePeriodSeconds).toBe(60);
     });
     it('honours drainMs and terminationGracePeriodSeconds overrides', () => {
       const docs = render(full());

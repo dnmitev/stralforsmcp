@@ -45,6 +45,20 @@ export function readSecret(json: string, key: string): { text: string | null; me
   };
 }
 
+// Marks of a controller that reconciles the Secret (External Secrets, Argo CD, Flux, Helm or another manager): its next sync
+// would silently undo a change the wizard writes, including a revocation (AEGIS F-10-104).
+const MANAGED_KEYS = [/^argocd\.argoproj\.io\//, /^reconcile\.external-secrets\.io\//, /^external-secrets\.io\//, /^kustomize\.toolkit\.fluxcd\.io\//, /^helm\.toolkit\.fluxcd\.io\//, /^meta\.helm\.sh\//];
+
+/** Why the Secret looks managed by another tool, or null. Fixed text: kinds and key names only, never values except managed-by. */
+export function managedBy(meta: SecretMeta): string | null {
+  const owner = meta.ownerReferences?.[0] as { kind?: unknown } | undefined;
+  if (owner) return typeof owner.kind === 'string' ? owner.kind : 'an owner reference';
+  const managed = meta.labels['app.kubernetes.io/managed-by'];
+  if (managed !== undefined) return `app.kubernetes.io/managed-by=${managed}`;
+  for (const k of [...Object.keys(meta.labels), ...Object.keys(meta.annotations)]) if (MANAGED_KEYS.some((re) => re.test(k))) return k;
+  return null;
+}
+
 /** Manifest for `kubectl replace -f -` (meta given: optimistic concurrency on resourceVersion) or `kubectl create -f -` (meta null). */
 export function secretManifest(ns: string, name: string, key: string, text: string, meta: SecretMeta | null): string {
   const { [LAST_APPLIED]: _dropped, ...annotations } = meta?.annotations ?? {};
