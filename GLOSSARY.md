@@ -129,7 +129,7 @@ The rule that a send which has started runs to its end even when its caller canc
 _Avoid_: background send, fire-and-forget
 
 **Dry run** (`validateInvoice()`, `PUT .../validate?test=true`):
-A validation request that is checked by the API as if it were a send but creates nothing. It is the authority: a document is valid only when the dry run accepts it. The client can only issue dry runs; there is no way to turn the test flag off from this code.
+A validation request that is checked by the API as if it were a send but creates nothing. It is the authority: a document is valid only when the dry run accepts it. The client can only issue dry runs; there is no way to turn the test flag off from this code. The write guard treats a request as a dry run only when its whole query is exactly `test=true`, because the API reads query keys case-insensitively.
 _Avoid_: validate (ambiguous with local schema validation), test send, simulation
 
 **Outcome** (`Outcome`, `channelOutcome()`, `documentOutcome()`):
@@ -218,6 +218,14 @@ _Avoid_: trace_id (that is this server's OpenTelemetry trace id), request id
 The fail-closed check applied to every outgoing request before any socket or token is used. In `prod` only listed reads (and the dry run when explicitly enabled) pass; in `test` the only write that can pass is the send, and only when writes are enabled.
 _Avoid_: prod write guard (it acts in both environments), allowlist (unqualified)
 
+**Write defence**:
+The layers that together keep `prod` read-only: no write-capable client is requested, write tools are not registered, the write guard, the start-up refusal of `prod` with writes enabled, the blocked-write alert, and a test per layer. The first layer depends on the API vendor; where it is unavailable, the other layers are accepted in writing instead (ADR 0032).
+_Avoid_: prod guards (unqualified), the guard
+
+**Blocked write** (`stralfors_write_blocked_total`, alert `StralforsMcpWriteBlocked`):
+A request the write guard refused before it left the server. Each one is counted and audited from the same place; the count starts at zero, so the alert fires on the first one.
+_Avoid_: denied call (that is a policy refusal before any request is built), write attempt (unqualified)
+
 **Prod read allowlist** (`PROD_READS`):
 The fixed set of read paths the write guard lets through in `prod`: the Omni reads in `PROD_READS` and exactly two Track & Trace GET paths (document lookup and one document's history).
 
@@ -260,6 +268,14 @@ _Avoid_: hash (unqualified), token id
 **Token list** (`TokenList`, `MCP_TOKEN_LIST_FILE`):
 The mounted file of users and token digests, re-read on an interval under the last-good rule. Written by the operator; never by the server.
 _Avoid_: user database, token store (the store is the in-memory view of the list)
+
+**Token wizard** (`npm run token`):
+The operator tool that edits the token list: it adds users with a role and environments, issues and revokes tokens, and refuses to write any list the server would reject. It works on a file or directly on the Kubernetes Secret, and never writes over a change made since it read the list.
+_Avoid_: token CLI, admin script
+
+**Managed Secret**:
+A token-list Secret that another tool keeps in sync (an external secret operator, a GitOps controller, a Helm release). The token wizard does not write it, because that tool's next sync would silently undo the change, including a revocation; the change belongs at that tool's source.
+_Avoid_: external secret (one kind of it), read-only Secret
 
 **Token store** (`TokenStore`, `createTokenStore`):
 The in-memory view of the token list that verifies tokens and reloads the list.
@@ -352,7 +368,7 @@ The server issues and accepts no session id; every request carries its own token
 _Avoid_: session, sticky, connection (for a client relationship)
 
 **Drain** (`drainMs`, `MCP_DRAIN_MS`):
-The bounded wait during shutdown for requests already in flight to finish after the listener has closed and readiness has gone to 503. A pod's termination grace period must be longer than it.
+The bounded wait during shutdown for requests already in flight to finish after the listener has closed and readiness has gone to 503. A pod's termination grace period must be longer than it, and it must outlast one send (token fetch plus the API timeout), so a rollout does not leave a send's outcome unknown.
 _Avoid_: graceful shutdown (the whole sequence), timeout (unqualified)
 
 **Ready delay** (`MCP_READY_DELAY_MS`):
@@ -657,8 +673,12 @@ The build-provenance attestation a `v*` tag adds to the `.mcpb`, published with 
 _Avoid_: signature (that is the image's), notarisation
 
 **Bridge** (`extension/src/proxy.ts`, stderr prefix `stralforsmcp-bridge`):
-The local process the extension starts: stdio towards Desktop, Streamable HTTP towards the hosted server, forwarding MCP messages verbatim and adding only the `Authorization` header. stdout carries protocol frames only; stderr carries a few fixed lines that never contain the token, the URL or upstream text. A 401 ends it with the fixed text `authorization failed (check your token)`.
+The local process the extension starts: stdio towards Desktop, Streamable HTTP towards the hosted server, forwarding MCP messages verbatim and adding only the `Authorization` header. stdout carries protocol frames only; stderr carries a few fixed lines that never contain the token, the URL or upstream text. A 401 ends it with the fixed text `authorization failed (check your token)`; a 429 or 503 gets a busy answer instead.
 _Avoid_: proxy (the file name only), client, server (it is neither to the user)
+
+**Busy answer**:
+The bridge's reply to a request the server or its ingress refused as busy or unavailable (429 or 503): a fixed error that says to check whether a send went through before repeating it. The bridge keeps running and never resends the request itself (ADR 0031).
+_Avoid_: retry, backoff
 
 **User config** (`user_config`, `MCP_URL`, `MCP_TOKEN`):
 The two values Desktop asks for at install: the server URL and the personal token. The token is marked sensitive, kept in the operating system secure store and handed to the bridge by environment variable, never on the command line.
@@ -724,6 +744,10 @@ _Avoid_: non-docs PR
 **First reviewer** (Greptile, check `Greptile Review`):
 The automated review that runs on every pull request. Its valid findings are fixed before merge; there is no separate confidence status (ADR 0029). The principal review is advisory, at phase end or on demand.
 _Avoid_: CodeRabbit (no longer used), bot review
+
+**Rule test**:
+A test that evaluates the chart's alert rules with Prometheus's own rule engine against made-up series, offline, so an alert's firing behaviour (not just its text) is checked in CI.
+_Avoid_: alert test (ambiguous with an alert firing), promtool test
 
 **Synthetic fixture**:
 Test data written by hand in the shape the API uses, with placeholder values and nil ids. Never a copy of a vendor or customer payload.
